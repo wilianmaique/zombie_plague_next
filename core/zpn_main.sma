@@ -39,7 +39,7 @@ enum _:ePropsClass
 	CLASS_PROP_MODEL[64],
 	CLASS_PROP_MODEL_VIEW[64],
 	Float:CLASS_PROP_HEALTH,
-	CLASS_PROP_SPEED,
+	Float:CLASS_PROP_SPEED,
 	Float:CLASS_PROP_GRAVITY,
 	Float:CLASS_PROP_KNOCKBACK,
 	CLASS_PROP_CLAW_WEAPONLIST[64],
@@ -103,6 +103,7 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_TraceAttack, "CBasePlayer_TraceAttack_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "CBasePlayer_TakeDamage_Pre", false)
+	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false);
 
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
@@ -130,21 +131,20 @@ public plugin_init()
 		server_print("^n")
 		server_print("Classes loaded:")
 		new i
-		new dataC[ePropsClass]
+		
 		for(i = 0; i < ArraySize(aDataClass); i++)
 		{
-			ArrayGetArray(aDataClass, i, dataC)
-			server_print("-> Class: %s | Info: %s | Model: %s | Model View: %s", dataC[CLASS_PROP_NAME], dataC[CLASS_PROP_INFO], dataC[CLASS_PROP_MODEL], dataC[CLASS_PROP_MODEL_VIEW])
+			ArrayGetArray(aDataClass, i, xDataGetClass)
+			server_print("-> Class: %s | Info: %s | Model: %s | Model View: %s", xDataGetClass[CLASS_PROP_NAME], xDataGetClass[CLASS_PROP_INFO], xDataGetClass[CLASS_PROP_MODEL], xDataGetClass[CLASS_PROP_MODEL_VIEW])
 		}
 
 		server_print("^n")
 		server_print("GameModes loaded:")
 		
-		new dataG[ePropsGameMode]
 		for(i = 0; i < ArraySize(aDataGameMode); i++)
 		{
-			ArrayGetArray(aDataGameMode, i, dataG)
-			server_print("-> GameMode: %s | Chance: %d | Min Alives: %d | Round Time: %0.1f", dataG[GAMEMODE_PROP_NAME], dataG[GAMEMODE_PROP_CHANCE], dataG[GAMEMODE_PROP_MIN_ALIVES], dataG[GAMEMODE_PROP_ROUND_TIME])
+			ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
+			server_print("-> GameMode: %s | Chance: %d | Min Alives: %d | Round Time: %0.1f", xDataGetGameMode[GAMEMODE_PROP_NAME], xDataGetGameMode[GAMEMODE_PROP_CHANCE], xDataGetGameMode[GAMEMODE_PROP_MIN_ALIVES], xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME])
 		}
 
 		server_print("^n")
@@ -199,6 +199,28 @@ public CBasePlayer_TraceAttack_Pre(const this, pevAttacker, Float:flDamage, Floa
 	
 }
 
+public CBasePlayer_ResetMaxSpeed_Pre(const this)
+{
+	if(!wm_is_valid_player_alive(this))
+		return HC_CONTINUE
+
+	new classTeam = xUserData[this][UD_IS_ZOMBIE] ? xUserData[this][UD_CURRENT_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_HUMAN_CLASS]
+	ArrayGetArray(aDataClass, classTeam, xDataGetClass)
+
+	//if(xSettingsVars[CONFIG_DEBUG_ON])
+	//	server_print("CBasePlayer_ResetMaxSpeed_Pre(this) - %0.2f", xDataGetClass[CLASS_PROP_SPEED])
+
+	new Float:speed = xDataGetClass[CLASS_PROP_SPEED]
+	new activeItem = get_member(this, m_pActiveItem)
+	
+	if(!is_nullent(activeItem))
+		ExecuteHamB(Ham_CS_Item_GetMaxSpeed, activeItem, speed)
+
+	set_entvar(this, var_maxspeed, speed)
+
+	return HC_SUPERCEDE
+}
+
 public clcmd_changeteam(id)
 {
 	new any:team = get_member(id, m_iTeam)
@@ -218,14 +240,11 @@ public client_putinserver(id)
 
 public show_menu_game(id)
 {
-	new xFmtx[128], xMenu
-	formatex(xFmtx, charsmax(xFmtx), "\yZombie Plague Next")
+	new xMenu = menu_create("\yZombie Plague Next", "_show_menu_game")
 
-	xMenu = menu_create(xFmtx, "_show_menu_game")
-
-	menu_additem(xMenu, "Armas")
-	menu_additem(xMenu, "Loja")
-	menu_additem(xMenu, "Classes De Zombie")
+	menu_additem(xMenu, "Selecionar Armas")
+	menu_additem(xMenu, "Loja De Itens")
+	menu_additem(xMenu, "Selecionar Classes")
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
 	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
@@ -243,8 +262,6 @@ public _show_menu_game(id, menu, item)
 		menu_destroy(menu)
 		return
 	}
-
-	//menu_item_getinfo(menu, item)
 	
 	switch(item)
 	{
@@ -254,7 +271,54 @@ public _show_menu_game(id, menu, item)
 			xUserData[id][UD_SECONDARY_WEAPON] = -1
 			select_primary_weapon(id)
 		}
+
+		case 2:
+		{
+			select_class(id)
+		}
 	}
+}
+
+public select_class(id)
+{
+	new xMenu = menu_create("\ySelecionar classe", "_select_class")
+
+	for(new i = 0; i < ArraySize(aDataClass); i++)
+	{
+		ArrayGetArray(aDataClass, i, xDataGetClass)
+		menu_additem(xMenu,
+		fmt("\w%s \y(\d%s\y)%s", xDataGetClass[CLASS_PROP_NAME], xDataGetClass[CLASS_PROP_INFO], i == xUserData[id][UD_CURRENT_ZOMBIE_CLASS] ? " \r*" : ""),
+		fmt("%d", i)
+		)
+	}
+
+	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
+	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
+	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
+	menu_display(id, xMenu)
+}
+
+public _select_class(id, menu, item)
+{
+	if(!is_user_connected(id))
+		return
+
+	if(item == MENU_EXIT)
+	{
+		menu_destroy(menu)
+		return
+	}
+
+	new info[4]
+	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
+
+	new class_id = str_to_num(info)
+	xUserData[id][UD_CURRENT_ZOMBIE_CLASS] = class_id
+
+	ArrayGetArray(aDataClass, class_id, xDataGetClass)
+	
+	client_print_color(id, print_team_default, "^3Sua nova classe ao reaparecer será: ^4%s^1.", xDataGetClass[CLASS_PROP_NAME])
+	client_print_color(id, print_team_default, "^3Gravidade: ^1%d - ^3Velocidade: ^1%0.2f", floatround(xDataGetClass[CLASS_PROP_GRAVITY] * 800.0), xDataGetClass[CLASS_PROP_SPEED])
 }
 
 public reset_user_vars(id)
@@ -564,7 +628,7 @@ public plugin_precache()
 	aDataClass = ArrayCreate(ePropsClass)
 	aDataGameMode = ArrayCreate(ePropsGameMode)
 
-	bind_pcvar_num(create_cvar("zpn_start_countdown_delay", "15", .has_min = true, .min_val = 1.0), xCvars[CVAR_START_DELAY])
+	bind_pcvar_num(create_cvar("zpn_delay", "15", .has_min = true, .min_val = 1.0), xCvars[CVAR_START_DELAY])
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 
 	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", xSettingsVars[CONFIG_DEBUG_ON]))
@@ -772,7 +836,7 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_MODEL] = EOS
 	xDataGetClass[CLASS_PROP_MODEL_VIEW] = EOS
 	xDataGetClass[CLASS_PROP_HEALTH] = 100.0
-	xDataGetClass[CLASS_PROP_SPEED] = 320
+	xDataGetClass[CLASS_PROP_SPEED] = 320.0
 	xDataGetClass[CLASS_PROP_GRAVITY] = 1.0
 	xDataGetClass[CLASS_PROP_KNOCKBACK] = 1.0
 	xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST] = EOS
@@ -844,7 +908,7 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 				precache_model(xDataGetClass[CLASS_PROP_MODEL_VIEW])
 		}
 		case CLASS_PROP_REGISTER_HEALTH: xDataGetClass[CLASS_PROP_HEALTH] = get_float_byref(arg_value)
-		case CLASS_PROP_REGISTER_SPEED: xDataGetClass[CLASS_PROP_SPEED] = get_param_byref(arg_value)
+		case CLASS_PROP_REGISTER_SPEED: xDataGetClass[CLASS_PROP_SPEED] = get_float_byref(arg_value)
 		case CLASS_PROP_REGISTER_GRAVITY: xDataGetClass[CLASS_PROP_GRAVITY] = get_float_byref(arg_value)
 		case CLASS_PROP_REGISTER_KNOCKBACK: xDataGetClass[CLASS_PROP_KNOCKBACK] = get_float_byref(arg_value)
 		case CLASS_PROP_REGISTER_CLAW_WEAPONLIST: get_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], charsmax(xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST]))
