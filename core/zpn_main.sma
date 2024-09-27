@@ -7,13 +7,14 @@
 #include <api_json_settings>
 #include <cstrike>
 
-#define wm_is_valid_player_alive(%1) (1 <= %1 <= MaxClients && is_user_alive(%1) && is_user_connected(%1))
-#define wm_is_valid_player_connected(%1) (1 <= %1 <= MaxClients && is_user_connected(%1))
-#define wm_is_valid_player(%1) (1 <= %1 <= MaxClients)
+#define is_valid_player_alive(%1) (1 <= %1 <= MaxClients && is_user_alive(%1) && is_user_connected(%1))
+#define is_valid_player_connected(%1) (1 <= %1 <= MaxClients && is_user_connected(%1))
+#define is_valid_player(%1) (1 <= %1 <= MaxClients)
 
 enum
 {
 	TASK_COUNTDOWN = 1515,
+	TASK_HUD_PLAYER_INFO
 }
 
 enum _:eCvars
@@ -80,7 +81,8 @@ enum _:eUserData
 
 enum _:eSyncHuds
 {
-	SYNC_HUD_MAIN
+	SYNC_HUD_MAIN,
+	SYNC_HUD_PLAYER_INFO
 }
 
 new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "player/bhit_helmet-1.wav" };
@@ -95,6 +97,7 @@ new Array:aDataClass, Array:aDataGameMode
 public plugin_init()
 {
 	register_plugin("Zombie Plague Next", "1.0", "Wilian M.")
+	register_dictionary("common.txt")
 
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
 	RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "CSGameRules_OnRoundFreezeEnd_Pre", false)
@@ -103,7 +106,8 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_TraceAttack, "CBasePlayer_TraceAttack_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "CBasePlayer_TakeDamage_Pre", false)
-	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false);
+	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false)
+	RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "RCBasePlayer_HasRestrictItem_Pre", false)
 
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
@@ -114,11 +118,6 @@ public plugin_init()
 	if(zpn_is_invalid_array(aDataGameMode))
 		return set_fail_state("[ZP NEXT] No gamemodes founds")
 
-	register_dictionary("common.txt")
-
-	RegisterHam(Ham_Touch, "weaponbox", "xHamTouch_Pre", false)
-	RegisterHam(Ham_Touch, "armoury_entity", "xHamTouch_Pre", false)
-	RegisterHam(Ham_Touch, "weapon_shield", "xHamTouch_Pre", false)
 
 	register_clcmd("chooseteam", "clcmd_changeteam")
 	register_clcmd("jointeam", "clcmd_changeteam")
@@ -155,7 +154,7 @@ public plugin_init()
 
 public CBasePlayer_TakeDamage_Pre(const this, pevInflictor, pevAttacker, Float:flDamage, bitsDamageType)
 {
-	if(this == pevAttacker || !wm_is_valid_player_alive(pevAttacker) || !wm_is_valid_player_alive(this))
+	if(this == pevAttacker || !is_valid_player_alive(pevAttacker) || !is_valid_player_alive(this))
 		return HC_CONTINUE
 
 	if(xUserData[pevAttacker][UD_IS_ZOMBIE] && !xUserData[this][UD_IS_ZOMBIE])
@@ -201,24 +200,23 @@ public CBasePlayer_TraceAttack_Pre(const this, pevAttacker, Float:flDamage, Floa
 
 public CBasePlayer_ResetMaxSpeed_Pre(const this)
 {
-	if(!wm_is_valid_player_alive(this))
+	if(!is_valid_player_alive(this))
 		return HC_CONTINUE
 
 	new classTeam = xUserData[this][UD_IS_ZOMBIE] ? xUserData[this][UD_CURRENT_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_HUMAN_CLASS]
 	ArrayGetArray(aDataClass, classTeam, xDataGetClass)
 
-	//if(xSettingsVars[CONFIG_DEBUG_ON])
-	//	server_print("CBasePlayer_ResetMaxSpeed_Pre(this) - %0.2f", xDataGetClass[CLASS_PROP_SPEED])
+	if(xSettingsVars[CONFIG_DEBUG_ON])
+		server_print("CBasePlayer_ResetMaxSpeed_Pre(this): %0.2f", xDataGetClass[CLASS_PROP_SPEED])
 
-	new Float:speed = xDataGetClass[CLASS_PROP_SPEED]
 	new activeItem = get_member(this, m_pActiveItem)
 	
 	if(!is_nullent(activeItem))
-		ExecuteHamB(Ham_CS_Item_GetMaxSpeed, activeItem, speed)
+		ExecuteHamB(Ham_CS_Item_GetMaxSpeed, activeItem, xDataGetClass[CLASS_PROP_SPEED])
 
-	set_entvar(this, var_maxspeed, speed)
+	set_entvar(this, var_maxspeed, xDataGetClass[CLASS_PROP_SPEED])
 
-	return HC_SUPERCEDE
+	return HC_CONTINUE
 }
 
 public clcmd_changeteam(id)
@@ -236,15 +234,28 @@ public clcmd_changeteam(id)
 public client_putinserver(id)
 {
 	reset_user_vars(id)
+	set_task_ex(0.1, "xHudPlayerInfo", id + TASK_HUD_PLAYER_INFO, .flags = SetTask_Repeat)
+}
+
+public xHudPlayerInfo(id)
+{
+	id -= TASK_HUD_PLAYER_INFO
+
+	if(!is_user_connected(id)) { remove_task(id + TASK_HUD_PLAYER_INFO); return; }
+	
+	set_hudmessage(0, 255, 255, 0.03, 0.2, 0, 0.0, 0.0, 0.1, 0.1)
+	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO],"Classe: --^nVida: %d^nColete: %d^nAmmo Packs: 0^n", get_user_health(id), rg_get_user_armor(id))
 }
 
 public show_menu_game(id)
 {
-	new xMenu = menu_create("\yZombie Plague Next", "_show_menu_game")
+	new xMenu = menu_create(fmt("%s \yZombie Plague Next", xSettingsVars[CONFIG_PREFIX_MENUS]), "_show_menu_game")
 
 	menu_additem(xMenu, "Selecionar Armas")
 	menu_additem(xMenu, "Loja De Itens")
 	menu_additem(xMenu, "Selecionar Classes")
+	menu_addblank(xMenu, 0)
+	menu_additem(xMenu, "\yAdministração")
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
 	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
@@ -276,12 +287,17 @@ public _show_menu_game(id, menu, item)
 		{
 			select_class(id)
 		}
+
+		case 3:
+		{
+			client_print(id, 3, "admin")
+		}
 	}
 }
 
 public select_class(id)
 {
-	new xMenu = menu_create("\ySelecionar classe", "_select_class")
+	new xMenu = menu_create(fmt("%s \ySelecionar classe", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_class")
 
 	for(new i = 0; i < ArraySize(aDataClass); i++)
 	{
@@ -317,8 +333,8 @@ public _select_class(id, menu, item)
 
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 	
-	client_print_color(id, print_team_default, "^3Sua nova classe ao reaparecer será: ^4%s^1.", xDataGetClass[CLASS_PROP_NAME])
-	client_print_color(id, print_team_default, "^3Gravidade: ^1%d - ^3Velocidade: ^1%0.2f", floatround(xDataGetClass[CLASS_PROP_GRAVITY] * 800.0), xDataGetClass[CLASS_PROP_SPEED])
+	client_print_color(id, print_team_default, "%s ^3Sua nova classe ao reaparecer será: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], xDataGetClass[CLASS_PROP_NAME])
+	client_print_color(id, print_team_default, "%s ^3Vida: ^1%s ^4- ^3Gravidade: ^1%d ^4- ^3Velocidade: ^1%0.0f", xSettingsVars[CONFIG_PREFIX_CHAT], format_number_point(floatround(xDataGetClass[CLASS_PROP_HEALTH])), floatround(xDataGetClass[CLASS_PROP_GRAVITY] * 800.0), xDataGetClass[CLASS_PROP_SPEED])
 }
 
 public reset_user_vars(id)
@@ -362,7 +378,6 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 			if(xUserData[id][UD_IS_ZOMBIE])
 				server_print("CBasePlayerWeapon_DefaultDeploy_Pre - %n - é zombie", id)
 		}
-		
 	}
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
@@ -374,7 +389,7 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 
 public CBasePlayer_Spawn_Post(id)
 {
-	if(!wm_is_valid_player_alive(id))
+	if(!is_valid_player_alive(id))
 		return
 
 	new TeamName:team = get_member(id, m_iTeam)
@@ -385,22 +400,26 @@ public CBasePlayer_Spawn_Post(id)
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 	{
 		if(xUserData[id][UD_IS_ZOMBIE])
-			server_print("CBasePlayer_Spawn_Post - %n - é zombie", id)
+			server_print("CBasePlayer_Spawn_Post(id): %n - é zombie", id)
 
-		server_print("CBasePlayer_Spawn_Post(id) ---> %n", id)
+		server_print("CBasePlayer_Spawn_Post(id): %n", id)
 	}
 
-	if(!xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED] && team != TEAM_CT)
+	if(!xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED])
 	{
-		//xUserData[id][UD_IS_ZOMBIE] = false
-		//rg_set_user_model(id, xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
-		//rg_set_user_team(id, TEAM_CT)
+		if(team != TEAM_CT)
+		{
+			xUserData[id][UD_IS_ZOMBIE] = false
+			rg_set_user_model(id, xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
+			rg_set_user_team(id, TEAM_CT)
+		}
+		
 		deploy_weapon(id)
 
 		if(xSettingsVars[CONFIG_DEBUG_ON])
 		{
 			server_print("^n")
-			server_print("Dentro: !xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED")
+			server_print("CBasePlayer_Spawn_Post(id): !xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED] && team != TEAM_CT")
 		}
 	}
 
@@ -419,29 +438,31 @@ public CBasePlayer_Spawn_Post(id)
 	// }
 }
 
-public xHamTouch_Pre(weapon, id)
+public RCBasePlayer_HasRestrictItem_Pre(const this, ItemID:item, ItemRestType:typ)
 {
-	if(!is_user_connected(id) || !is_user_alive(id))
-		return HAM_IGNORED
+	if(!is_valid_player_alive(this))
+		return HC_CONTINUE
 
-	if(xUserData[id][UD_IS_ZOMBIE])
-		return HAM_SUPERCEDE
+	if(xUserData[this][UD_IS_ZOMBIE])
+	{
+		SetHookChainReturn(ATYPE_BOOL, true)
 
-	return HAM_IGNORED
+		return HC_SUPERCEDE
+	}
+
+	return HC_CONTINUE
 }
 
 public select_primary_weapon(id)
 {
 	if(xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED])
 	{
-		client_print_color(id, print_team_red, "^3Seleção de armas resetadas! ^1Espere o fim da rodada.")
+		client_print_color(id, print_team_red, "%s ^3Seleção de armas resetadas! ^1Espere o fim da rodada.", xSettingsVars[CONFIG_PREFIX_CHAT])
 		return
 	}
 
-	new xFmtx[128], xMenu, xWpn[32]
-	formatex(xFmtx, charsmax(xFmtx), "\ySelecionar arma primária")
-
-	xMenu = menu_create(xFmtx, "_select_primary_weapon")
+	new xMenu = menu_create(fmt("%s \ySelecionar arma primária", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_primary_weapon")
+	static xWpn[32]
 
 	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS]); i++)
 	{
@@ -481,10 +502,8 @@ public _select_primary_weapon(id, menu, item)
 
 public select_secondary_weapon(id)
 {
-	new xFmtx[128], xMenu, xWpn[32]
-	formatex(xFmtx, charsmax(xFmtx), "\ySelecionar arma secundária")
-
-	xMenu = menu_create(xFmtx, "_select_secondary_weapon")
+	new xMenu = menu_create(fmt("%s \ySelecionar arma secundária", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_secondary_weapon")
+	static xWpn[32]
 
 	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS]); i++)
 	{
@@ -525,6 +544,10 @@ public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const 
 {
 	new xWpn[32]
 	ArrayGetString(WpnType, xWpnArrayIndex, xWpn, charsmax(xWpn))
+
+	if(rg_has_item_by_name(id, xWpn))
+		return
+
 	rg_drop_items_by_slot(id, slot)
 	rg_give_item(id, xWpn)
 
@@ -607,17 +630,17 @@ public xInitRound()
 	set_user_zombie(id, 0)
 	xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED] = true
 
-	for(new i = 1; i <= MaxClients; i++)
-	{
-		if(!is_user_connected(i))
-			continue
+	// for(new i = 1; i <= MaxClients; i++)
+	// {
+	// 	if(!is_user_connected(i))
+	// 		continue
 
-		if(i == id)
-			continue
+	// 	if(i == id)
+	// 		continue
 
-		rg_set_user_model(i, xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
-		rg_set_user_team(i, TEAM_CT)
-	}
+	// 	rg_set_user_model(i, xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
+	// 	rg_set_user_team(i, TEAM_CT)
+	// }
 }
 
 public plugin_precache()
@@ -645,15 +668,19 @@ public plugin_precache()
 
 	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Chat", xSettingsVars[CONFIG_PREFIX_CHAT], charsmax(xSettingsVars[CONFIG_PREFIX_CHAT])))
 	{
-		xSettingsVars[CONFIG_PREFIX_CHAT] = "!y[ZP]"
-		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Chat", "!y[ZP]")
+		xSettingsVars[CONFIG_PREFIX_CHAT] = "!y[!gZP!y]"
+		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Chat", xSettingsVars[CONFIG_PREFIX_CHAT])
 	}
+
+	update_prefix_color(xSettingsVars[CONFIG_PREFIX_CHAT], charsmax(xSettingsVars[CONFIG_PREFIX_CHAT]))
 
 	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", xSettingsVars[CONFIG_PREFIX_MENUS], charsmax(xSettingsVars[CONFIG_PREFIX_MENUS])))
 	{
 		xSettingsVars[CONFIG_PREFIX_MENUS] = "!y[!rZP!y]"
-		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", "!y[!rZP!y]")
+		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", xSettingsVars[CONFIG_PREFIX_MENUS])
 	}
+
+	update_prefix_color(xSettingsVars[CONFIG_PREFIX_MENUS], charsmax(xSettingsVars[CONFIG_PREFIX_MENUS]), true)
 
 	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Default Human Model", xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL], charsmax(xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])))
 	{
@@ -920,7 +947,7 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 	return true
 }
 
-precache_player_model(const modelname[])
+public precache_player_model(const modelname[])
 {
 	static longname[128], index
 	formatex(longname, charsmax(longname), "models/player/%s/%s.mdl", modelname, modelname)
@@ -959,7 +986,7 @@ public set_user_zombie(this, attacker)
 	new activeItem = get_member(this, m_pActiveItem)
 
 	if(!is_nullent(activeItem))
-		rg_weapon_deploy(activeItem, xDataGetClass[CLASS_PROP_MODEL_VIEW], "", 0, "knife", 0)
+		deploy_weapon(this)
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 		server_print("%n virou zombie, class id: %d - health: %0.1f - model: %s - v_model: %s", this, xUserData[this][UD_CURRENT_ZOMBIE_CLASS], xDataGetClass[CLASS_PROP_HEALTH], xDataGetClass[CLASS_PROP_MODEL], xDataGetClass[CLASS_PROP_MODEL_VIEW])
@@ -992,4 +1019,43 @@ deploy_weapon(id)
 {
 	new activeItem = get_member(id, m_pActiveItem)
 	if(!is_nullent(activeItem)) ExecuteHamB(Ham_Item_Deploy, activeItem)
+}
+
+update_prefix_color(string[], len, bool:menu = false)
+{
+	if(menu)
+	{
+		replace_string(string, len, "!y", "\y")
+		replace_string(string, len, "!d", "\d")
+		replace_string(string, len, "!r", "\r")
+		replace_string(string, len, "!w", "\w")
+	}
+	else
+	{
+		replace_string(string, len, "!y", "^1")
+		replace_string(string, len, "!t", "^3")
+		replace_string(string, len, "!g", "^4")
+	}
+}
+
+format_number_point(const number)
+{
+	static count, i, str[32], str2[32], len
+	count = 0
+
+	num_to_str(number, str, charsmax(str))
+	len = strlen(str)
+
+	for(i = 0; i < len; i++)
+	{
+		if(i != 0 && ((len - i) %3 == 0))
+		{
+			add(str2, charsmax(str2), ".", 1)
+			count++
+			add(str2[i+count], 1, str[i], 1)
+		}
+		else add(str2[i+count], 1, str[i], 1)
+	}
+	
+	return str2
 }
