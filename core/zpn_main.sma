@@ -216,7 +216,7 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 
 	set_entvar(this, var_maxspeed, xDataGetClass[CLASS_PROP_SPEED])
 
-	return HC_CONTINUE
+	return HC_SUPERCEDE
 }
 
 public clcmd_changeteam(id)
