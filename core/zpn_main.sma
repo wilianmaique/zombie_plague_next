@@ -24,6 +24,11 @@ enum _:eCvars
 	CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED,
 }
 
+enum _:eForwards
+{
+	FW_ROUND_STARTED_POST,
+}
+
 enum _:eSettingsConfigs
 {
 	CONFIG_DEBUG_ON,
@@ -54,7 +59,7 @@ enum _:ePropsGameMode
 	GAMEMODE_PROP_NOTICE[64],
 	GAMEMODE_PROP_HUD_COLOR[3],
 	GAMEMODE_PROP_CHANCE,
-	GAMEMODE_PROP_MIN_ALIVES,
+	GAMEMODE_PROP_MIN_PLAYERS,
 	Float:GAMEMODE_PROP_ROUND_TIME,
 	bool:GAMEMODE_PROP_CHANGE_CLASS,
 	eGameModeDeathMatchType:GAMEMODE_PROP_DEATHMATCH
@@ -62,12 +67,13 @@ enum _:ePropsGameMode
 
 enum _:eGameRule
 {
-	GAME_RULES_CURRENT_MODE,
-	bool:GAME_RULES_IS_ROUND_STARTED,
-	GAME_RULES_COUNTDOWN,
-	Array:GAME_RULES_USELESS_ENTITIES,
-	Array:GAME_RULES_PRIMARY_WEAPONS,
-	Array:GAME_RULES_SECONDARY_WEAPONS,
+	GAME_RULE_CURRENT_GAMEMODE,
+	bool:GAME_RULE_IS_ROUND_STARTED,
+	GAME_RULE_COUNTDOWN,
+	Array:GAME_RULE_USELESS_ENTITIES,
+	Array:GAME_RULE_PRIMARY_WEAPONS,
+	Array:GAME_RULE_SECONDARY_WEAPONS,
+	GAME_RULE_LAST_GAMEMODE
 }
 
 enum _:eUserData
@@ -77,6 +83,7 @@ enum _:eUserData
 	UD_CURRENT_ZOMBIE_CLASS,
 	UD_CURRENT_HUMAN_CLASS,
 	bool:UD_IS_ZOMBIE,
+	bool:UD_IS_FIRST_ZOMBIE,
 	UD_PRIMARY_WEAPON,
 	UD_SECONDARY_WEAPON,
 }
@@ -96,6 +103,7 @@ new any:xDataGetClass[ePropsClass], any:xDataGetGameMode[ePropsGameMode], any:xD
 new xDataClassCount, xDataGameModeCount, xFirstClass[2], xClassCount[2]
 new Array:aDataClass, Array:aDataGameMode
 new xIsRestartRound_Pre
+new xForwards[eForwards], xForwardReturn
 
 public plugin_init()
 {
@@ -121,6 +129,9 @@ public plugin_init()
 
 	if(zpn_is_invalid_array(aDataGameMode))
 		return set_fail_state("[ZP NEXT] No GameModes Founds")
+
+	// FWS
+	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL)
 
 	xFirstClass[0] = get_first_class(CLASS_TEAM_TYPE_ZOMBIE)
 	xFirstClass[1] = get_first_class(CLASS_TEAM_TYPE_HUMAN)
@@ -152,7 +163,7 @@ public plugin_init()
 		for(i = 0; i < ArraySize(aDataGameMode); i++)
 		{
 			ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
-			server_print("-> GameMode: %s | Chance: %d | Min Alives: %d | Round Time: %0.1f", xDataGetGameMode[GAMEMODE_PROP_NAME], xDataGetGameMode[GAMEMODE_PROP_CHANCE], xDataGetGameMode[GAMEMODE_PROP_MIN_ALIVES], xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME])
+			server_print("-> GameMode: %s | Chance: %d | Min Alives: %d | Round Time: %0.1f", xDataGetGameMode[GAMEMODE_PROP_NAME], xDataGetGameMode[GAMEMODE_PROP_CHANCE], xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS], xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME])
 		}
 
 		server_print("^n")
@@ -186,7 +197,7 @@ public CBasePlayer_TakeDamage_Pre(const this, pevInflictor, pevAttacker, Float:f
 			return HC_SUPERCEDE
 		}
 
-		set_user_zombie(this, pevAttacker)
+		set_user_zombie(this, pevAttacker, false)
 
 		if(get_num_humans_alive() == 0 && xCvars[CVAR_LAST_HUMAN_INFECT])
 			rg_round_end(2.0, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN, .trigger = true)
@@ -246,9 +257,23 @@ public xHudPlayerInfo(id)
 	if(!is_user_connected(id)) { remove_task(id + TASK_HUD_PLAYER_INFO); return; }
 	
 	static Float:velocity[3]; get_entvar(id, var_velocity, velocity)
-	
+	static txt[256]
+
+	txt[0] = EOS
+
 	set_hudmessage(0, 255, 255, 0.03, 0.2, 0, 0.0, 0.0, 0.1, 0.1)
-	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO],"Classe: %s^nVida: %s^nColete: %d^nAmmo Packs: 0^nVelocidade: %d", get_class_name(id), format_number_point(get_user_health(id)), rg_get_user_armor(id), floatround(vector_length(velocity)))
+
+	add(txt, charsmax(txt), fmt("» Modo: %s^n", get_gamemode_name()))
+	add(txt, charsmax(txt), fmt("» Classe: %s^n", get_class_name(id)))
+	add(txt, charsmax(txt), fmt("» Vida: %s^n", format_number_point(get_user_health(id))))
+
+	if(!xUserData[id][UD_IS_ZOMBIE])
+		add(txt, charsmax(txt), fmt("» Colete: %d^n", get_entvar(id, var_armorvalue)))
+
+	add(txt, charsmax(txt), fmt("» Ammo Packs: 0^n"))
+	add(txt, charsmax(txt), fmt("» Velocidade: %d", floatround(vector_length(velocity))))
+
+	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], txt)
 }
 
 public show_menu_game(id)
@@ -257,8 +282,7 @@ public show_menu_game(id)
 
 	menu_additem(xMenu, "Selecionar Armas")
 	menu_additem(xMenu, "Loja De Itens")
-	menu_additem(xMenu, "Selecionar Classes")
-	menu_addblank(xMenu, 0)
+	menu_additem(xMenu, "Selecionar Classes^n")
 	menu_additem(xMenu, "\yAdministração")
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
@@ -390,6 +414,7 @@ public _select_class(id, menu, item)
 public reset_user_vars(id)
 {
 	xUserData[id][UD_IS_ZOMBIE] = false
+	xUserData[id][UD_IS_FIRST_ZOMBIE] = false
 	xUserData[id][UD_HAS_SELECTED_ZOMBIE_CLASS] = false
 	xUserData[id][UD_HAS_SELECTED_HUMAN_CLASS] = false
 	xUserData[id][UD_CURRENT_ZOMBIE_CLASS] = xFirstClass[0]
@@ -400,11 +425,11 @@ public reset_user_vars(id)
 
 public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 {
-	xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED] = false
+	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
 
 	if(zpn_is_invalid_array(aDataGameMode))
-		xDataGetGameRule[GAME_RULES_CURRENT_MODE] = -1
-	else xDataGetGameRule[GAME_RULES_CURRENT_MODE] = 0
+		xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = -1
+	else xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = 0
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 		server_print("RoundEnd_Pre: %d - %d - %f", status, event, delay)
@@ -443,7 +468,7 @@ public CBasePlayer_Spawn_Post(id)
 		server_print("CBasePlayer_Spawn_Post(id): %n", id)
 	}
 
-	if(!xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED] && !xIsRestartRound_Pre)
+	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] /*&& !xIsRestartRound_Pre*/)
 	{
 		set_user_human(id, 0)
 		deploy_weapon(id)
@@ -451,7 +476,7 @@ public CBasePlayer_Spawn_Post(id)
 		if(xSettingsVars[CONFIG_DEBUG_ON])
 		{
 			server_print("^n")
-			server_print("!xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED] && !xIsRestartRound_Pre")
+			server_print("!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && !xIsRestartRound_Pre")
 		}
 	}
 
@@ -459,10 +484,10 @@ public CBasePlayer_Spawn_Post(id)
 		select_primary_weapon(id)
 	else if(xUserData[id][UD_PRIMARY_WEAPON] != -1)
 	{
-		get_selected_weapon(id, xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS], xUserData[id][UD_PRIMARY_WEAPON], PRIMARY_WEAPON_SLOT)
+		get_selected_weapon(id, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], xUserData[id][UD_PRIMARY_WEAPON], PRIMARY_WEAPON_SLOT)
 
 		if(xUserData[id][UD_PRIMARY_WEAPON] != -1)
-			get_selected_weapon(id, xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS], xUserData[id][UD_SECONDARY_WEAPON], PISTOL_SLOT)
+			get_selected_weapon(id, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], xUserData[id][UD_SECONDARY_WEAPON], PISTOL_SLOT)
 	}
 }
 
@@ -483,7 +508,7 @@ public RCBasePlayer_HasRestrictItem_Pre(const this, ItemID:item, ItemRestType:ty
 
 public select_primary_weapon(id)
 {
-	if(xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED])
+	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 	{
 		client_print_color(id, print_team_red, "%s ^3Seleção de armas resetadas! ^1Espere o fim da rodada.", xSettingsVars[CONFIG_PREFIX_CHAT])
 		return
@@ -492,9 +517,9 @@ public select_primary_weapon(id)
 	new xMenu = menu_create(fmt("%s \ySelecionar arma primária", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_primary_weapon")
 	static xWpn[32]
 
-	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS]); i++)
+	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS]); i++)
 	{
-		ArrayGetString(xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS], i, xWpn, charsmax(xWpn))
+		ArrayGetString(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], i, xWpn, charsmax(xWpn))
 		mb_strtotitle(xWpn[7])
 		menu_additem(xMenu, xWpn[7], fmt("%d", i))
 	}
@@ -524,7 +549,7 @@ public _select_primary_weapon(id, menu, item)
 	xWpnArrayIndex = str_to_num(xInfo)
 	xUserData[id][UD_PRIMARY_WEAPON] = xWpnArrayIndex
 	
-	get_selected_weapon(id, xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS], xWpnArrayIndex, PRIMARY_WEAPON_SLOT)
+	get_selected_weapon(id, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], xWpnArrayIndex, PRIMARY_WEAPON_SLOT)
 	select_secondary_weapon(id)
 }
 
@@ -533,9 +558,9 @@ public select_secondary_weapon(id)
 	new xMenu = menu_create(fmt("%s \ySelecionar arma secundária", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_secondary_weapon")
 	static xWpn[32]
 
-	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS]); i++)
+	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS]); i++)
 	{
-		ArrayGetString(xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS], i, xWpn, charsmax(xWpn))
+		ArrayGetString(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], i, xWpn, charsmax(xWpn))
 		mb_strtotitle(xWpn[7])
 		menu_additem(xMenu, xWpn[7], fmt("%d", i))
 	}
@@ -565,7 +590,7 @@ public _select_secondary_weapon(id, menu, item)
 	xWpnArrayIndex = str_to_num(xInfo)
 	xUserData[id][UD_SECONDARY_WEAPON] = xWpnArrayIndex
 
-	get_selected_weapon(id, xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS], xWpnArrayIndex, PISTOL_SLOT)
+	get_selected_weapon(id, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], xWpnArrayIndex, PISTOL_SLOT)
 }
 
 public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const InventorySlotType:slot)
@@ -587,15 +612,15 @@ public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const 
 public CSGameRules_RestartRound_Pre()
 {
 	xIsRestartRound_Pre = true
-	xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED] = false
+	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
 
-	for(new i = 1; i <= MaxClients; i++)
-	{
-		if(!is_user_connected(i))
-			continue
+	// for(new i = 1; i <= MaxClients; i++)
+	// {
+	// 	if(!is_user_connected(i))
+	// 		continue
 
-		set_user_human(i, 0)
-	}
+	// 	set_user_human(i, 0)
+	// }
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 	{
@@ -612,20 +637,20 @@ public CSGameRules_RestartRound_Post()
 
 public CSGameRules_OnRoundFreezeEnd_Pre()
 {
-	if(xDataGetGameRule[GAME_RULES_CURRENT_MODE] == -1)
+	if(xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] == -1)
 	{
 		server_print("[ZP NEXT] No gamemodes found.")
 		return
 	}
 
-	xDataGetGameRule[GAME_RULES_COUNTDOWN] = xCvars[CVAR_START_DELAY]
+	xDataGetGameRule[GAME_RULE_COUNTDOWN] = xCvars[CVAR_START_DELAY]
 	remove_task(TASK_COUNTDOWN)
 	set_task_ex(0.0, "xStartCountDown", TASK_COUNTDOWN)
 }
 
 public xStartCountDown()
 {
-	if(xDataGetGameRule[GAME_RULES_COUNTDOWN] <= 0)
+	if(xDataGetGameRule[GAME_RULE_COUNTDOWN] <= 0)
 	{
 		xInitRound()
 		remove_task(TASK_COUNTDOWN)
@@ -633,34 +658,53 @@ public xStartCountDown()
 	}
 
 	set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 1.0, 0.05, 0.05, -1, 0, { 100, 200, 50, 100 })
-	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "Nova infecção em: %d", xDataGetGameRule[GAME_RULES_COUNTDOWN])
+	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "Rodada inicia em: %d", xDataGetGameRule[GAME_RULE_COUNTDOWN])
 
-	if(xDataGetGameRule[GAME_RULES_COUNTDOWN] <= 10)
+	if(xDataGetGameRule[GAME_RULE_COUNTDOWN] <= 10)
 	{
 		static nword[20]
-		num_to_word(xDataGetGameRule[GAME_RULES_COUNTDOWN], nword, charsmax(nword))
+		num_to_word(xDataGetGameRule[GAME_RULE_COUNTDOWN], nword, charsmax(nword))
 		client_cmd(0, "spk sound/vox/%s.wav", nword)
 	}
 
-	xDataGetGameRule[GAME_RULES_COUNTDOWN] --
+	xDataGetGameRule[GAME_RULE_COUNTDOWN] --
 	set_task_ex(1.0, "xStartCountDown", TASK_COUNTDOWN)
 }
 
 public xInitRound()
 {
-	new id = random_player()
+	// new id = random_player()
 
-	if(id == -1)
-	{
-		server_print("[ZP NEXT] No player found.")
-		return
-	}
+	// if(id == -1)
+	// {
+	// 	server_print("[ZP NEXT] No player found.")
+	// 	return
+	// }
 
-	set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 200, 50, 100 })
-	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%n^nÉ o primeiro zombie!", id)
+	new gm = random_gamemode()
+	if(gm == -1) gm = 0
 
-	set_user_zombie(id, 0)
-	xDataGetGameRule[GAME_RULES_IS_ROUND_STARTED] = true
+	ArrayGetArray(aDataGameMode, gm, xDataGetGameMode)
+
+	// if(get_num_humans_alive() >= xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] && xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] != gm)
+	// {
+	// 	//
+	// }
+	// else if(gm == 0)
+	// {
+	// 	ArrayGetArray(aDataGameMode, gm, xDataGetGameMode)
+	// }
+
+	
+	xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] = gm
+	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
+	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gm)
+
+	set_hudmessage(0, 255, 255, -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
+	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", xDataGetGameMode[GAMEMODE_PROP_NOTICE])
+
+
+	//set_user_zombie(id, 0)
 
 	// for(new i = 1; i <= MaxClients; i++)
 	// {
@@ -722,9 +766,9 @@ public plugin_precache()
 		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Default Human Model", "sas")
 	}
 
-	xDataGetGameRule[GAME_RULES_USELESS_ENTITIES] = ArrayCreate(64, 0)
+	xDataGetGameRule[GAME_RULE_USELESS_ENTITIES] = ArrayCreate(64, 0)
 
-	if(!json_setting_get_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Useless Entities", xDataGetGameRule[GAME_RULES_USELESS_ENTITIES]))
+	if(!json_setting_get_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Useless Entities", xDataGetGameRule[GAME_RULE_USELESS_ENTITIES]))
 	{
 		new const uselessEntities[][] =
 		{
@@ -747,34 +791,34 @@ public plugin_precache()
 		}
 
 		for(new i = 0; i < sizeof(uselessEntities); i++)
-			ArrayPushString(xDataGetGameRule[GAME_RULES_USELESS_ENTITIES], uselessEntities[i])
+			ArrayPushString(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES], uselessEntities[i])
 
-		json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Useless Entities", xDataGetGameRule[GAME_RULES_USELESS_ENTITIES])
+		json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Useless Entities", xDataGetGameRule[GAME_RULE_USELESS_ENTITIES])
 	}
 
-	if (!zpn_is_invalid_array(xDataGetGameRule[GAME_RULES_USELESS_ENTITIES]))
+	if (!zpn_is_invalid_array(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES]))
 		xFwSpawn_Pre = register_forward(FM_Spawn, "Spawn_Pre", false)
 
-	xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS] = ArrayCreate(32, 0)
+	xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS] = ArrayCreate(32, 0)
 
-	if(!json_setting_get_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Primary Weapons", xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS]))
+	if(!json_setting_get_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Primary Weapons", xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS]))
 	{
-		ArrayPushString(xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS], "weapon_famas")
-		ArrayPushString(xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS], "weapon_galil")
-		ArrayPushString(xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS], "weapon_ak47")
-		ArrayPushString(xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS], "weapon_m4a1")
-		json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Primary Weapons", xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS])
+		ArrayPushString(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], "weapon_famas")
+		ArrayPushString(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], "weapon_galil")
+		ArrayPushString(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], "weapon_ak47")
+		ArrayPushString(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], "weapon_m4a1")
+		json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Primary Weapons", xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS])
 	}
 
-	xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS] = ArrayCreate(32, 0)
+	xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS] = ArrayCreate(32, 0)
 
-	if(!json_setting_get_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Secondary Weapons", xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS]))
+	if(!json_setting_get_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Secondary Weapons", xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS]))
 	{
-		ArrayPushString(xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS], "weapon_p228")
-		ArrayPushString(xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS], "weapon_usp")
-		ArrayPushString(xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS], "weapon_deagle")
-		ArrayPushString(xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS], "weapon_elite")
-		json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Secondary Weapons", xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS])
+		ArrayPushString(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], "weapon_p228")
+		ArrayPushString(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], "weapon_usp")
+		ArrayPushString(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], "weapon_deagle")
+		ArrayPushString(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], "weapon_elite")
+		json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Secondary Weapons", xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS])
 	}
 }
 
@@ -782,7 +826,7 @@ public Spawn_Pre(this)
 {
 	new classname[32]; get_entvar(this, var_classname, classname, charsmax(classname))
 
-	if(ArrayFindString(xDataGetGameRule[GAME_RULES_USELESS_ENTITIES], classname) != -1)
+	if(ArrayFindString(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES], classname) != -1)
 	{
 		forward_return(FMV_CELL, -1)
 		return FMRES_SUPERCEDE
@@ -793,9 +837,9 @@ public Spawn_Pre(this)
 
 public plugin_end()
 {
-	ArrayDestroy(xDataGetGameRule[GAME_RULES_USELESS_ENTITIES])
-	ArrayDestroy(xDataGetGameRule[GAME_RULES_PRIMARY_WEAPONS])
-	ArrayDestroy(xDataGetGameRule[GAME_RULES_SECONDARY_WEAPONS])
+	ArrayDestroy(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES])
+	ArrayDestroy(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS])
+	ArrayDestroy(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS])
 }
 
 public plugin_natives()
@@ -809,6 +853,20 @@ public plugin_natives()
 	register_native("zpn_gamemode_init", "_zpn_gamemode_init")
 	register_native("zpn_gamemode_get_prop", "_zpn_gamemode_get_prop")
 	register_native("zpn_gamemode_set_prop", "_zpn_gamemode_set_prop")
+
+	register_native("zpn_set_user_zombie", "_zpn_set_user_zombie")
+}
+
+public bool:_zpn_set_user_zombie(plugin_id, param_nums)
+{
+	if(param_nums != 3)
+		return false
+
+	new id = get_param(1)
+	new attacker = get_param(2)
+	new bool:set_first = bool:get_param(3)
+
+	return set_user_zombie(id, attacker, set_first)
 }
 
 public _zpn_gamemode_init(plugin_id, param_nums)
@@ -819,7 +877,7 @@ public _zpn_gamemode_init(plugin_id, param_nums)
 	xDataGetGameMode[GAMEMODE_PROP_NOTICE] = EOS
 	xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR] = { 255, 255, 255 }
 	xDataGetGameMode[GAMEMODE_PROP_CHANCE] = -1
-	xDataGetGameMode[GAMEMODE_PROP_MIN_ALIVES] = 1
+	xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] = 1
 	xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = 2.0
 	xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS] = false
 	xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = GAMEMODE_DEATHMATCH_DISABLED
@@ -847,7 +905,7 @@ public any:_zpn_gamemode_get_prop(plugin_id, param_nums)
 		case GAMEMODE_PROP_REGISTER_NOTICE: set_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NOTICE], get_param_byref(arg_len))
 		case GAMEMODE_PROP_REGISTER_HUD_COLOR: return xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR]
 		case GAMEMODE_PROP_REGISTER_CHANCE: return xDataGetGameMode[GAMEMODE_PROP_CHANCE]
-		case GAMEMODE_PROP_REGISTER_MIN_ALIVES: return xDataGetGameMode[GAMEMODE_PROP_MIN_ALIVES]
+		case GAMEMODE_PROP_REGISTER_MIN_PLAYERS: return xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS]
 		case GAMEMODE_PROP_REGISTER_ROUND_TIME: return Float:xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME]
 		case GAMEMODE_PROP_REGISTER_CHANGE_CLASS: return bool:xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS]
 		case GAMEMODE_PROP_REGISTER_DEATHMATCH: return xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH]
@@ -875,7 +933,7 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 		case GAMEMODE_PROP_REGISTER_NOTICE: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NOTICE], charsmax(xDataGetGameMode[GAMEMODE_PROP_NOTICE]))
 		case GAMEMODE_PROP_REGISTER_HUD_COLOR: xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR] = get_param_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_CHANCE: xDataGetGameMode[GAMEMODE_PROP_CHANCE] = get_param_byref(arg_value)
-		case GAMEMODE_PROP_REGISTER_MIN_ALIVES: xDataGetGameMode[GAMEMODE_PROP_MIN_ALIVES] = get_param_byref(arg_value)
+		case GAMEMODE_PROP_REGISTER_MIN_PLAYERS: xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] = get_param_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_ROUND_TIME: xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = get_float_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_CHANGE_CLASS: xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS] = bool:get_param_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_DEATHMATCH: xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = eGameModeDeathMatchType:get_param_byref(arg_value)
@@ -998,16 +1056,17 @@ public precache_player_model(const modelname[])
 	return index
 }
 
-public set_user_zombie(this, attacker)
+public bool:set_user_zombie(this, attacker, bool:set_first)
 {
 	if(zpn_is_invalid_array(aDataClass))
-		return
+		return false
 
 	if(!is_valid_player_alive(this))
-		return
+		return false
 
 	ArrayGetArray(aDataClass, xUserData[this][UD_CURRENT_ZOMBIE_CLASS], xDataGetClass)
 	xUserData[this][UD_IS_ZOMBIE] = true
+	xUserData[this][UD_IS_FIRST_ZOMBIE] = set_first
 
 	rg_drop_items_by_slot(this, PRIMARY_WEAPON_SLOT)
 	rg_drop_items_by_slot(this, PISTOL_SLOT)
@@ -1018,11 +1077,12 @@ public set_user_zombie(this, attacker)
 	set_entvar(this, var_max_health, xDataGetClass[CLASS_PROP_HEALTH])
 	set_entvar(this, var_gravity, xDataGetClass[CLASS_PROP_GRAVITY])
 	set_entvar(this, var_armorvalue, floatround(xDataGetClass[CLASS_PROP_ARMOR]))
-	rg_set_user_armor(this, 0, ARMOR_NONE)
 	deploy_weapon(this)
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 		server_print("%n virou zombie, class id: %d - health: %0.1f - model: %s - v_model: %s", this, xUserData[this][UD_CURRENT_ZOMBIE_CLASS], xDataGetClass[CLASS_PROP_HEALTH], xDataGetClass[CLASS_PROP_MODEL], xDataGetClass[CLASS_PROP_MODEL_VIEW])
+	
+	return true
 }
 
 public set_user_human(this, attacker)
@@ -1049,10 +1109,24 @@ public set_user_human(this, attacker)
 	if(xDataGetClass[CLASS_PROP_ARMOR] > 0)
 		armor = floatround(xDataGetClass[CLASS_PROP_ARMOR])
 
-	rg_set_user_armor(this, armor, armor > 0 ? ARMOR_NONE : ARMOR_VESTHELM)
+	set_entvar(this, var_armorvalue, armor)
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 		server_print("%n virou humano, class id: %d - health: %0.1f - model: %s - armor: %d", this, xUserData[this][UD_CURRENT_HUMAN_CLASS], xDataGetClass[CLASS_PROP_HEALTH], xDataGetClass[CLASS_PROP_MODEL], armor)
+}
+
+get_gamemode_name()
+{
+	static gm[64]
+	ArrayGetArray(aDataGameMode, xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], xDataGetGameMode)
+
+	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+		copy(gm, charsmax(gm), "--")
+	else if(zpn_is_null_string(xDataGetGameMode[GAMEMODE_PROP_NAME]))
+		copy(gm, charsmax(gm), "--")
+	else copy(gm, charsmax(gm), xDataGetGameMode[GAMEMODE_PROP_NAME])
+
+	return gm
 }
 
 get_class_name(const this)
@@ -1082,17 +1156,6 @@ get_first_class(eClassesType:class_type)
 	}
 
 	return class_id
-}
-
-random_player()
-{
-	new players[32], pnum
-	get_players(players, pnum)
-
-	if(!pnum)
-		return -1
-
-	return players[random(pnum)]
 }
 
 get_num_humans_alive()
@@ -1157,4 +1220,29 @@ count_class(eClassesType:class_type)
 	}
 
 	return count
+}
+
+random_gamemode()
+{
+	new gm = -1
+	new totalChance = 0
+
+	for(new i = 0; i < ArraySize(aDataGameMode); i++)
+		ArrayGetArray(aDataGameMode, i, xDataGetGameMode), totalChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE];
+
+	new randomNumber = random_num(1, totalChance)
+	new accumulatedChance = 0
+
+	for(new i = 0; i < ArraySize(aDataGameMode); i++)
+	{
+		ArrayGetArray(aDataGameMode, i, xDataGetGameMode), accumulatedChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE];
+
+		if(randomNumber <= accumulatedChance)
+			gm = i
+
+		if(gm != -1)
+			break
+	}
+
+	return gm
 }
