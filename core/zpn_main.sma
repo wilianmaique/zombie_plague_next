@@ -11,6 +11,8 @@
 #define is_valid_player_connected(%1) (1 <= %1 <= MaxClients && is_user_connected(%1))
 #define is_valid_player(%1) (1 <= %1 <= MaxClients)
 
+#define TASK_RESPAWN 74323
+
 enum
 {
 	TASK_COUNTDOWN = 1515,
@@ -22,6 +24,8 @@ enum _:eCvars
 	CVAR_START_DELAY,
 	CVAR_LAST_HUMAN_INFECT,
 	CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED,
+	CVAR_CLASS_SELECT_INSTANT,
+	Float:CVAR_CLASS_SELECT_INSTANT_TIMEOUT,
 }
 
 enum _:eForwards
@@ -45,6 +49,7 @@ enum _:ePropsClass
 	CLASS_PROP_INFO[64],
 	CLASS_PROP_MODEL[64],
 	CLASS_PROP_MODEL_VIEW[64],
+	CLASS_PROP_BODY,
 	Float:CLASS_PROP_HEALTH,
 	Float:CLASS_PROP_ARMOR,
 	Float:CLASS_PROP_SPEED,
@@ -62,7 +67,8 @@ enum _:ePropsGameMode
 	GAMEMODE_PROP_MIN_PLAYERS,
 	Float:GAMEMODE_PROP_ROUND_TIME,
 	bool:GAMEMODE_PROP_CHANGE_CLASS,
-	eGameModeDeathMatchType:GAMEMODE_PROP_DEATHMATCH
+	eGameModeDeathMatchType:GAMEMODE_PROP_DEATHMATCH,
+	Float:GAMEMODE_PROP_RESPAWN_TIME,
 }
 
 enum _:eGameRule
@@ -86,6 +92,8 @@ enum _:eUserData
 	bool:UD_IS_FIRST_ZOMBIE,
 	UD_PRIMARY_WEAPON,
 	UD_SECONDARY_WEAPON,
+	Float:UD_CLASS_TIMEOUT,
+	Float:UD_LAST_LEAP_TIMEOUT
 }
 
 enum _:eSyncHuds
@@ -102,7 +110,6 @@ new any:xDataGetClass[ePropsClass], any:xDataGetGameMode[ePropsGameMode], any:xD
 
 new xDataClassCount, xDataGameModeCount, xFirstClass[2], xClassCount[2]
 new Array:aDataClass, Array:aDataGameMode
-new xIsRestartRound_Pre
 new xForwards[eForwards], xForwardReturn
 
 public plugin_init()
@@ -120,7 +127,9 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "CBasePlayer_TakeDamage_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "RCBasePlayer_HasRestrictItem_Pre", false)
-
+	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false)
+	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
+	
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
 
@@ -149,12 +158,20 @@ public plugin_init()
 	{
 		server_print("^n")
 		server_print("Classes loaded:")
-		new i
+		new i, text[128]
 		
 		for(i = 0; i < ArraySize(aDataClass); i++)
 		{
 			ArrayGetArray(aDataClass, i, xDataGetClass)
-			server_print("-> Class: %s | Info: %s | Model: %s | Model View: %s", xDataGetClass[CLASS_PROP_NAME], xDataGetClass[CLASS_PROP_INFO], xDataGetClass[CLASS_PROP_MODEL], xDataGetClass[CLASS_PROP_MODEL_VIEW])
+			
+			text[0] = EOS
+			
+			add(text, charsmax(text), fmt("Class: %s | ", xDataGetClass[CLASS_PROP_NAME]))
+			add(text, charsmax(text), fmt("Info: %s | ", xDataGetClass[CLASS_PROP_INFO]))
+			add(text, charsmax(text), fmt("Type: %s | ", xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE ? "Zombie" : "Human"))
+			add(text, charsmax(text), fmt("Model: %s | ", xDataGetClass[CLASS_PROP_MODEL]))
+			add(text, charsmax(text), fmt("Model View: %s", xDataGetClass[CLASS_PROP_MODEL_VIEW] == EOS ? "--" : fmt("%s", xDataGetClass[CLASS_PROP_MODEL_VIEW])))
+			server_print(text)
 		}
 
 		server_print("^n")
@@ -163,13 +180,65 @@ public plugin_init()
 		for(i = 0; i < ArraySize(aDataGameMode); i++)
 		{
 			ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
-			server_print("-> GameMode: %s | Chance: %d | Min Alives: %d | Round Time: %0.1f", xDataGetGameMode[GAMEMODE_PROP_NAME], xDataGetGameMode[GAMEMODE_PROP_CHANCE], xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS], xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME])
+
+			text[0] = EOS
+			
+			add(text, charsmax(text), fmt("GameMode: %s | ", xDataGetGameMode[GAMEMODE_PROP_NAME]))
+			add(text, charsmax(text), fmt("Chance: %d | ", xDataGetGameMode[GAMEMODE_PROP_CHANCE]))
+			add(text, charsmax(text), fmt("Min Players: %d | ", xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS]))
+			add(text, charsmax(text), fmt("Round Time: %0.1f", xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME]))
+
+			server_print(text)
 		}
 
 		server_print("^n")
 	}
 
 	return true
+}
+
+public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
+{
+	ArrayGetArray(aDataGameMode, xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE], xDataGetGameMode)
+
+	if(xUserData[this][UD_IS_ZOMBIE] && xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] == GAMEMODE_DEATHMATCH_ONLY_TR)
+	{
+		remove_task(this + TASK_RESPAWN)
+		set_task_ex(xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME], "respawn_user", this + TASK_RESPAWN)
+	}
+}
+
+public respawn_user(this)
+{
+	this -= TASK_RESPAWN
+
+	if(!is_user_connected(this)) { remove_task(this + TASK_RESPAWN); return; }
+
+	if(!is_user_alive(this))
+		ExecuteHamB(Ham_CS_RoundRespawn, this)
+}
+
+public CBasePlayer_PreThink(const this)
+{
+	if(!is_valid_player_alive(this) || is_user_bot(this))
+		return
+
+	if(xUserData[this][UD_LAST_LEAP_TIMEOUT] > get_gametime())
+		return
+
+	if(!(get_entvar(this, var_button) & (IN_JUMP | IN_DUCK) == (IN_JUMP | IN_DUCK)))
+		return
+
+	if(!(get_entvar(this, var_flags) & FL_ONGROUND) || get_user_speed(this) < 80)
+		return
+
+	static Float:velocity[3]
+
+	velocity_by_aim(this, 500, velocity) // force
+	velocity[2] = 300.0 // height
+
+	set_entvar(this, var_velocity, velocity)
+	xUserData[this][UD_LAST_LEAP_TIMEOUT] = get_gametime() + 5.0
 }
 
 public CBasePlayer_TakeDamage_Pre(const this, pevInflictor, pevAttacker, Float:flDamage, bitsDamageType)
@@ -179,7 +248,7 @@ public CBasePlayer_TakeDamage_Pre(const this, pevInflictor, pevAttacker, Float:f
 
 	if(xUserData[pevAttacker][UD_IS_ZOMBIE] && !xUserData[this][UD_IS_ZOMBIE])
 	{
-		if(get_num_humans_alive() == 1 && !xCvars[CVAR_LAST_HUMAN_INFECT])
+		if(get_num_alive() == 1 && !xCvars[CVAR_LAST_HUMAN_INFECT])
 			return HC_CONTINUE
 
 		static Float:armor
@@ -199,7 +268,7 @@ public CBasePlayer_TakeDamage_Pre(const this, pevInflictor, pevAttacker, Float:f
 
 		set_user_zombie(this, pevAttacker, false)
 
-		if(get_num_humans_alive() == 0 && xCvars[CVAR_LAST_HUMAN_INFECT])
+		if(get_num_alive() == 0 && xCvars[CVAR_LAST_HUMAN_INFECT])
 			rg_round_end(2.0, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN, .trigger = true)
 	}
 
@@ -256,22 +325,22 @@ public xHudPlayerInfo(id)
 
 	if(!is_user_connected(id)) { remove_task(id + TASK_HUD_PLAYER_INFO); return; }
 	
-	static Float:velocity[3]; get_entvar(id, var_velocity, velocity)
-	static txt[256]
+	if(!is_user_alive(id))
+		return
 
-	txt[0] = EOS
+	static txt[256]; txt[0] = EOS
 
 	set_hudmessage(0, 255, 255, 0.03, 0.2, 0, 0.0, 0.0, 0.1, 0.1)
 
 	add(txt, charsmax(txt), fmt("» Modo: %s^n", get_gamemode_name()))
 	add(txt, charsmax(txt), fmt("» Classe: %s^n", get_class_name(id)))
-	add(txt, charsmax(txt), fmt("» Vida: %s^n", format_number_point(get_user_health(id))))
+	add(txt, charsmax(txt), fmt("» Vida: %s^n", format_number_point(floatround(get_entvar(id, var_health)))))
 
 	if(!xUserData[id][UD_IS_ZOMBIE])
 		add(txt, charsmax(txt), fmt("» Colete: %d^n", get_entvar(id, var_armorvalue)))
 
 	add(txt, charsmax(txt), fmt("» Ammo Packs: 0^n"))
-	add(txt, charsmax(txt), fmt("» Velocidade: %d", floatround(vector_length(velocity))))
+	add(txt, charsmax(txt), fmt("» Velocidade: %d", get_user_speed(id)))
 
 	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], txt)
 }
@@ -356,12 +425,13 @@ public _select_class_type(id, menu, item)
 		return
 	}
 
-	new user_class = UD_CURRENT_ZOMBIE_CLASS
+	new user_class
 
 	switch(class_type)
 	{
 		case CLASS_TEAM_TYPE_ZOMBIE: user_class = UD_CURRENT_ZOMBIE_CLASS;
 		case CLASS_TEAM_TYPE_HUMAN: user_class = UD_CURRENT_HUMAN_CLASS;
+		default: user_class = UD_CURRENT_ZOMBIE_CLASS;
 	}
 
 	new xMenu = menu_create(fmt("%s \ySelecionar classe: %s", xSettingsVars[CONFIG_PREFIX_MENUS], class_type == CLASS_TEAM_TYPE_ZOMBIE ? "\rZombie" : "\yHumano"), "_select_class")
@@ -397,17 +467,41 @@ public _select_class(id, menu, item)
 	new class_id = str_to_num(info)
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
-	new user_class = UD_CURRENT_ZOMBIE_CLASS
+	if(xCvars[CVAR_CLASS_SELECT_INSTANT] && xUserData[id][UD_CLASS_TIMEOUT] > get_gametime())
+	{
+		client_print_color(id, print_team_default, "%s ^3Espere: ^4%.0f ^3segundos para alterar de classe novamente.", xSettingsVars[CONFIG_PREFIX_CHAT], xUserData[id][UD_CLASS_TIMEOUT] - get_gametime())
+		return
+	}
+
+	if(!xCvars[CVAR_CLASS_SELECT_INSTANT])
+	{
+		client_print_color(id, print_team_default, "%s ^3Sua nova classe ao reaparecer será: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], xDataGetClass[CLASS_PROP_NAME])
+	}
+	else
+	{
+		client_print_color(id, print_team_default, "%s ^3Agora sua classe é: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], xDataGetClass[CLASS_PROP_NAME])
+		xUserData[id][UD_CLASS_TIMEOUT] = get_gametime() + xCvars[CVAR_CLASS_SELECT_INSTANT_TIMEOUT]
+	}
 
 	switch(xDataGetClass[CLASS_PROP_TYPE])
 	{
-		case CLASS_TEAM_TYPE_ZOMBIE: user_class = UD_CURRENT_ZOMBIE_CLASS;
-		case CLASS_TEAM_TYPE_HUMAN: user_class = UD_CURRENT_HUMAN_CLASS;
-	}
-	
-	xUserData[id][user_class] = class_id
+		case CLASS_TEAM_TYPE_ZOMBIE:
+		{
+			xUserData[id][UD_CURRENT_ZOMBIE_CLASS] = class_id
 
-	client_print_color(id, print_team_default, "%s ^3Sua nova classe ao reaparecer será: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], xDataGetClass[CLASS_PROP_NAME])
+			if(xCvars[CVAR_CLASS_SELECT_INSTANT])
+				set_user_zombie(id, 0, false)
+		}
+
+		case CLASS_TEAM_TYPE_HUMAN:
+		{
+			xUserData[id][UD_CURRENT_HUMAN_CLASS] = class_id
+
+			if(xCvars[CVAR_CLASS_SELECT_INSTANT])
+				set_user_human(id, 0)
+		}
+	}
+
 	client_print_color(id, print_team_default, "%s ^3Vida: ^1%s ^4- ^3Gravidade: ^1%d ^4- ^3Velocidade: ^1%0.0f", xSettingsVars[CONFIG_PREFIX_CHAT], format_number_point(floatround(xDataGetClass[CLASS_PROP_HEALTH])), floatround(xDataGetClass[CLASS_PROP_GRAVITY] * 800.0), xDataGetClass[CLASS_PROP_SPEED])
 }
 
@@ -421,10 +515,21 @@ public reset_user_vars(id)
 	xUserData[id][UD_CURRENT_HUMAN_CLASS] = xFirstClass[1]
 	xUserData[id][UD_PRIMARY_WEAPON] = -1
 	xUserData[id][UD_SECONDARY_WEAPON] = -1
+	xUserData[id][UD_CLASS_TIMEOUT] = get_gametime()
+	xUserData[id][UD_LAST_LEAP_TIMEOUT] = get_gametime()
 }
 
 public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 {
+	for(new i = 1; i <= MaxClients; i++)
+	{
+		if(!is_user_connected(i))
+			continue
+
+		xUserData[i][UD_CLASS_TIMEOUT] = get_gametime()
+		xUserData[i][UD_LAST_LEAP_TIMEOUT] = get_gametime()
+	}
+
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
 
 	if(zpn_is_invalid_array(aDataGameMode))
@@ -468,7 +573,7 @@ public CBasePlayer_Spawn_Post(id)
 		server_print("CBasePlayer_Spawn_Post(id): %n", id)
 	}
 
-	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] /*&& !xIsRestartRound_Pre*/)
+	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] )
 	{
 		set_user_human(id, 0)
 		deploy_weapon(id)
@@ -476,8 +581,13 @@ public CBasePlayer_Spawn_Post(id)
 		if(xSettingsVars[CONFIG_DEBUG_ON])
 		{
 			server_print("^n")
-			server_print("!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && !xIsRestartRound_Pre")
+			server_print("!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] ")
 		}
+	}
+	else
+	{
+		if(xUserData[id][UD_IS_ZOMBIE])
+			set_user_zombie(id, 0, false)
 	}
 
 	if(xUserData[id][UD_PRIMARY_WEAPON] == -1 && !xUserData[id][UD_IS_ZOMBIE])
@@ -604,6 +714,9 @@ public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const 
 	rg_drop_items_by_slot(id, slot)
 	rg_give_item(id, xWpn)
 
+	if(!rg_find_weapon_bpack_by_name(id, "weapon_knife"))
+		rg_give_item(id, "weapon_knife")
+
 	new WeaponIdType:xWpnIdType = rg_get_weapon_info(xWpn, WI_ID)
 	new xWpnBpAmmo = rg_get_weapon_info(xWpnIdType, WI_MAX_ROUNDS)
 	rg_set_user_bpammo(id, xWpnIdType, xWpnBpAmmo)
@@ -611,16 +724,7 @@ public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const 
 
 public CSGameRules_RestartRound_Pre()
 {
-	xIsRestartRound_Pre = true
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
-
-	// for(new i = 1; i <= MaxClients; i++)
-	// {
-	// 	if(!is_user_connected(i))
-	// 		continue
-
-	// 	set_user_human(i, 0)
-	// }
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 	{
@@ -632,7 +736,7 @@ public CSGameRules_RestartRound_Pre()
 
 public CSGameRules_RestartRound_Post()
 {
-	xIsRestartRound_Pre = false
+	
 }
 
 public CSGameRules_OnRoundFreezeEnd_Pre()
@@ -673,50 +777,24 @@ public xStartCountDown()
 
 public xInitRound()
 {
-	// new id = random_player()
-
-	// if(id == -1)
-	// {
-	// 	server_print("[ZP NEXT] No player found.")
-	// 	return
-	// }
-
 	new gm = random_gamemode()
+
 	if(gm == -1) gm = 0
 
 	ArrayGetArray(aDataGameMode, gm, xDataGetGameMode)
 
-	// if(get_num_humans_alive() >= xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] && xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] != gm)
-	// {
-	// 	//
-	// }
-	// else if(gm == 0)
-	// {
-	// 	ArrayGetArray(aDataGameMode, gm, xDataGetGameMode)
-	// }
+	// se n tiver jogadores, sempre usar gamemode 0 (o primeiro da lista)
+	if(xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] < get_num_alive())
+		gm = 0
 
-	
 	xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] = gm
+	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gm
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
-	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gm)
 
 	set_hudmessage(0, 255, 255, -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
 	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", xDataGetGameMode[GAMEMODE_PROP_NOTICE])
 
-
-	//set_user_zombie(id, 0)
-
-	// for(new i = 1; i <= MaxClients; i++)
-	// {
-	// 	if(!is_user_connected(i))
-	// 		continue
-
-	// 	if(i == id)
-	// 		continue
-
-	// 	rg_set_user_model(i, xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
-	// 	rg_set_user_team(i, TEAM_CT)
-	// }
+	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gm)
 }
 
 public plugin_precache()
@@ -728,6 +806,8 @@ public plugin_precache()
 	aDataGameMode = ArrayCreate(ePropsGameMode)
 
 	bind_pcvar_num(create_cvar("zpn_delay", "15", .has_min = true, .min_val = 1.0), xCvars[CVAR_START_DELAY])
+	bind_pcvar_num(create_cvar("zpn_class_select_instant", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_CLASS_SELECT_INSTANT])
+	bind_pcvar_float(create_cvar("zpn_class_select_instant_timeout", "30", .has_min = true, .min_val = 10.0, .has_max = true, .max_val = 500.0), xCvars[CVAR_CLASS_SELECT_INSTANT_TIMEOUT])
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 	bind_pcvar_num(create_cvar("zpn_weapon_weight_discount_speed", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
 	
@@ -747,7 +827,7 @@ public plugin_precache()
 	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Chat", xSettingsVars[CONFIG_PREFIX_CHAT], charsmax(xSettingsVars[CONFIG_PREFIX_CHAT])))
 	{
 		xSettingsVars[CONFIG_PREFIX_CHAT] = "!y[!gZP!y]"
-		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Chat", xSettingsVars[CONFIG_PREFIX_CHAT])
+		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Chat", "!y[!gZP!y]")
 	}
 
 	update_prefix_color(xSettingsVars[CONFIG_PREFIX_CHAT], charsmax(xSettingsVars[CONFIG_PREFIX_CHAT]))
@@ -755,7 +835,7 @@ public plugin_precache()
 	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", xSettingsVars[CONFIG_PREFIX_MENUS], charsmax(xSettingsVars[CONFIG_PREFIX_MENUS])))
 	{
 		xSettingsVars[CONFIG_PREFIX_MENUS] = "!y[!rZP!y]"
-		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", xSettingsVars[CONFIG_PREFIX_MENUS])
+		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", "!y[!rZP!y]")
 	}
 
 	update_prefix_color(xSettingsVars[CONFIG_PREFIX_MENUS], charsmax(xSettingsVars[CONFIG_PREFIX_MENUS]), true)
@@ -881,6 +961,7 @@ public _zpn_gamemode_init(plugin_id, param_nums)
 	xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = 2.0
 	xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS] = false
 	xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = GAMEMODE_DEATHMATCH_DISABLED
+	xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = -1.0
 
 	ArrayPushArray(aDataGameMode, xDataGetGameMode)
 
@@ -909,6 +990,7 @@ public any:_zpn_gamemode_get_prop(plugin_id, param_nums)
 		case GAMEMODE_PROP_REGISTER_ROUND_TIME: return Float:xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME]
 		case GAMEMODE_PROP_REGISTER_CHANGE_CLASS: return bool:xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS]
 		case GAMEMODE_PROP_REGISTER_DEATHMATCH: return xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH]
+		case GAMEMODE_PROP_REGISTER_RESPAWN_TIME: return xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME]
 		default: return false
 	}
 
@@ -937,6 +1019,7 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 		case GAMEMODE_PROP_REGISTER_ROUND_TIME: xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = get_float_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_CHANGE_CLASS: xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS] = bool:get_param_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_DEATHMATCH: xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = eGameModeDeathMatchType:get_param_byref(arg_value)
+		case GAMEMODE_PROP_REGISTER_RESPAWN_TIME: xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = get_float_byref(arg_value)
 		default: return false
 	}
 
@@ -954,6 +1037,7 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_INFO] = EOS
 	xDataGetClass[CLASS_PROP_MODEL] = EOS
 	xDataGetClass[CLASS_PROP_MODEL_VIEW] = EOS
+	xDataGetClass[CLASS_PROP_BODY] = 0
 	xDataGetClass[CLASS_PROP_HEALTH] = 100.0
 	xDataGetClass[CLASS_PROP_ARMOR] = 0.0
 	xDataGetClass[CLASS_PROP_SPEED] = 240.0
@@ -985,6 +1069,7 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_INFO: set_string(arg_value, xDataGetClass[CLASS_PROP_INFO], get_param_byref(arg_len))
 		case CLASS_PROP_REGISTER_MODEL: set_string(arg_value, xDataGetClass[CLASS_PROP_MODEL], get_param_byref(arg_len))
 		case CLASS_PROP_REGISTER_MODEL_VIEW: set_string(arg_value, xDataGetClass[CLASS_PROP_MODEL_VIEW], get_param_byref(arg_len))
+		case CLASS_PROP_REGISTER_BODY: return xDataGetClass[CLASS_PROP_BODY]
 		case CLASS_PROP_REGISTER_HEALTH: return xDataGetClass[CLASS_PROP_HEALTH]
 		case CLASS_PROP_REGISTER_ARMOR: return xDataGetClass[CLASS_PROP_ARMOR]
 		case CLASS_PROP_REGISTER_SPEED: return xDataGetClass[CLASS_PROP_SPEED]
@@ -1028,6 +1113,7 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_MODEL_VIEW]))
 				precache_model(xDataGetClass[CLASS_PROP_MODEL_VIEW])
 		}
+		case CLASS_PROP_REGISTER_BODY: xDataGetClass[CLASS_PROP_BODY] = get_param_byref(arg_value)
 		case CLASS_PROP_REGISTER_HEALTH: xDataGetClass[CLASS_PROP_HEALTH] = get_float_byref(arg_value)
 		case CLASS_PROP_REGISTER_ARMOR: xDataGetClass[CLASS_PROP_ARMOR] = get_float_byref(arg_value)
 		case CLASS_PROP_REGISTER_SPEED: xDataGetClass[CLASS_PROP_SPEED] = get_float_byref(arg_value)
@@ -1071,12 +1157,17 @@ public bool:set_user_zombie(this, attacker, bool:set_first)
 	rg_drop_items_by_slot(this, PRIMARY_WEAPON_SLOT)
 	rg_drop_items_by_slot(this, PISTOL_SLOT)
 	rg_drop_items_by_slot(this, GRENADE_SLOT)
+	rg_give_item(this, "weapon_knife")
 	rg_set_user_team(this, TEAM_TERRORIST)
 	rg_set_user_model(this, xDataGetClass[CLASS_PROP_MODEL])
+
+	set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
+
 	set_entvar(this, var_health, xDataGetClass[CLASS_PROP_HEALTH])
 	set_entvar(this, var_max_health, xDataGetClass[CLASS_PROP_HEALTH])
 	set_entvar(this, var_gravity, xDataGetClass[CLASS_PROP_GRAVITY])
 	set_entvar(this, var_armorvalue, floatround(xDataGetClass[CLASS_PROP_ARMOR]))
+	set_entvar(this, var_maxspeed, xDataGetClass[CLASS_PROP_SPEED])
 	deploy_weapon(this)
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
@@ -1101,6 +1192,8 @@ public set_user_human(this, attacker)
 		copy(model, charsmax(model), xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
 	else copy(model, charsmax(model), xDataGetClass[CLASS_PROP_MODEL])
 
+	set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
+
 	rg_set_user_model(this, model)
 	rg_set_user_team(this, TEAM_CT)
 
@@ -1110,9 +1203,17 @@ public set_user_human(this, attacker)
 		armor = floatround(xDataGetClass[CLASS_PROP_ARMOR])
 
 	set_entvar(this, var_armorvalue, armor)
+	set_entvar(this, var_maxspeed, xDataGetClass[CLASS_PROP_SPEED])
 
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 		server_print("%n virou humano, class id: %d - health: %0.1f - model: %s - armor: %d", this, xUserData[this][UD_CURRENT_HUMAN_CLASS], xDataGetClass[CLASS_PROP_HEALTH], xDataGetClass[CLASS_PROP_MODEL], armor)
+}
+
+get_user_speed(const this)
+{
+	static Float:velocity[3]
+	get_entvar(this, var_velocity, velocity)
+	return floatround(vector_length(velocity))
 }
 
 get_gamemode_name()
@@ -1158,11 +1259,11 @@ get_first_class(eClassesType:class_type)
 	return class_id
 }
 
-get_num_humans_alive()
+get_num_alive(bool:zombies = false)
 {
-	static h, id; h = 0
-	for(id = 1; id <= MaxClients; id++) if(is_user_alive(id) && !xUserData[id][UD_IS_ZOMBIE]) h++
-	return h
+	new c, id; c = 0
+	for(id = 1; id <= MaxClients; id++) if(is_user_alive(id) && (zombies ? xUserData[id][UD_IS_ZOMBIE] : !xUserData[id][UD_IS_ZOMBIE])) c++
+	return c
 }
 
 deploy_weapon(const this)
@@ -1191,7 +1292,13 @@ update_prefix_color(string[], len, bool:menu = false)
 format_number_point(const number)
 {
 	static count, i, str[32], str2[32], len
+
 	count = 0
+	len = 0
+	i = 0
+	count = 0
+	str[0] = EOS
+	str2[0] = EOS
 
 	num_to_str(number, str, charsmax(str))
 	len = strlen(str)
@@ -1224,16 +1331,16 @@ count_class(eClassesType:class_type)
 
 random_gamemode()
 {
-	new gm = -1
+	new gm = -1, i
 	new totalChance = 0
 
-	for(new i = 0; i < ArraySize(aDataGameMode); i++)
+	for(i = 0; i < ArraySize(aDataGameMode); i++)
 		ArrayGetArray(aDataGameMode, i, xDataGetGameMode), totalChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE];
 
 	new randomNumber = random_num(1, totalChance)
 	new accumulatedChance = 0
 
-	for(new i = 0; i < ArraySize(aDataGameMode); i++)
+	for(i = 0; i < ArraySize(aDataGameMode); i++)
 	{
 		ArrayGetArray(aDataGameMode, i, xDataGetGameMode), accumulatedChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE];
 

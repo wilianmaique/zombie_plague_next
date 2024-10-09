@@ -18,7 +18,7 @@ public plugin_precache()
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL, "zombie_source")
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL_VIEW, "models/v_knife_zombie.mdl")
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_SPEED, 300.0)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_HEALTH, 500.0)
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_HEALTH, 5000.0)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_GRAVITY, 0.7)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_KNOCKBACK, 1.0)
 }

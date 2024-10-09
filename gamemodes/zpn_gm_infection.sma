@@ -24,6 +24,7 @@ public plugin_precache()
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_ROUND_TIME, 5.0)
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_CHANGE_CLASS, true)
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_DEATHMATCH, GAMEMODE_DEATHMATCH_ONLY_TR)
+	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_RESPAWN_TIME, 5.0)
 }
 
 public zpn_round_started_post(const game_id)
