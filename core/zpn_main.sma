@@ -11,12 +11,12 @@
 #define is_valid_player_connected(%1) (1 <= %1 <= MaxClients && is_user_connected(%1))
 #define is_valid_player(%1) (1 <= %1 <= MaxClients)
 
-#define TASK_RESPAWN 74323
-
 enum
 {
 	TASK_COUNTDOWN = 1515,
-	TASK_HUD_PLAYER_INFO
+	TASK_HUD_PLAYER_INFO,
+	TASK_RESPAWN,
+	TASK_NV,
 }
 
 enum _:eCvars
@@ -26,6 +26,9 @@ enum _:eCvars
 	CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED,
 	CVAR_CLASS_SELECT_INSTANT,
 	Float:CVAR_CLASS_SELECT_INSTANT_TIMEOUT,
+	CVAR_RESPAWN_IN_LAST_H,
+	CVAR_DEFAULT_NV_H[12],
+	CVAR_DEFAULT_NV_Z[12],
 }
 
 enum _:eForwards
@@ -79,7 +82,9 @@ enum _:eGameRule
 	Array:GAME_RULE_USELESS_ENTITIES,
 	Array:GAME_RULE_PRIMARY_WEAPONS,
 	Array:GAME_RULE_SECONDARY_WEAPONS,
-	GAME_RULE_LAST_GAMEMODE
+	GAME_RULE_LAST_GAMEMODE,
+	GAME_RULE_DEFAULT_NV_H[3],
+	GAME_RULE_DEFAULT_NV_Z[3],
 }
 
 enum _:eUserData
@@ -93,7 +98,10 @@ enum _:eUserData
 	UD_PRIMARY_WEAPON,
 	UD_SECONDARY_WEAPON,
 	Float:UD_CLASS_TIMEOUT,
-	Float:UD_LAST_LEAP_TIMEOUT
+	Float:UD_LAST_LEAP_TIMEOUT,
+	bool:UD_IS_LAST_HUMAN,
+	bool:UD_NV_ON,
+	Float:UD_NV_SPAM,
 }
 
 enum _:eSyncHuds
@@ -129,15 +137,18 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "RCBasePlayer_HasRestrictItem_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
+	RegisterHookChain(RG_CBasePlayer_HintMessageEx, "CBasePlayer_HintMessageEx_Pre", false)
 	
+	register_clcmd("nightvision", "clcmd_nightvision")
+
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
 
 	if(zpn_is_invalid_array(aDataClass))
-		return set_fail_state("[ZP NEXT] No Classes Founds")
+		set_fail_state("[ZP NEXT] No Classes Founds")
 
 	if(zpn_is_invalid_array(aDataGameMode))
-		return set_fail_state("[ZP NEXT] No GameModes Founds")
+		set_fail_state("[ZP NEXT] No GameModes Founds")
 
 	// FWS
 	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL)
@@ -197,6 +208,19 @@ public plugin_init()
 	return true
 }
 
+public clcmd_nightvision(id)
+{
+	xUserData[id][UD_NV_ON] = !xUserData[id][UD_NV_ON]
+	return PLUGIN_HANDLED
+}
+
+public CBasePlayer_HintMessageEx_Pre(const id, const message[], Float:duration, bool:bDisplayIfPlayerDead, bool:bOverride)
+{
+	SetHookChainReturn(ATYPE_BOOL, false)
+
+	return HC_SUPERCEDE
+}
+
 public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
 	ArrayGetArray(aDataGameMode, xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE], xDataGetGameMode)
@@ -215,13 +239,18 @@ public respawn_user(this)
 	if(!is_user_connected(this)) { remove_task(this + TASK_RESPAWN); return; }
 
 	if(!is_user_alive(this))
-		ExecuteHamB(Ham_CS_RoundRespawn, this)
+		rg_round_respawn(this)
 }
 
 public CBasePlayer_PreThink(const this)
 {
 	if(!is_valid_player_alive(this) || is_user_bot(this))
 		return
+
+	if(xUserData[this][UD_NV_ON] && xUserData[this][UD_NV_SPAM] < get_gametime())
+		set_user_nv(this)
+	
+	xUserData[this][UD_NV_SPAM] = get_gametime() + 0.001
 
 	if(xUserData[this][UD_LAST_LEAP_TIMEOUT] > get_gametime())
 		return
@@ -272,6 +301,17 @@ public CBasePlayer_TakeDamage_Pre(const this, pevInflictor, pevAttacker, Float:f
 			rg_round_end(2.0, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN, .trigger = true)
 	}
 
+	if(get_num_alive() == 1)
+	{
+		new last_human = get_first_human_id()
+		
+		if(last_human != -1 && !xUserData[last_human][UD_IS_LAST_HUMAN])
+		{
+			xUserData[last_human][UD_IS_LAST_HUMAN] = true
+			//server_print("ultimo humano: %n", last_human)
+		}
+	}
+
 	return HC_CONTINUE
 }
 
@@ -317,6 +357,15 @@ public client_putinserver(id)
 {
 	reset_user_vars(id)
 	set_task_ex(0.1, "xHudPlayerInfo", id + TASK_HUD_PLAYER_INFO, .flags = SetTask_Repeat)
+
+	// add quando jogador seleciona time tmb
+	check_game()
+}
+
+check_game()
+{
+	if(get_num_alive(true) <= 1 && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
 }
 
 public xHudPlayerInfo(id)
@@ -573,7 +622,7 @@ public CBasePlayer_Spawn_Post(id)
 		server_print("CBasePlayer_Spawn_Post(id): %n", id)
 	}
 
-	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] )
+	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 	{
 		set_user_human(id, 0)
 		deploy_weapon(id)
@@ -810,7 +859,30 @@ public plugin_precache()
 	bind_pcvar_float(create_cvar("zpn_class_select_instant_timeout", "30", .has_min = true, .min_val = 10.0, .has_max = true, .max_val = 500.0), xCvars[CVAR_CLASS_SELECT_INSTANT_TIMEOUT])
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 	bind_pcvar_num(create_cvar("zpn_weapon_weight_discount_speed", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
-	
+	//bind_pcvar_num(create_cvar("zpn_respawn_in_last_human", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_RESPAWN_IN_LAST_H])
+	bind_pcvar_string(create_cvar("zpn_default_nv_h", "#00bbff", .flags = FCVAR_NOEXTRAWHITEPACE), xCvars[CVAR_DEFAULT_NV_H], charsmax(xCvars[CVAR_DEFAULT_NV_H]))
+	bind_pcvar_string(create_cvar("zpn_default_nv_z", "#27e30e", .flags = FCVAR_NOEXTRAWHITEPACE), xCvars[CVAR_DEFAULT_NV_Z], charsmax(xCvars[CVAR_DEFAULT_NV_Z]))
+
+	new bool:parse_nv
+	parse_nv = parse_hex_color(xCvars[CVAR_DEFAULT_NV_H], xDataGetGameRule[GAME_RULE_DEFAULT_NV_H])
+
+	if(!parse_nv)
+	{
+		xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][0] = xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][1] = 0
+		xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][2] = 100
+	}
+
+	server_print("Parse Color H: %d %d %d - %s", xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][0], xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][1], xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][2], xCvars[CVAR_DEFAULT_NV_H])
+
+	parse_nv = parse_hex_color(xCvars[CVAR_DEFAULT_NV_Z], xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z])
+
+	if(!parse_nv)
+	{
+		xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][0] = 100
+		xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][1] = xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][2] = 0
+	}
+
+	server_print("Parse Color Z: %d %d %d - %s", xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][0], xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][1], xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][2], xCvars[CVAR_DEFAULT_NV_Z])
 
 	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", xSettingsVars[CONFIG_DEBUG_ON]))
 	{
@@ -868,6 +940,7 @@ public plugin_precache()
 			"env_snow",
 			"monster_scientist",
 			"item_longjump",
+			"game_text",
 		}
 
 		for(new i = 0; i < sizeof(uselessEntities); i++)
@@ -1037,7 +1110,7 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_INFO] = EOS
 	xDataGetClass[CLASS_PROP_MODEL] = EOS
 	xDataGetClass[CLASS_PROP_MODEL_VIEW] = EOS
-	xDataGetClass[CLASS_PROP_BODY] = 0
+	xDataGetClass[CLASS_PROP_BODY] = -1
 	xDataGetClass[CLASS_PROP_HEALTH] = 100.0
 	xDataGetClass[CLASS_PROP_ARMOR] = 0.0
 	xDataGetClass[CLASS_PROP_SPEED] = 240.0
@@ -1161,7 +1234,8 @@ public bool:set_user_zombie(this, attacker, bool:set_first)
 	rg_set_user_team(this, TEAM_TERRORIST)
 	rg_set_user_model(this, xDataGetClass[CLASS_PROP_MODEL])
 
-	set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
+	if(xDataGetClass[CLASS_PROP_BODY] != -1)
+		set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
 
 	set_entvar(this, var_health, xDataGetClass[CLASS_PROP_HEALTH])
 	set_entvar(this, var_max_health, xDataGetClass[CLASS_PROP_HEALTH])
@@ -1186,13 +1260,15 @@ public set_user_human(this, attacker)
 
 	ArrayGetArray(aDataClass, xUserData[this][UD_CURRENT_HUMAN_CLASS], xDataGetClass)
 	xUserData[this][UD_IS_ZOMBIE] = false
+	xUserData[this][UD_IS_LAST_HUMAN] = false
 
 	static model[64]
 	if(zpn_is_null_string(xDataGetClass[CLASS_PROP_MODEL]))
 		copy(model, charsmax(model), xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
 	else copy(model, charsmax(model), xDataGetClass[CLASS_PROP_MODEL])
 
-	set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
+	if(xDataGetClass[CLASS_PROP_BODY] != -1)
+		set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
 
 	rg_set_user_model(this, model)
 	rg_set_user_team(this, TEAM_CT)
@@ -1209,10 +1285,27 @@ public set_user_human(this, attacker)
 		server_print("%n virou humano, class id: %d - health: %0.1f - model: %s - armor: %d", this, xUserData[this][UD_CURRENT_HUMAN_CLASS], xDataGetClass[CLASS_PROP_HEALTH], xDataGetClass[CLASS_PROP_MODEL], armor)
 }
 
+public set_user_nv(id)
+{
+	static Float:o[3]; get_entvar(id, var_origin, o)
+
+	message_begin(MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, .player = id)
+	write_byte(TE_DLIGHT)
+	write_coord_f(o[0])
+	write_coord_f(o[1])
+	write_coord_f(o[2])
+	write_byte(40) // radius
+	write_byte(xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][0] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][0])
+	write_byte(xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][1] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][1])
+	write_byte(xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][2] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][2])
+	write_byte(1) // life
+	write_byte(0) // decay
+	message_end()
+}
+
 get_user_speed(const this)
 {
-	static Float:velocity[3]
-	get_entvar(this, var_velocity, velocity)
+	static Float:velocity[3]; get_entvar(this, var_velocity, velocity)
 	return floatround(vector_length(velocity))
 }
 
@@ -1259,9 +1352,28 @@ get_first_class(eClassesType:class_type)
 	return class_id
 }
 
+get_first_human_id()
+{
+	new index = -1
+
+	for(new id = 1; id <= MaxClients; id++)
+	{
+		if(is_user_alive(id) && !xUserData[id][UD_IS_ZOMBIE])
+		{
+			index = id
+			break
+		}
+	}
+
+	return index
+}
+
 get_num_alive(bool:zombies = false)
 {
-	new c, id; c = 0
+	static c, id
+	c = 0
+	id = 0
+
 	for(id = 1; id <= MaxClients; id++) if(is_user_alive(id) && (zombies ? xUserData[id][UD_IS_ZOMBIE] : !xUserData[id][UD_IS_ZOMBIE])) c++
 	return c
 }
@@ -1352,4 +1464,20 @@ random_gamemode()
 	}
 
 	return gm
+}
+
+bool:parse_hex_color(const hexColor[], rgb[3])
+{
+	if (hexColor[0] != '#' || strlen(hexColor) != 7)
+	return false
+
+	for (new i = 0; i < 3; i++)
+		rgb[i] = (__parse_hex_color(hexColor[1 + i * 2]) * 16 + __parse_hex_color(hexColor[2 + i * 2]))
+
+	return true
+}
+
+__parse_hex_color(const c)
+{
+	return (c >= '0' && c <= '9') ? (c - '0') : (c >= 'a' && c <= 'f') ? (10 + c - 'a') : (c >= 'A' && c <= 'F') ? (10 + c - 'A') : 0
 }
