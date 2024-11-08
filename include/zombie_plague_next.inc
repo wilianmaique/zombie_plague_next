@@ -14,6 +14,16 @@
 #endif
 
 /*
+* Executes when the player has been infected
+*/
+forward zpn_user_infected_post(const this, const infector, const class_id);
+
+/*
+* Executes when the player turned human
+*/
+forward zpn_user_humanized_post(const this, const class_id);
+
+/*
 * Executes when the round has started 
 */
 forward zpn_round_started_post(const gamemode_id);
@@ -32,6 +42,17 @@ native zpn_class_get_prop(const class_id, ePropsClassRegisters:prop, any:...);
 * Set property to class
 */
 native zpn_class_set_prop(const class_id, ePropsClassRegisters:prop, any:...);
+
+/*
+* Get current user class by type
+*/
+native zpn_class_get_user_current(const id, eClassesType:type);
+
+/*
+* Return true if user is zombie
+*/
+native bool:zpn_is_user_zombie(const id);
+
 
 /*
 * Init new gamemode, use in: plugin_precache

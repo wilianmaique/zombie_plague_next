@@ -15,7 +15,7 @@ public plugin_precache()
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_TYPE, CLASS_TEAM_TYPE_HUMAN)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_NAME, "Default")
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_INFO, "Balanced")
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL, "vip") // pode setar uma model 'diferente' para a classe, ou remover esta linha.
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL, "sas") // pode setar uma model 'diferente' para a classe, ou remover esta linha.
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_SPEED, 280.0)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_HEALTH, 120.0)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_ARMOR, 15.0)
