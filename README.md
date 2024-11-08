@@ -1,2 +1,6 @@
 # Zombie Plague Next
-Versão 'light' do zombie plague CS 1.6, essa versão visa ser a mais dinamica possivel, e usando as ultimas atualizações do ReHlds + ReApi
+- Versão 'simples' e direta, relacionado somente a 'zombie mod'.
+- Utilizando o máximo do ReAPI.
+
+# Classes
+- Criação de classes humanos e zombies com suporte a body e skin body.

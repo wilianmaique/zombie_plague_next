@@ -288,45 +288,45 @@ public CBasePlayer_PreThink(const this)
 	xUserData[this][UD_LAST_LEAP_TIMEOUT] = get_gametime() + 5.0
 }
 
-public CBasePlayer_TakeDamage_Pre(const this, pevInflictor, pevAttacker, Float:flDamage, bitsDamageType)
+public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:flDamage, bitsDamageType)
 {
-	if(this == pevAttacker || !is_valid_player_alive(pevAttacker) || !is_valid_player_alive(this) || !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+	if(victim == attacker || !is_valid_player_alive(attacker) || !is_valid_player_alive(victim) || !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		return HC_CONTINUE
 
 	// is human
-	if(!xUserData[pevAttacker][UD_IS_ZOMBIE] && xUserData[this][UD_IS_ZOMBIE])
+	if(!xUserData[attacker][UD_IS_ZOMBIE] && xUserData[victim][UD_IS_ZOMBIE])
 	{
-		xUserData[pevAttacker][UD_DMG_DEALT] += flDamage
+		xUserData[attacker][UD_DMG_DEALT] += flDamage
 
-		while(xUserData[pevAttacker][UD_DMG_DEALT] >= xCvars[CVAR_DMG_DEALT_REACHED])
+		while(xUserData[attacker][UD_DMG_DEALT] >= xCvars[CVAR_DMG_DEALT_REACHED])
 		{
-			xUserData[pevAttacker][UD_DMG_DEALT] = 0.0
-			xUserData[pevAttacker][UD_AMMO_PACKS] += xCvars[CVAR_DMG_DEALT_REWARD]
+			xUserData[attacker][UD_DMG_DEALT] = 0.0
+			xUserData[attacker][UD_AMMO_PACKS] += xCvars[CVAR_DMG_DEALT_REWARD]
 		}
 	}
 
 	// is zombie
-	if(xUserData[pevAttacker][UD_IS_ZOMBIE] && !xUserData[this][UD_IS_ZOMBIE])
+	if(xUserData[attacker][UD_IS_ZOMBIE] && !xUserData[victim][UD_IS_ZOMBIE])
 	{
 		if(get_num_alive() == 1 && !xCvars[CVAR_LAST_HUMAN_INFECT])
 			return HC_CONTINUE
 
 		static Float:armor
-		get_entvar(this, var_armorvalue, armor)
+		get_entvar(victim, var_armorvalue, armor)
 
 		if(armor > 0.0)
 		{
-			emit_sound(this, CHAN_BODY, CS_SOUNDS[2], 1.0, 0.5, 0, PITCH_NORM)
+			emit_sound(victim, CHAN_BODY, CS_SOUNDS[2], 1.0, 0.5, 0, PITCH_NORM)
 			
 			if(armor - flDamage > 0.0)
-				set_entvar(this, var_armorvalue, armor - flDamage)
-			else rg_set_user_armor(this, 0, ARMOR_NONE)
+				set_entvar(victim, var_armorvalue, armor - flDamage)
+			else rg_set_user_armor(victim, 0, ARMOR_NONE)
 
 			SetHookChainReturn(ATYPE_INTEGER, 0)
 			return HC_SUPERCEDE
 		}
 
-		set_user_zombie(this, pevAttacker, false)
+		set_user_zombie(victim, attacker, false)
 
 		if(get_num_alive() == 0 && xCvars[CVAR_LAST_HUMAN_INFECT])
 			rg_round_end(2.0, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN, .trigger = true)
@@ -814,17 +814,7 @@ public CSGameRules_RestartRound_Pre()
 
 public CSGameRules_RestartRound_Post()
 {
-	for(new id = 1; id <= MaxClients; id++)
-	{
-		if(!is_user_connected(id))
-			continue
-
-		if(xUserData[id][UD_NEXT_ZOMBIE_CLASS] != -1)
-		{
-			xUserData[id][UD_CURRENT_ZOMBIE_CLASS] = xUserData[id][UD_NEXT_ZOMBIE_CLASS]
-			xUserData[id][UD_NEXT_ZOMBIE_CLASS] = -1
-		}
-	}
+	update_users_next_class()
 }
 
 public CSGameRules_OnRoundFreezeEnd_Pre()
@@ -865,6 +855,8 @@ public xStartCountDown()
 
 public xInitRound()
 {
+	update_users_next_class()
+
 	new gm = random_gamemode()
 
 	if(gm == -1) gm = 0
@@ -1568,6 +1560,21 @@ random_gamemode()
 	}
 
 	return gm
+}
+
+update_users_next_class()
+{
+	for(new id = 1; id <= MaxClients; id++)
+	{
+		if(!is_user_connected(id))
+			continue
+
+		if(xUserData[id][UD_NEXT_ZOMBIE_CLASS] != -1)
+		{
+			xUserData[id][UD_CURRENT_ZOMBIE_CLASS] = xUserData[id][UD_NEXT_ZOMBIE_CLASS]
+			xUserData[id][UD_NEXT_ZOMBIE_CLASS] = -1
+		}
+	}
 }
 
 set_score_attrib(this, dead = 0)

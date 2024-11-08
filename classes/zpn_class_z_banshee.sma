@@ -28,12 +28,27 @@ public plugin_init()
 	register_clcmd("drop", "clcmd_drop")
 
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false)
+	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
 
 	bind_pcvar_float(create_cvar("zpn_class_banshee_timeout", "15", .has_min = true, .min_val = 5.0, .has_max = true, .max_val = 1000.0), cvars[CVAR_SKILL_TIMEOUT])
 	bind_pcvar_float(create_cvar("zpn_class_banshee_bat_time", "3", .has_min = true, .min_val = 1.0, .has_max = true, .max_val = 50.0), cvars[CVAR_BAT_TIME])
 	bind_pcvar_num(create_cvar("zpn_class_banshee_bat_speed", "700", .has_min = true, .min_val = 100.0, .has_max = true, .max_val = 2000.0), cvars[CVAR_BAT_SPEED])
 	bind_pcvar_float(create_cvar("zpn_class_banshee_bat_catch_time", "3", .has_min = true, .min_val = 1.0, .has_max = true, .max_val = 50.0), cvars[CVAR_BAT_CATCH_TIME])
 	bind_pcvar_float(create_cvar("zpn_class_banshee_bat_catch_speed", "110", .has_min = true, .min_val = 20.0, .has_max = true, .max_val = 1000.0), cvars[CVAR_BAT_CATCH_SPEED])
+}
+
+register_class()
+{
+	class = zpn_class_init()
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_TYPE, CLASS_TEAM_TYPE_ZOMBIE)
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_NAME, "Banshee")
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_INFO, "Pulling \r[G]")
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL, "zpn_banshee")
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL_VIEW, "models/v_knife_banshee.mdl")
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_SPEED, 360.0)
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_HEALTH, 2200.0)
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_GRAVITY, 0.5)
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_KNOCKBACK, 1.0)
 }
 
 public clcmd_drop(id)
@@ -48,6 +63,27 @@ public clcmd_drop(id)
 	}
 
 	create_bat(id)
+}
+
+public CSGameRules_RestartRound_Pre()
+{
+	for(new id = 1; id <= MaxClients; id++)
+	{
+		if(!is_user_connected(id))
+			continue
+
+		xBatEnemy[id] = 0
+	}
+}
+
+public client_putinserver(id)
+{
+	xBatEnemy[id] = 0
+}
+
+public client_disconnected(id)
+{
+	xBatEnemy[id] = 0
 }
 
 public CBasePlayer_PreThink(const this)
@@ -73,16 +109,7 @@ public CBasePlayer_PreThink(const this)
 
 public plugin_precache()
 {
-	class = zpn_class_init()
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_TYPE, CLASS_TEAM_TYPE_ZOMBIE)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_NAME, "Banshee")
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_INFO, "Pulling \r[G]")
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL, "zpn_banshee")
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL_VIEW, "models/v_knife_banshee.mdl")
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_SPEED, 360.0)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_HEALTH, 2200.0)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_GRAVITY, 0.5)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_KNOCKBACK, 1.0)
+	register_class()
 
 	bat_banshee_index = precache_model(bat_banshee)
 	spr_explosion_index = precache_model("sprites/bexplo.spr")
@@ -131,6 +158,15 @@ create_bat(id)
 	rh_emit_sound2(ent, 0, CHAN_STATIC, banshee_pulling_fire, .attn = 0.3)
 
 	xBatTimeout[id] = get_gametime() + cvars[CVAR_SKILL_TIMEOUT]
+
+	new activeItem = get_member(id, m_pActiveItem)
+
+	if(!is_nullent(activeItem))
+	{
+		set_member(activeItem, m_Weapon_flTimeWeaponIdle, 1.0)
+		set_member(activeItem, m_Weapon_flNextPrimaryAttack, 1.0)
+		rg_weapon_send_animation(activeItem, 2)
+	}
 }
 
 public bat_touch(const ent, const other)
@@ -175,7 +211,7 @@ del_bat(ent)
 	rh_emit_sound2(ent, 0, CHAN_STATIC, banshee_pulling_fire, .flags = SND_STOP)
 	rh_emit_sound2(ent, 0, CHAN_STATIC, banshee_pulling_fail, .attn = 0.3)
 	get_entvar(ent, var_origin, origin)
-	crate_explosion(origin)
+	create_explosion(origin)
 	rg_remove_entity(ent)
 }
 
@@ -191,7 +227,7 @@ public bat_think(const ent)
 
 	rh_emit_sound2(ent, 0, CHAN_STATIC, banshee_pulling_fire, .flags = SND_STOP)
 
-	new Float:origin[3]; get_entvar(ent, var_origin, origin); crate_explosion(origin)
+	new Float:origin[3]; get_entvar(ent, var_origin, origin); create_explosion(origin)
 	rg_remove_entity(ent)
 }
 
@@ -213,17 +249,17 @@ get_user_front_origin(id, Float:forw, Float:right, Float:up, Float:vStart[])
 	vStart[2] = vOrigin[2] + vForward[2] * forw + vRight[2] * right + vUp[2] * up
 }
 
-crate_explosion(Float:origin[3])
+create_explosion(Float:origin[3])
 {
 	message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
-	write_byte(TE_EXPLOSION) // TE_EXPLOSION
-	write_coord(floatround(origin[0])) // origin x
-	write_coord(floatround(origin[1])) // origin y
-	write_coord(floatround(origin[2])) // origin z
-	write_short(spr_explosion_index) // sprites
-	write_byte(30) // scale in 0.1's
-	write_byte(30) // framerate
-	write_byte(14) // flags
+	write_byte(TE_EXPLOSION)
+	write_coord(floatround(origin[0]))
+	write_coord(floatround(origin[1]))
+	write_coord(floatround(origin[2]))
+	write_short(spr_explosion_index)
+	write_byte(30)
+	write_byte(30)
+	write_byte(TE_EXPLFLAG_NOSOUND)
 	message_end()
 }
 
