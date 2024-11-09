@@ -17,7 +17,13 @@ enum
 	ZPN_RETURN_HANDLED,
 }
 
-enum eClassesType
+enum eItemTeams
+{
+	ITEM_TEAM_ZOMBIE = 0,
+	ITEM_TEAM_HUMAN,
+}
+
+enum eClassTypes
 {
 	CLASS_TEAM_TYPE_ZOMBIE = 0,
 	CLASS_TEAM_TYPE_HUMAN,
@@ -25,7 +31,14 @@ enum eClassesType
 	CLASS_TEAM_TYPE_HUMAN_SPECIAL,
 }
 
-enum ePropsClassRegisters
+enum ePropItemRegisters
+{
+	ITEM_PROP_REGISTER_NAME, // string
+	ITEM_PROP_REGISTER_COST, // int
+	ITEM_PROP_REGISTER_TEAM, // eItemTeams
+}
+
+enum ePropClassRegisters
 {
 	CLASS_PROP_REGISTER_TYPE, // eClassesType
 	CLASS_PROP_REGISTER_NAME, // string
@@ -41,7 +54,7 @@ enum ePropsClassRegisters
 	CLASS_PROP_REGISTER_CLAW_WEAPONLIST, // string
 }
 
-enum eGameModeDeathMatchType
+enum eGameModeDeathMatchTypes
 {
 	GAMEMODE_DEATHMATCH_DISABLED,
 	GAMEMODE_DEATHMATCH_ONLY_TR,
@@ -59,6 +72,6 @@ enum ePropsGameModeRegisters
 	GAMEMODE_PROP_REGISTER_MIN_PLAYERS, // int
 	GAMEMODE_PROP_REGISTER_ROUND_TIME, // float
 	GAMEMODE_PROP_REGISTER_CHANGE_CLASS, // bool
-	GAMEMODE_PROP_REGISTER_DEATHMATCH, // eGameModeDeathMatchType
+	GAMEMODE_PROP_REGISTER_DEATHMATCH, // eGameModeDeathMatchTypes
 	GAMEMODE_PROP_REGISTER_RESPAWN_TIME, // float
 }

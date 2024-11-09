@@ -58,7 +58,7 @@ public clcmd_drop(id)
 	
 	if(xBatTimeout[id] > get_gametime())
 	{
-		client_print_color(id, print_team_red, "^3Espere ^4%.0f ^3segundos.", xBatTimeout[id] - get_gametime())
+		zpn_print_color(id, print_team_red, "^3Espere ^4%.0f ^3segundos.", xBatTimeout[id] - get_gametime())
 		return
 	}
 

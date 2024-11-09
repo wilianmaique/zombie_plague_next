@@ -36,17 +36,17 @@ native zpn_class_init();
 /*
 * Get property info from class
 */
-native zpn_class_get_prop(const class_id, ePropsClassRegisters:prop, any:...);
+native zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...);
 
 /*
 * Set property to class
 */
-native zpn_class_set_prop(const class_id, ePropsClassRegisters:prop, any:...);
+native zpn_class_set_prop(const class_id, ePropClassRegisters:prop, any:...);
 
 /*
 * Get current user class by type
 */
-native zpn_class_get_user_current(const id, eClassesType:type);
+native zpn_class_get_user_current(const id, eClassTypes:type);
 
 /*
 * Return true if user is zombie
@@ -62,14 +62,34 @@ native zpn_gamemode_init();
 /*
 * Get property info from gamemode
 */
-native zpn_gamemode_get_prop(const gamemode_id, ePropsGameModeRegisters:prop, any:...);
+native zpn_gamemode_get_prop(const gamemode_id, ePropGameModeRegisters:prop, any:...);
 
 /*
 * Set property to gamemode
 */
-native zpn_gamemode_set_prop(const gamemode_id, ePropsGameModeRegisters:prop, any:...);
+native zpn_gamemode_set_prop(const gamemode_id, ePropGameModeRegisters:prop, any:...);
+
+/*
+* Init new extra item
+*/
+native zpn_item_init();
+
+/*
+* Get property info from item
+*/
+native zpn_item_get_prop(const item_id, ePropItemRegisters:prop, any:...);
+
+/*
+* Set property to item
+*/
+native zpn_item_set_prop(const item_id, ePropItemRegisters:prop, any:...);
 
 /*
 * Set player as zombie
 */
 native bool:zpn_set_user_zombie(const this, const attacker, bool:set_first = false);
+
+/*
+* Send message with prefix.
+*/
+native zpn_print_color(id, sender, const msg[], any:...);

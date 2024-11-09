@@ -51,9 +51,9 @@ enum _:eSettingsConfigs
 	CONFIG_PREFIX_CHAT[32],
 }
 
-enum _:ePropsClass
+enum _:ePropClasses
 {
-	eClassesType:CLASS_PROP_TYPE,
+	eClassTypes:CLASS_PROP_TYPE,
 	CLASS_PROP_NAME[64],
 	CLASS_PROP_INFO[64],
 	CLASS_PROP_MODEL[64],
@@ -67,7 +67,7 @@ enum _:ePropsClass
 	CLASS_PROP_CLAW_WEAPONLIST[64],
 }
 
-enum _:ePropsGameMode
+enum _:ePropGameModes
 {
 	GAMEMODE_PROP_NAME[32],
 	GAMEMODE_PROP_NOTICE[64],
@@ -76,11 +76,18 @@ enum _:ePropsGameMode
 	GAMEMODE_PROP_MIN_PLAYERS,
 	Float:GAMEMODE_PROP_ROUND_TIME,
 	bool:GAMEMODE_PROP_CHANGE_CLASS,
-	eGameModeDeathMatchType:GAMEMODE_PROP_DEATHMATCH,
+	eGameModeDeathMatchTypes:GAMEMODE_PROP_DEATHMATCH,
 	Float:GAMEMODE_PROP_RESPAWN_TIME,
 }
 
-enum _:eGameRule
+enum _:ePropItems
+{
+	ITEM_PROP_NAME[32],
+	ITEM_PROP_COST,
+	eItemTeams:ITEM_PROP_TEAM
+}
+
+enum _:eGameRules
 {
 	GAME_RULE_CURRENT_GAMEMODE,
 	bool:GAME_RULE_IS_ROUND_STARTED,
@@ -124,10 +131,10 @@ new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "play
 
 new xFwSpawn_Pre
 new xCvars[eCvars], xSettingsVars[eSettingsConfigs], xMsgSync[eSyncHuds], xUserData[33][eUserData]
-new any:xDataGetClass[ePropsClass], any:xDataGetGameMode[ePropsGameMode], any:xDataGetGameRule[eGameRule]
+new any:xDataGetClass[ePropClasses], any:xDataGetGameMode[ePropGameModes], any:xDataGetItem[ePropItems], any:xDataGetGameRule[eGameRules]
 
-new xDataClassCount, xDataGameModeCount, xFirstClass[2], xClassCount[2]
-new Array:aDataClass, Array:aDataGameMode
+new xDataClassCount, xDataGameModeCount, xDataItemCount, xFirstClass[2], xClassCount[2]
+new Array:aDataClass, Array:aDataGameMode, Array:aDataItem
 new xForwards[eForwards], xForwardReturn
 
 new xMsgScoreAttrib
@@ -219,6 +226,22 @@ public plugin_init()
 		}
 
 		server_print("^n")
+		server_print("Items loaded:")
+
+		for(i = 0; i < ArraySize(aDataItem); i++)
+		{
+			ArrayGetArray(aDataItem, i, xDataGetItem)
+
+			text[0] = EOS
+			
+			add(text, charsmax(text), fmt("Item: %s | ", xDataGetItem[ITEM_PROP_NAME]))
+			add(text, charsmax(text), fmt("Cost: %d | ", xDataGetItem[ITEM_PROP_COST]))
+			add(text, charsmax(text), fmt("Team: %s", xDataGetItem[ITEM_PROP_TEAM] == ITEM_TEAM_ZOMBIE ? "z" : "h"))
+
+			server_print(text)
+		}
+
+		server_print("^n^n")
 	}
 
 	return true
@@ -325,6 +348,12 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 			SetHookChainReturn(ATYPE_INTEGER, 0)
 			return HC_SUPERCEDE
 		}
+		
+		if(xUserData[victim][UD_NEXT_ZOMBIE_CLASS] != -1)
+		{
+			xUserData[victim][UD_CURRENT_ZOMBIE_CLASS] = xUserData[victim][UD_NEXT_ZOMBIE_CLASS]
+			xUserData[victim][UD_NEXT_ZOMBIE_CLASS] = -1
+		}
 
 		set_user_zombie(victim, attacker, false)
 
@@ -390,12 +419,6 @@ public client_putinserver(id)
 	set_task_ex(0.1, "xHudPlayerInfo", id + TASK_HUD_PLAYER_INFO, .flags = SetTask_Repeat)
 
 	check_game()
-}
-
-check_game()
-{
-	if(get_num_alive(true) <= 1 && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
-		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
 }
 
 public xHudPlayerInfo(id)
@@ -495,9 +518,9 @@ public _select_class_type(id, menu, item)
 
 	new info[4]
 	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
-	new eClassesType:class_type = eClassesType:str_to_num(info)
+	new eClassTypes:class_type = eClassTypes:str_to_num(info)
 
-	if(count_class(class_type) <= 0)
+	if(xClassCount[_:class_type]<= 0)
 	{
 		client_print_color(id, print_team_red, "%s ^3Nenhuma classe encontrada.", xSettingsVars[CONFIG_PREFIX_CHAT])
 		select_class_type(id)
@@ -557,9 +580,6 @@ public _select_class(id, menu, item)
 	{
 		case CLASS_TEAM_TYPE_ZOMBIE:
 		{
-			//xUserData[id][UD_CURRENT_ZOMBIE_CLASS] = class_id
-			//xUserData[id][UD_NEXT_ZOMBIE_CLASS] = class_id
-
 			if(xCvars[CVAR_CLASS_SELECT_INSTANT])
 			{
 				xUserData[id][UD_NEXT_ZOMBIE_CLASS] = -1
@@ -619,9 +639,6 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 	if(zpn_is_invalid_array(aDataGameMode))
 		xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = -1
 	else xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = 0
-
-	if(xSettingsVars[CONFIG_DEBUG_ON])
-		server_print("RoundEnd_Pre: %d - %d - %f", status, event, delay)
 }
 
 public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponModel[], iAnim, szAnimExt[], skiplocal)
@@ -803,13 +820,6 @@ public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const 
 public CSGameRules_RestartRound_Pre()
 {
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
-
-	if(xSettingsVars[CONFIG_DEBUG_ON])
-	{
-		server_print("^n")
-		server_print("CSGameRules_RestartRound_Pre")
-		server_print("^n")
-	}
 }
 
 public CSGameRules_RestartRound_Post()
@@ -882,8 +892,9 @@ public plugin_precache()
 	new i
 	for(i = 0; i < sizeof(CS_SOUNDS); i++) engfunc(EngFunc_PrecacheSound, CS_SOUNDS[i])
 
-	aDataClass = ArrayCreate(ePropsClass)
-	aDataGameMode = ArrayCreate(ePropsGameMode)
+	aDataClass = ArrayCreate(ePropClasses, 0)
+	aDataGameMode = ArrayCreate(ePropGameModes, 0)
+	aDataItem = ArrayCreate(ePropItems, 0)
 
 	bind_pcvar_num(create_cvar("zpn_delay", "15", .has_min = true, .min_val = 1.0), xCvars[CVAR_START_DELAY])
 	bind_pcvar_num(create_cvar("zpn_class_select_instant", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_CLASS_SELECT_INSTANT])
@@ -1066,8 +1077,26 @@ public plugin_natives()
 	register_native("zpn_gamemode_get_prop", "_zpn_gamemode_get_prop")
 	register_native("zpn_gamemode_set_prop", "_zpn_gamemode_set_prop")
 
+	register_native("zpn_item_init", "_zpn_item_init")
+	register_native("zpn_item_get_prop", "_zpn_item_get_prop")
+	register_native("zpn_item_set_prop", "_zpn_item_set_prop")
+
 	register_native("zpn_set_user_zombie", "_zpn_set_user_zombie")
 	register_native("zpn_is_user_zombie", "_zpn_is_user_zombie")
+	register_native("zpn_print_color", "_zpn_print_color")
+}
+
+public _zpn_print_color(plugin_id, param_nums)
+{
+	new id = get_param(1)
+	new sender = get_param(2)
+
+	static msg[192]; msg[0] = EOS;
+
+	if(param_nums == 3) get_string(3, msg, charsmax(msg))
+	else vdformat(msg, charsmax(msg), 3, 4)
+
+	return client_print_color(id, sender, "%s %s", xSettingsVars[CONFIG_PREFIX_CHAT], msg)
 }
 
 public bool:_zpn_is_user_zombie(plugin_id, param_nums)
@@ -1086,9 +1115,9 @@ public _zpn_class_get_user_current(plugin_id, param_nums)
 		return 0
 
 	new id = get_param(1)
-	new eClassesType:type = eClassesType:get_param(2)
+	new eClassTypes:type = eClassTypes:get_param(2)
 
-	return xUserData[id][get_current_class_index(id, type)]
+	return get_current_class_index(id, type)
 }
 
 public bool:_zpn_set_user_zombie(plugin_id, param_nums)
@@ -1101,6 +1130,67 @@ public bool:_zpn_set_user_zombie(plugin_id, param_nums)
 	new bool:set_first = bool:get_param(3)
 
 	return set_user_zombie(id, attacker, set_first)
+}
+
+public _zpn_item_init(plugin_id, param_nums)
+{
+	new key = (++xDataItemCount - 1)
+
+	xDataGetItem[ITEM_PROP_NAME] = EOS
+	xDataGetItem[ITEM_PROP_COST] = 0
+	xDataGetItem[ITEM_PROP_TEAM] = ITEM_TEAM_HUMAN
+
+	ArrayPushArray(aDataItem, xDataGetItem)
+
+	return key
+}
+
+public any:_zpn_item_get_prop(plugin_id, param_nums)
+{
+	if(zpn_is_invalid_array(aDataItem))
+		return false
+
+	enum { arg_item_id = 1, arg_prop, arg_value, arg_len }
+
+	new item_id = get_param(arg_item_id)
+	new prop = get_param(arg_prop)
+
+	ArrayGetArray(aDataItem, item_id, xDataGetItem)
+
+	switch(ePropItemRegisters:prop)
+	{
+		case ITEM_PROP_REGISTER_NAME: set_string(arg_value, xDataGetItem[ITEM_PROP_NAME], get_param_byref(arg_len))
+		case ITEM_PROP_REGISTER_COST: return xDataGetItem[ITEM_PROP_COST]
+		case ITEM_PROP_REGISTER_TEAM: return xDataGetItem[ITEM_PROP_REGISTER_TEAM]
+		default: return false
+	}
+
+	return true
+}
+
+public any:_zpn_item_set_prop(plugin_id, param_nums)
+{
+	if(zpn_is_invalid_array(aDataItem))
+		return false
+
+	enum { arg_item_id = 1, arg_prop, arg_value }
+
+	new item_id = get_param(arg_item_id)
+	new prop = get_param(arg_prop)
+
+	ArrayGetArray(aDataItem, item_id, xDataGetItem)
+
+	switch(ePropItemRegisters:prop)
+	{
+		case ITEM_PROP_REGISTER_NAME: get_string(arg_value, xDataGetItem[ITEM_PROP_NAME], charsmax(xDataGetItem[ITEM_PROP_NAME]))
+		case ITEM_PROP_REGISTER_COST: xDataGetItem[ITEM_PROP_COST] = get_param_byref(arg_value)
+		case ITEM_PROP_REGISTER_TEAM: xDataGetItem[ITEM_PROP_REGISTER_TEAM] = eItemTeams:get_param_byref(arg_value)
+		default: return false
+	}
+
+	ArraySetArray(aDataItem, item_id, xDataGetItem)
+	
+	return true
 }
 
 public _zpn_gamemode_init(plugin_id, param_nums)
@@ -1134,7 +1224,7 @@ public any:_zpn_gamemode_get_prop(plugin_id, param_nums)
 
 	ArrayGetArray(aDataGameMode, gamemode_id, xDataGetGameMode)
 
-	switch(ePropsGameModeRegisters:prop)
+	switch(ePropGameModeRegisters:prop)
 	{
 		case GAMEMODE_PROP_REGISTER_NAME: set_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NAME], get_param_byref(arg_len))
 		case GAMEMODE_PROP_REGISTER_NOTICE: set_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NOTICE], get_param_byref(arg_len))
@@ -1163,7 +1253,7 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 
 	ArrayGetArray(aDataGameMode, gamemode_id, xDataGetGameMode)
 
-	switch(ePropsGameModeRegisters:prop)
+	switch(ePropGameModeRegisters:prop)
 	{
 		case GAMEMODE_PROP_REGISTER_NAME: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NAME], charsmax(xDataGetGameMode[GAMEMODE_PROP_NAME]))
 		case GAMEMODE_PROP_REGISTER_NOTICE: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NOTICE], charsmax(xDataGetGameMode[GAMEMODE_PROP_NOTICE]))
@@ -1172,7 +1262,7 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 		case GAMEMODE_PROP_REGISTER_MIN_PLAYERS: xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] = get_param_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_ROUND_TIME: xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = get_float_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_CHANGE_CLASS: xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS] = bool:get_param_byref(arg_value)
-		case GAMEMODE_PROP_REGISTER_DEATHMATCH: xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = eGameModeDeathMatchType:get_param_byref(arg_value)
+		case GAMEMODE_PROP_REGISTER_DEATHMATCH: xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = eGameModeDeathMatchTypes:get_param_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_RESPAWN_TIME: xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = get_float_byref(arg_value)
 		default: return false
 	}
@@ -1216,7 +1306,7 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
-	switch(ePropsClassRegisters:prop)
+	switch(ePropClassRegisters:prop)
 	{
 		case CLASS_PROP_REGISTER_TYPE: return xDataGetClass[CLASS_PROP_TYPE]
 		case CLASS_PROP_REGISTER_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_NAME], get_param_byref(arg_len))
@@ -1248,9 +1338,9 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
-	switch(ePropsClassRegisters:prop)
+	switch(ePropClassRegisters:prop)
 	{
-		case CLASS_PROP_REGISTER_TYPE: xDataGetClass[CLASS_PROP_TYPE] = eClassesType:get_param_byref(arg_value)
+		case CLASS_PROP_REGISTER_TYPE: xDataGetClass[CLASS_PROP_TYPE] = eClassTypes:get_param_byref(arg_value)
 		case CLASS_PROP_REGISTER_NAME: get_string(arg_value, xDataGetClass[CLASS_PROP_NAME], charsmax(xDataGetClass[CLASS_PROP_NAME]))
 		case CLASS_PROP_REGISTER_INFO: get_string(arg_value, xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO]))
 		case CLASS_PROP_REGISTER_MODEL:
@@ -1393,7 +1483,7 @@ get_user_speed(const this)
 
 get_gamemode_name()
 {
-	static gm[64]
+	static gm[64]; gm[0] = EOS
 	ArrayGetArray(aDataGameMode, xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], xDataGetGameMode)
 
 	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
@@ -1417,7 +1507,7 @@ get_class_name(const this)
 	return class
 }
 
-get_first_class(eClassesType:class_type)
+get_first_class(eClassTypes:class_type)
 {
 	new class_id = 0
 	for(new i = 0; i < ArraySize(aDataClass); i++)
@@ -1486,13 +1576,7 @@ update_prefix_color(string[], len, bool:menu = false)
 format_number_point(const number)
 {
 	static count, i, str[32], str2[32], len
-
-	count = 0
-	len = 0
-	i = 0
-	count = 0
-	str[0] = EOS
-	str2[0] = EOS
+	count = 0; len = 0; i = 0; str[0] = EOS; str2[0] = EOS;
 
 	num_to_str(number, str, charsmax(str))
 	len = strlen(str)
@@ -1511,7 +1595,13 @@ format_number_point(const number)
 	return str2
 }
 
-count_class(eClassesType:class_type)
+check_game()
+{
+	if(get_num_alive(true) <= 0 && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
+}
+
+count_class(eClassTypes:class_type)
 {
 	new count = 0
 	for(new i = 0; i < ArraySize(aDataClass); i++)
@@ -1523,7 +1613,7 @@ count_class(eClassesType:class_type)
 	return count
 }
 
-get_current_class_index(id, eClassesType:type)
+get_current_class_index(id, eClassTypes:type)
 {
 	static class_type; class_type = 0
 
