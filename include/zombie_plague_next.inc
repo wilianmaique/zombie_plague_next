@@ -14,9 +14,20 @@
 #endif
 
 /*
+* Executes before the player is infected
+* Set params: this = 1, infector = 2, class_id = 3
+*/
+forward zpn_user_infected_pre(const this, const infector, const class_id);
+
+/*
 * Executes when the player has been infected
 */
 forward zpn_user_infected_post(const this, const infector, const class_id);
+
+/*
+* Run before 'infected_pre', can use 'ZPN_RETURN_HANDLED' to block infection
+*/
+forward zpn_user_infect_attempt(const this, const infector, const class_id);
 
 /*
 * Executes when the player turned human
@@ -27,6 +38,16 @@ forward zpn_user_humanized_post(const this, const class_id);
 * Executes when the round has started 
 */
 forward zpn_round_started_post(const gamemode_id);
+
+/*
+* Changes the value of a parameter, typically used in forwards
+*/
+native zpn_set_fw_param_int(const param, const value);
+
+/*
+* Returns a random class id by type
+*/
+native zpn_class_random_class_id(eClassTypes:type);
 
 /*
 * Init new class, use in: plugin_precache
@@ -49,10 +70,19 @@ native zpn_class_set_prop(const class_id, ePropClassRegisters:prop, any:...);
 native zpn_class_get_user_current(const id, eClassTypes:type);
 
 /*
+* Get current temp user class by type
+*/
+native zpn_class_get_user_current_temp(const id, eClassTypes:type);
+
+/*
 * Return true if user is zombie
 */
 native bool:zpn_is_user_zombie(const id);
 
+/*
+* Returns gamemode_id >= 0 if found or -1 if not found
+*/
+native zpn_gamemode_find(const gamemode_find_name[]);
 
 /*
 * Init new gamemode, use in: plugin_precache
@@ -93,3 +123,8 @@ native bool:zpn_set_user_zombie(const this, const attacker, bool:set_first = fal
 * Send message with prefix.
 */
 native zpn_print_color(id, sender, const msg[], any:...);
+
+/*
+* Check is round started
+*/
+native bool:zpn_is_round_started();

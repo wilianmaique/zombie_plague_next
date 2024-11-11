@@ -17,6 +17,7 @@ public plugin_precache()
 {
 	gamemode = zpn_gamemode_init()
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_NAME, GAMEMODE_NAME)
+	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_FIND_NAME, "gm_infection")
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_NOTICE, GAMEMODE_NOTICE)
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_HUD_COLOR, { 255, 0, 255 })
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_CHANCE, 20)
@@ -37,7 +38,7 @@ public zpn_round_started_post(const game_id)
 	if(id == -1)
 		return
 	
-	zpn_set_user_zombie(id, 0)
+	zpn_set_user_zombie(id, 0, true)
 
 	set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 200, 50, 100 })
 	ShowSyncHudMsg(0, synchud, "%n^nÉ o primeiro zombie!", id)
