@@ -44,7 +44,7 @@ register_class()
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_GRAVITY, 0.75)
 }
 
-bool:is_class(id) return (zpn_class_get_user_current(id, CLASS_TEAM_TYPE_HUMAN) == class && !zpn_is_user_zombie(id) && is_user_alive(id));
+bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_HUMAN) == class && !zpn_is_user_zombie(id) && is_user_alive(id));
 
 public client_putinserver(id)
 {

@@ -32,38 +32,38 @@ public zpn_round_started_post(const gamemode_id)
 		case 25..32: g_max_helpers = 3
 	}
 	
-	if(g_max_helpers > 0) 
+	if(g_max_helpers <= 0)
+		return
+	
+	g_helper_count = 0
+
+	for(i = 0; i <= g_max_helpers; i++)
 	{
-		g_helper_count = 0
+		id = random_player()
 
-		for(i = 0; i <= g_max_helpers; i++)
+		if(id == -1)
+			continue
+
+		if(g_helper_count >= g_max_helpers)
+			break
+		
+		if(zpn_is_user_zombie(id) || !is_user_alive(id))
 		{
-			id = random_player()
-
-			if(id == -1)
-				continue		
-
-			if(g_helper_count >= g_max_helpers)
-				break
-			
-			if(zpn_is_user_zombie(id) || !is_user_alive(id))
-			{
-				i--
-				continue
-			}
-
-			if(helper_ckeck[id])
-				continue
-
-			zpn_set_user_zombie(id, 0)
-			g_helper_count++
-			helper_ckeck[id] = true
-
-			zpn_print_color(id, print_team_red, "^3Você foi escolhido para ajudar o primeiro zombie.")
+			i--
+			continue
 		}
 
-		zpn_print_color(0, print_team_default, "^1Escolhido ^4%d ^1jogadores para ajudar o primeiro zombie.", g_helper_count)
+		if(helper_ckeck[id])
+			continue
+
+		zpn_set_user_zombie(id, 0)
+		g_helper_count++
+		helper_ckeck[id] = true
+
+		zpn_print_color(id, print_team_red, "^3Você foi escolhido para ajudar o primeiro zombie.")
 	}
+
+	zpn_print_color(0, print_team_default, "^1Escolhido ^4%d ^1jogadores para ajudar o primeiro zombie.", g_helper_count)
 
 	for(i = 1; i <= MaxClients; i++)
 	{

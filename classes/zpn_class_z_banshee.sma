@@ -14,10 +14,10 @@ enum _:eCvars
 	Float:CVAR_BAT_CATCH_SPEED,
 }
 
-new const bat_banshee[] = "models/bat_banshee.mdl"
-new const banshee_laugh[] = "banshee_laugh.wav"
-new const banshee_pulling_fail[] = "banshee_pulling_fail.wav"
-new const banshee_pulling_fire[] = "banshee_pulling_fire.wav"
+new const bat_banshee[] = "models/zpn/bat_banshee.mdl"
+new const banshee_laugh[] = "zpn/banshee_laugh.wav"
+new const banshee_pulling_fail[] = "zpn/banshee_pulling_fail.wav"
+new const banshee_pulling_fire[] = "zpn/banshee_pulling_fire.wav"
 
 new spr_explosion_index, bat_banshee_index
 new class, cvars[eCvars], xBatEnemy[33], Float:xBatTimeout[33]
@@ -59,7 +59,7 @@ public zpn_user_infected_post(const this, const infector, const class_id)
 
 public force_bot_skill(id)
 {
-	if(zpn_is_user_zombie(id) && zpn_class_get_user_current_temp(id, CLASS_TEAM_TYPE_ZOMBIE) == class && zpn_is_round_started() && is_user_connected(id))
+	if(zpn_is_user_zombie(id) && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE, true) == class && zpn_is_round_started() && is_user_connected(id))
 	{
 		create_bat(id)
 		set_task(random_float(10.0, 30.0), "force_bot_skill", id)
@@ -189,7 +189,13 @@ public bat_touch(const ent, const other)
 	if(is_nullent(ent))
 		return
 
-	if(is_nullent(other) || zpn_is_user_zombie(other) || !is_user_alive(other))
+	if(is_nullent(other))
+	{
+		del_bat(ent)
+		return
+	}
+
+	if(zpn_is_user_zombie(other) && is_user_alive(other) && is_user_connected(other))
 	{
 		del_bat(ent)
 		return
@@ -229,7 +235,7 @@ public bat_think(const ent)
 	rg_remove_entity(ent)
 }
 
-bool:is_class(id) return (zpn_class_get_user_current(id, CLASS_TEAM_TYPE_ZOMBIE) == class && zpn_is_user_zombie(id) && is_user_alive(id));
+bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE) == class && zpn_is_user_zombie(id) && is_user_alive(id));
 
 del_bat(ent)
 {

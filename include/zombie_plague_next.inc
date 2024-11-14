@@ -30,6 +30,11 @@ forward zpn_user_infected_post(const this, const infector, const class_id);
 forward zpn_user_infect_attempt(const this, const infector, const class_id);
 
 /*
+* Executes when the player has buyed item
+*/
+forward zpn_item_selected_post(const this, const item_id);
+
+/*
 * Executes when the player turned human
 */
 forward zpn_user_humanized_post(const this, const class_id);
@@ -65,14 +70,14 @@ native zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...);
 native zpn_class_set_prop(const class_id, ePropClassRegisters:prop, any:...);
 
 /*
-* Get current user class by type
+* Get current user selected class by type
 */
-native zpn_class_get_user_current(const id, eClassTypes:type);
+native zpn_get_user_selected_class(const id, eClassTypes:type, bool:check_temp = false);
 
 /*
-* Get current temp user class by type
+* Return true if user is zombie 'special', nemesis, assasin, etc..
 */
-native zpn_class_get_user_current_temp(const id, eClassTypes:type);
+native bool:zpn_is_user_zombie_special(const id);
 
 /*
 * Return true if user is zombie
@@ -100,6 +105,11 @@ native zpn_gamemode_get_prop(const gamemode_id, ePropGameModeRegisters:prop, any
 native zpn_gamemode_set_prop(const gamemode_id, ePropGameModeRegisters:prop, any:...);
 
 /*
+* Get current gamemode_id >= 0 valid. -1 error
+*/
+native zpn_gamemode_current();
+
+/*
 * Init new extra item
 */
 native zpn_item_init();
@@ -118,6 +128,7 @@ native zpn_item_set_prop(const item_id, ePropItemRegisters:prop, any:...);
 * Set player as zombie
 */
 native bool:zpn_set_user_zombie(const this, const attacker, bool:set_first = false);
+
 
 /*
 * Send message with prefix.
