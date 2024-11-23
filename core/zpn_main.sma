@@ -38,10 +38,11 @@ enum _:eCvars
 enum _:eForwards
 {
 	FW_ROUND_STARTED_POST,
+	FW_HUMANIZED_PRE,
 	FW_HUMANIZED_POST,
 	FW_INFECTED_PRE,
 	FW_INFECTED_POST,
-	FW_INFECT_ATTEMP,
+	FW_INFECT_ATTEMPT,
 	FW_ITEM_SELECTED_POST,
 }
 
@@ -186,7 +187,8 @@ public plugin_init()
 	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_INFECTED_PRE] = CreateMultiForward("zpn_user_infected_pre", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_INFECTED_POST] = CreateMultiForward("zpn_user_infected_post", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
-	xForwards[FW_INFECT_ATTEMP] = CreateMultiForward("zpn_user_infect_attempt", ET_CONTINUE, FP_CELL, FP_CELL, FP_CELL)
+	xForwards[FW_INFECT_ATTEMPT] = CreateMultiForward("zpn_user_infect_attempt", ET_CONTINUE, FP_CELL, FP_CELL, FP_CELL)
+	xForwards[FW_HUMANIZED_PRE] = CreateMultiForward("zpn_user_humanized_pre", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_HUMANIZED_POST] = CreateMultiForward("zpn_user_humanized_post", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_ITEM_SELECTED_POST] = CreateMultiForward("zpn_item_selected_post", ET_IGNORE, FP_CELL, FP_CELL)
 
@@ -437,6 +439,9 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 
 public clcmd_changeteam(id)
 {
+	if(is_user_bot(id))
+		return PLUGIN_CONTINUE
+		
 	new any:team = get_member(id, m_iTeam)
 
 	if(team == TEAM_SPECTATOR || team == TEAM_UNASSIGNED)
@@ -537,7 +542,7 @@ public buy_items(id)
 {
 	new xMenu = menu_create(fmt("%s \yLoja de Itens", xSettingsVars[CONFIG_PREFIX_MENUS]), "_buy_items")
 
-	new userFlags = get_user_flags(id)
+	//new userFlags = get_user_flags(id)
 	new xDataGetItem[ePropItems]
 
 	for(new i = 0; i < ArraySize(aDataItem); i++)
@@ -756,10 +761,17 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 
 	new id = get_member(ent, m_pPlayer)
 	
+	new class_id
+	// if(xUserData[id][UD_IS_ZOMBIE])
+	// 	class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
+	// else class_id = xUserData[id][UD_CURRENT_TEMP_HUMAN_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_HUMAN_CLASS] : xUserData[id][UD_CURRENT_SELECTED_HUMAN_CLASS]
+
 	if(xUserData[id][UD_IS_ZOMBIE])
 	{
+		class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
+
 		new xDataGetClass[ePropClasses]
-		ArrayGetArray(aDataClass, xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS], xDataGetClass)
+		ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
 		SetHookChainArg(2, ATYPE_STRING, xDataGetClass[CLASS_PROP_MODEL_VIEW])
 		SetHookChainArg(3, ATYPE_STRING, "")
@@ -802,8 +814,8 @@ public CBasePlayer_Spawn_Post(id)
 			if(xUserData[id][UD_NEXT_ZOMBIE_CLASS] != -1)
 			{
 				xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS] = xUserData[id][UD_NEXT_ZOMBIE_CLASS]
-				set_user_zombie(id, 0, false)
 				xUserData[id][UD_NEXT_ZOMBIE_CLASS] = -1
+				set_user_zombie(id, 0, false)
 			}
 			else set_user_zombie(id, 0, false)
 		}
@@ -812,8 +824,8 @@ public CBasePlayer_Spawn_Post(id)
 			if(xUserData[id][UD_NEXT_HUMAN_CLASS] != -1)
 			{
 				xUserData[id][UD_CURRENT_SELECTED_HUMAN_CLASS] = xUserData[id][UD_NEXT_HUMAN_CLASS]
-				set_user_human(id)
 				xUserData[id][UD_NEXT_HUMAN_CLASS] = -1
+				set_user_human(id)
 			}
 			else set_user_human(id)
 		}
@@ -1218,6 +1230,7 @@ public plugin_natives()
 	register_native("zpn_class_get_prop", "_zpn_class_get_prop")
 	register_native("zpn_class_set_prop", "_zpn_class_set_prop")
 	register_native("zpn_class_random_class_id", "_zpn_class_random_class_id")
+	register_native("zpn_class_find", "_zpn_class_find")
 
 	register_native("zpn_gamemode_init", "_zpn_gamemode_init")
 	register_native("zpn_gamemode_get_prop", "_zpn_gamemode_get_prop")
@@ -1246,6 +1259,34 @@ public _zpn_gamemode_current(plugin_id, param_nums)
 public bool:_zpn_is_round_started(plugin_id, param_nums)
 {
 	return xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
+}
+
+public _zpn_class_find(plugin_id, param_nums)
+{
+	if(param_nums != 1)
+		return 0
+
+	static findName[32]; findName[0] = EOS;
+	get_string(1, findName, charsmax(findName))
+
+	new xDataGetClass[ePropClasses]
+	new find = -1
+
+	for(new i = 0; i < ArraySize(aDataClass); i++)
+	{
+		ArrayGetArray(aDataClass, i, xDataGetClass)
+		
+		if(zpn_is_null_string(xDataGetClass[CLASS_PROP_FIND_NAME]))
+			continue
+
+		if(equal(xDataGetClass[CLASS_PROP_FIND_NAME], findName))
+			find = i
+
+		if(find != -1)
+			break
+	}
+
+	return find
 }
 
 public _zpn_gamemode_find(plugin_id, param_nums)
@@ -1339,8 +1380,10 @@ public bool:_zpn_is_user_zombie_special(plugin_id, param_nums)
 	if(!is_user_connected(id))
 		return false
 
-	new xDataGetClass[ePropClasses]
-	ArrayGetArray(aDataClass, xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS], xDataGetClass)
+	new xDataGetClass[ePropClasses], class_id
+	class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
+
+	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
 	return (xUserData[id][UD_IS_ZOMBIE] && xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
 }
@@ -1679,7 +1722,7 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 
 	new class_id = xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
 
-	ExecuteForward(xForwards[FW_INFECT_ATTEMP], xForwardReturn, this, infector, class_id)
+	ExecuteForward(xForwards[FW_INFECT_ATTEMPT], xForwardReturn, this, infector, class_id)
 
 	if(xForwardReturn >= ZPN_RETURN_HANDLED)
 		return false
@@ -1735,8 +1778,20 @@ public set_user_human(this)
 	if(!is_valid_player_alive(this))
 		return
 
+	xFwIntParam[1] = -1
+	xFwIntParam[2] = -1
+
+	new class_id = xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
+
+	ExecuteForward(xForwards[FW_HUMANIZED_PRE], xForwardReturn, this, class_id)
+
+	if(xFwIntParam[1] != -1) this = xFwIntParam[1]
+	if(xFwIntParam[2] != -1) class_id = xFwIntParam[2]
+
+	xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] = class_id
+
 	new xDataGetClass[ePropClasses]
-	ArrayGetArray(aDataClass, xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS], xDataGetClass)
+	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
 	xUserData[this][UD_IS_ZOMBIE] = false
 	xUserData[this][UD_IS_LAST_HUMAN] = false
@@ -1763,7 +1818,7 @@ public set_user_human(this)
 	set_entvar(this, var_armorvalue, armor)
 	set_entvar(this, var_maxspeed, xDataGetClass[CLASS_PROP_SPEED])
 
-	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS])
+	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
 }
 
 public set_user_nv(id)
@@ -1808,7 +1863,11 @@ get_gamemode_name()
 
 get_class_name(const this)
 {
-	static class[64], class_id; class_id = xUserData[this][UD_IS_ZOMBIE] ? xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
+	static class[64], class_id
+
+	if(xUserData[this][UD_IS_ZOMBIE])
+		class_id = xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
+	else class_id = xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] != -1 ? xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] : xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
 
 	new xDataGetClass[ePropClasses]
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
@@ -1976,6 +2035,10 @@ update_users_next_class()
 	{
 		if(!is_user_connected(id))
 			continue
+
+		// estou com duvida nisso, por enquanto deixa comentado!
+		//xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] = -1
+		//xUserData[id][UD_CURRENT_TEMP_HUMAN_CLASS] = -1
 
 		if(xUserData[id][UD_NEXT_ZOMBIE_CLASS] != -1)
 		{

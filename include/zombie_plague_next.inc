@@ -35,6 +35,11 @@ forward zpn_user_infect_attempt(const this, const infector, const class_id);
 forward zpn_item_selected_post(const this, const item_id);
 
 /*
+* Executes before he turns into a human, you can force a class and ignore his selected class.
+*/
+forward zpn_user_humanized_pre(const this, const class_id);
+
+/*
 * Executes when the player turned human
 */
 forward zpn_user_humanized_post(const this, const class_id);
@@ -73,6 +78,11 @@ native zpn_class_set_prop(const class_id, ePropClassRegisters:prop, any:...);
 * Get current user selected class by type
 */
 native zpn_get_user_selected_class(const id, eClassTypes:type, bool:check_temp = false);
+
+/*
+* Returns class_id >= 0 if found or -1 if not found
+*/
+native zpn_class_find(const class_find_name[]);
 
 /*
 * Return true if user is zombie 'special', nemesis, assasin, etc..

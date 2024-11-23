@@ -44,7 +44,7 @@ register_class()
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_GRAVITY, 0.75)
 }
 
-bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_HUMAN) == class && !zpn_is_user_zombie(id) && is_user_alive(id));
+bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_HUMAN) == class && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_HUMAN, true) == class && is_user_alive(id));
 
 public client_putinserver(id)
 {
@@ -99,8 +99,7 @@ public init_anim(id)
 	get_entvar(id, var_angles, angles)
 	get_entvar(id, var_velocity, velocity)
 
-	static model[64]
-	cs_get_user_model(id, model, charsmax(model))
+	static model[64]; cs_get_user_model(id, model, charsmax(model))
 
 	// FAKE MODEL
 	set_entvar(model_ent, var_classname, "fake_model")

@@ -51,6 +51,8 @@ register_class()
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_KNOCKBACK, 1.0)
 }
 
+bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE) == class && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE, true) == class);
+
 public zpn_user_infected_post(const this, const infector, const class_id)
 {
 	if(is_user_bot(this))
@@ -59,7 +61,7 @@ public zpn_user_infected_post(const this, const infector, const class_id)
 
 public force_bot_skill(id)
 {
-	if(zpn_is_user_zombie(id) && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE, true) == class && zpn_is_round_started() && is_user_connected(id))
+	if(!zpn_is_user_zombie_special(id) && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE, true) == class && zpn_is_round_started() && is_user_connected(id))
 	{
 		create_bat(id)
 		set_task(random_float(10.0, 30.0), "force_bot_skill", id)
@@ -234,8 +236,6 @@ public bat_think(const ent)
 	new Float:origin[3]; get_entvar(ent, var_origin, origin); create_explosion(origin)
 	rg_remove_entity(ent)
 }
-
-bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE) == class && zpn_is_user_zombie(id) && is_user_alive(id));
 
 del_bat(ent)
 {
