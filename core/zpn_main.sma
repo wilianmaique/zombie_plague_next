@@ -80,6 +80,7 @@ enum _:ePropClasses
 	bool:CLASS_PROP_UPDATE_HITBOX,
 	CLASS_PROP_BLOOD_COLOR,
 	bool:CLASS_PROP_SILENT_FOOTSTEPS,
+	CLASS_PROP_MODEL_INDEX,
 }
 
 enum _:ePropGameModes
@@ -157,7 +158,7 @@ new xDataClassCount, xDataGameModeCount, xDataItemCount, xFirstClass[2], xClassC
 new Array:aDataClass, Array:aDataGameMode, Array:aDataItem, Array:aIndexClassesZombies, Array:aIndexClassesHumans
 new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
 
-new xMsgScoreAttrib, xFwSpawn_Pre
+new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
 new xCvars[eCvars], xSettingsVars[eSettingsConfigs], xMsgSync[eSyncHuds], xUserData[33][eUserData]
 new xDataGetGameRule[eGameRules]
 
@@ -1043,6 +1044,8 @@ public plugin_precache()
 	new i
 	for(i = 0; i < sizeof(CS_SOUNDS); i++) engfunc(EngFunc_PrecacheSound, CS_SOUNDS[i])
 
+	defaultIndexPlayer = precache_model("models/player.mdl")
+
 	aDataClass = ArrayCreate(ePropClasses, 0)
 	aDataGameMode = ArrayCreate(ePropGameModes, 0)
 	aDataItem = ArrayCreate(ePropItems, 0)
@@ -1693,7 +1696,7 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 			get_string(arg_value, xDataGetClass[CLASS_PROP_MODEL], charsmax(xDataGetClass[CLASS_PROP_MODEL]))
 
 			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_MODEL]))
-				precache_player_model(xDataGetClass[CLASS_PROP_MODEL])
+				xDataGetClass[CLASS_PROP_MODEL_INDEX] = precache_player_model(xDataGetClass[CLASS_PROP_MODEL])
 		}
 		case CLASS_PROP_REGISTER_MODEL_VIEW:
 		{
@@ -1783,12 +1786,28 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	rg_drop_items_by_slot(this, GRENADE_SLOT)
 	rg_give_item(this, "weapon_knife")
 
-	if(xDataGetClass[CLASS_PROP_BLOOD_COLOR] != -1) set_member(this, m_bloodColor, xDataGetClass[CLASS_PROP_BLOOD_COLOR])
+	if(xDataGetClass[CLASS_PROP_BLOOD_COLOR] != -1)
+	{
+		new color = clamp(xDataGetClass[CLASS_PROP_BLOOD_COLOR], 0, 255)
+		set_member(this, m_bloodColor, color)
+	}
+
 	if(xDataGetClass[CLASS_PROP_BODY] != -1) set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
 	if(xDataGetClass[CLASS_PROP_SKIN] != -1) set_entvar(this, var_skin, xDataGetClass[CLASS_PROP_SKIN])
 
 	rg_set_user_team(this, TEAM_TERRORIST)
 	rg_set_user_model(this, xDataGetClass[CLASS_PROP_MODEL], xDataGetClass[CLASS_PROP_UPDATE_HITBOX])
+
+	if(xDataGetClass[CLASS_PROP_UPDATE_HITBOX])
+	{
+		set_member(this, m_modelIndexPlayer, xDataGetClass[CLASS_PROP_MODEL_INDEX])
+		set_entvar(this, var_modelindex, xDataGetClass[CLASS_PROP_MODEL_INDEX])
+	}
+	else
+	{
+		set_member(this, m_modelIndexPlayer, defaultIndexPlayer)
+		set_entvar(this, var_modelindex, defaultIndexPlayer)
+	}
 
 	set_entvar(this, var_health, xDataGetClass[CLASS_PROP_HEALTH])
 	set_entvar(this, var_max_health, xDataGetClass[CLASS_PROP_HEALTH])
@@ -1837,12 +1856,29 @@ public set_user_human(this)
 		copy(model, charsmax(model), xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
 	else copy(model, charsmax(model), xDataGetClass[CLASS_PROP_MODEL])
 
+	if(xDataGetClass[CLASS_PROP_BLOOD_COLOR] != -1)
+	{
+		new color = clamp(xDataGetClass[CLASS_PROP_BLOOD_COLOR], 0, 255)
+		set_member(this, m_bloodColor, color)
+	}
+	
 	if(xDataGetClass[CLASS_PROP_BODY] != -1) set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
 	if(xDataGetClass[CLASS_PROP_SKIN] != -1) set_entvar(this, var_skin, xDataGetClass[CLASS_PROP_SKIN])
 
 	rg_set_user_team(this, TEAM_CT)
 	rg_set_user_model(this, model, xDataGetClass[CLASS_PROP_UPDATE_HITBOX])
 	rg_set_user_footsteps(this, xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS])
+
+	if(xDataGetClass[CLASS_PROP_UPDATE_HITBOX])
+	{
+		set_member(this, m_modelIndexPlayer, xDataGetClass[CLASS_PROP_MODEL_INDEX])
+		set_entvar(this, var_modelindex, xDataGetClass[CLASS_PROP_MODEL_INDEX])
+	}
+	else
+	{
+		set_member(this, m_modelIndexPlayer, defaultIndexPlayer)
+		set_entvar(this, var_modelindex, defaultIndexPlayer)
+	}
 	
 	new armor = 0
 
