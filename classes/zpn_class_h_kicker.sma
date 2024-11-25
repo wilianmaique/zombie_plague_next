@@ -206,7 +206,7 @@ public reset_kick(id)
 {
 	if(is_user_connected(id))
 	{
-		deploy_weapon(id)
+		zpn_send_weapon_deploy(id)
 		kicking[id] = false
 	}
 }
@@ -221,12 +221,6 @@ public plugin_precache()
 
 	for(new i = 0; i < sizeof(kick_hit); i++)
 		precache_sound(kick_hit[i])
-}
-
-deploy_weapon(const this)
-{
-	new activeItem = get_member(this, m_pActiveItem)
-	if(!is_nullent(activeItem)) ExecuteHamB(Ham_Item_Deploy, activeItem)
 }
 
 speed_vector(const Float:origin1[3], const Float:origin2[3], Float:speed, Float:new_velocity[3])

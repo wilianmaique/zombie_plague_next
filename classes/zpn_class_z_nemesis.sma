@@ -23,6 +23,7 @@ public plugin_precache()
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_HEALTH, 10000.0)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_GRAVITY, 0.5)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_KNOCKBACK, 1.0)
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_SILENT_FOOTSTEPS, true)
 }
 
 public zpn_user_infect_attempt(const this, const infector, const class_id)

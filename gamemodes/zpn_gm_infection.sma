@@ -4,8 +4,6 @@
 #include <zombie_plague_next_const>
 
 new gamemode, synchud
-new const GAMEMODE_NAME[] = "Infection"
-new const GAMEMODE_NOTICE[] = "Infection Has Started!"
 
 public plugin_init()
 {
@@ -16,10 +14,10 @@ public plugin_init()
 public plugin_precache()
 {
 	gamemode = zpn_gamemode_init()
-	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_NAME, GAMEMODE_NAME)
+	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_NAME, "Infection")
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_FIND_NAME, "gm_infection")
-	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_NOTICE, GAMEMODE_NOTICE)
-	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_HUD_COLOR, { 255, 0, 255 })
+	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_NOTICE, "Infection Has Started!")
+	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_HUD_COLOR, "#ffffff")
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_CHANCE, 20)
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_MIN_PLAYERS, 1)
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_ROUND_TIME, 5.0)
@@ -34,10 +32,6 @@ public zpn_round_started_post(const game_id)
 		return
 
 	new id = random_player()
-
-	if(id == -1)
-		return
-	
 	zpn_set_user_zombie(id, 0, true)
 
 	set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 200, 50, 100 })

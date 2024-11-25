@@ -1,3 +1,6 @@
+#pragma compress 1
+#pragma dynamic 65536
+
 #include <amxmodx>
 #include <amxmisc>
 #include <cstrike>
@@ -63,23 +66,28 @@ enum _:ePropClasses
 	CLASS_PROP_MODEL[64],
 	CLASS_PROP_MODEL_VIEW[64],
 	CLASS_PROP_BODY,
+	CLASS_PROP_SKIN,
 	Float:CLASS_PROP_HEALTH,
 	Float:CLASS_PROP_ARMOR,
 	Float:CLASS_PROP_SPEED,
 	Float:CLASS_PROP_GRAVITY,
 	Float:CLASS_PROP_KNOCKBACK,
 	CLASS_PROP_CLAW_WEAPONLIST[64],
-	CLASS_PROP_SKIN,
 	CLASS_PROP_FIND_NAME[32],
 	CLASS_PROP_NV_COLOR[9],
-	bool:CLASS_PROP_HIDE_MENU
+	CLASS_PROP_NV_COLOR_CONVERTED[3],
+	bool:CLASS_PROP_HIDE_MENU,
+	bool:CLASS_PROP_UPDATE_HITBOX,
+	CLASS_PROP_BLOOD_COLOR,
+	bool:CLASS_PROP_SILENT_FOOTSTEPS,
 }
 
 enum _:ePropGameModes
 {
 	GAMEMODE_PROP_NAME[32],
 	GAMEMODE_PROP_NOTICE[64],
-	GAMEMODE_PROP_HUD_COLOR[3],
+	GAMEMODE_PROP_HUD_COLOR[9],
+	GAMEMODE_PROP_HUD_COLOR_CONVERTED[3],
 	GAMEMODE_PROP_CHANCE,
 	GAMEMODE_PROP_MIN_PLAYERS,
 	Float:GAMEMODE_PROP_ROUND_TIME,
@@ -96,6 +104,7 @@ enum _:ePropItems
 	eItemTeams:ITEM_PROP_TEAM,
 	ITEM_PROP_LIMIT_PLAYER_PER_ROUND,
 	ITEM_PROP_LIMIT_MAX_PER_ROUND,
+	ITEM_PROP_LIMIT_PER_MAP,
 	ITEM_PROP_MIN_ZOMBIES,
 	bool:ITEM_PROP_ALLOW_BUY_SPECIAL_MODS,
 	ITEM_PROP_FLAG,
@@ -144,7 +153,7 @@ enum _:eSyncHuds
 new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "player/bhit_helmet-1.wav" };
 
 
-new xDataClassCount, xDataGameModeCount, xDataItemCount, xFirstClass[2], xClassCount[2]
+new xDataClassCount, xDataGameModeCount, xDataItemCount, xFirstClass[2], xClassCount[2], xItemCount[2]
 new Array:aDataClass, Array:aDataGameMode, Array:aDataItem, Array:aIndexClassesZombies, Array:aIndexClassesHumans
 new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
 
@@ -200,6 +209,9 @@ public plugin_init()
 	xClassCount[0] = count_class(CLASS_TEAM_TYPE_ZOMBIE)
 	xClassCount[1] = count_class(CLASS_TEAM_TYPE_HUMAN)
 
+	xItemCount[0] = count_item(ITEM_TEAM_ZOMBIE)
+	xItemCount[1] = count_item(ITEM_TEAM_HUMAN)
+
 	register_clcmd("chooseteam", "clcmd_changeteam")
 	register_clcmd("jointeam", "clcmd_changeteam")
 
@@ -209,7 +221,7 @@ public plugin_init()
 	if(xSettingsVars[CONFIG_DEBUG_ON])
 	{
 		server_print("^n")
-		server_print("Classes loaded:")
+		server_print("Classes loaded: %d", ArraySize(aDataClass))
 		new i, text[128]
 		
 		new xDataGetClass[ePropClasses]
@@ -228,7 +240,7 @@ public plugin_init()
 		}
 
 		server_print("^n")
-		server_print("GameModes loaded:")
+		server_print("GameModes loaded: %d", ArraySize(aDataGameMode))
 		
 		new xDataGetGameMode[ePropGameModes]
 		for(i = 0; i < ArraySize(aDataGameMode); i++)
@@ -246,7 +258,7 @@ public plugin_init()
 		}
 
 		server_print("^n")
-		server_print("Items loaded:")
+		server_print("Items loaded: %d", ArraySize(aDataItem))
 
 		new xDataGetItem[ePropItems]
 		for(i = 0; i < ArraySize(aDataItem); i++)
@@ -258,26 +270,13 @@ public plugin_init()
 			add(text, charsmax(text), fmt("Item: %s | ", xDataGetItem[ITEM_PROP_NAME]))
 			add(text, charsmax(text), fmt("Cost: %d | ", xDataGetItem[ITEM_PROP_COST]))
 			add(text, charsmax(text), fmt("Team: %s", xDataGetItem[ITEM_PROP_TEAM] == ITEM_TEAM_ZOMBIE ? "z" : "h"))
-
 			server_print(text)
 		}
 
 		server_print("^n^n")
 	}
 
-	new xDataGetClass[ePropClasses]
-	for(new i = 0; i < ArraySize(aDataClass); i++)
-	{
-		ArrayGetArray(aDataClass, i, xDataGetClass)
-
-		if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE)
-			ArrayPushCell(aIndexClassesZombies, i)
-		
-		if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_HUMAN)
-			ArrayPushCell(aIndexClassesHumans, i)
-	}
-
-	return true
+	get_classes_index()
 }
 
 public HandleMenu_ChooseAppearance_Post(const this, const slot)
@@ -422,7 +421,6 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 		return HC_CONTINUE
 
 	new classTeam = xUserData[this][UD_IS_ZOMBIE] ? xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
-
 	new xDataGetClass[ePropClasses]
 	ArrayGetArray(aDataClass, classTeam, xDataGetClass)
 
@@ -540,17 +538,24 @@ public _show_menu_game(id, menu, item)
 
 public buy_items(id)
 {
-	new xMenu = menu_create(fmt("%s \yLoja de Itens", xSettingsVars[CONFIG_PREFIX_MENUS]), "_buy_items")
-
-	//new userFlags = get_user_flags(id)
 	new xDataGetItem[ePropItems]
+	new eItemTeams:itemTeam = xUserData[id][UD_IS_ZOMBIE] ? ITEM_TEAM_ZOMBIE : ITEM_TEAM_HUMAN
+	new countCheck = itemTeam == ITEM_TEAM_ZOMBIE ? xItemCount[0] : xItemCount[1]
+
+	new xMenu = menu_create(fmt("%s \yLoja de Itens", xSettingsVars[CONFIG_PREFIX_MENUS]), "_buy_items")
+	
+	if(countCheck <= 0)
+	{
+		client_print_color(id, print_team_red, "%s ^3Nenhum item encontrado.", xSettingsVars[CONFIG_PREFIX_CHAT])
+		return
+	}
 
 	for(new i = 0; i < ArraySize(aDataItem); i++)
 	{
 		ArrayGetArray(aDataItem, i, xDataGetItem)
-		menu_additem(xMenu, fmt("\w%s \y(\d%s\y)", xDataGetItem[ITEM_PROP_NAME], format_number_point(xDataGetItem[ITEM_PROP_COST])), fmt("%d", i))
 
-		//if(xDataGetItem[CLASS_PROP_TYPE] == class_type && !xDataGetClass[CLASS_PROP_HIDE_MENU])
+		if(xDataGetItem[ITEM_PROP_TEAM] == itemTeam)
+			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)", xDataGetItem[ITEM_PROP_NAME], format_number_point(xDataGetItem[ITEM_PROP_COST])), fmt("%d", i))
 	}
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
@@ -625,8 +630,8 @@ public _select_class_type(id, menu, item)
 	}
 
 	new xMenu = menu_create(fmt("%s \ySelecionar classe: %s", xSettingsVars[CONFIG_PREFIX_MENUS], class_type == CLASS_TEAM_TYPE_ZOMBIE ? "\rZombie" : "\yHumano"), "_select_class")
-
 	new xDataGetClass[ePropClasses]
+
 	for(new i = 0; i < ArraySize(aDataClass); i++)
 	{
 		ArrayGetArray(aDataClass, i, xDataGetClass)
@@ -656,7 +661,6 @@ public _select_class(id, menu, item)
 	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
 
 	new class_id = str_to_num(info)
-
 	new xDataGetClass[ePropClasses]
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
@@ -762,15 +766,13 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 	new id = get_member(ent, m_pPlayer)
 	
 	new class_id
-	// if(xUserData[id][UD_IS_ZOMBIE])
-	// 	class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
-	// else class_id = xUserData[id][UD_CURRENT_TEMP_HUMAN_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_HUMAN_CLASS] : xUserData[id][UD_CURRENT_SELECTED_HUMAN_CLASS]
+	new xDataGetClass[ePropClasses]
 
-	if(xUserData[id][UD_IS_ZOMBIE])
+	new activeItem = get_member(id, m_pActiveItem)
+
+	if(xUserData[id][UD_IS_ZOMBIE] && get_member(activeItem, m_iId) == CSW_KNIFE)
 	{
 		class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
-
-		new xDataGetClass[ePropClasses]
 		ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
 		SetHookChainArg(2, ATYPE_STRING, xDataGetClass[CLASS_PROP_MODEL_VIEW])
@@ -1023,7 +1025,6 @@ public xInitRound()
 	new xDataGetGameMode[ePropGameModes]
 	ArrayGetArray(aDataGameMode, gm, xDataGetGameMode)
 
-	// se n tiver jogadores, sempre usar gamemode 0 (o primeiro da lista)
 	if(xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] < get_num_alive())
 		gm = 0
 
@@ -1031,7 +1032,7 @@ public xInitRound()
 	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gm
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
 
-	set_hudmessage(0, 255, 255, -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
+	set_hudmessage(xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED][0], xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED][1], xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED][2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
 	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", xDataGetGameMode[GAMEMODE_PROP_NOTICE])
 
 	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gm)
@@ -1081,8 +1082,8 @@ public plugin_precache()
 
 	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", xSettingsVars[CONFIG_DEBUG_ON]))
 	{
-		xSettingsVars[CONFIG_DEBUG_ON] = 1
-		json_setting_set_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", 1)
+		xSettingsVars[CONFIG_DEBUG_ON] = 0
+		json_setting_set_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", 0)
 	}
 
 	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Zombie Escape", xSettingsVars[CONFIG_ZOMBIE_ESCAPE_ON]))
@@ -1249,6 +1250,18 @@ public plugin_natives()
 	register_native("zpn_set_fw_param_int", "_zpn_set_fw_param_int")
 	register_native("zpn_is_round_started", "_zpn_is_round_started")
 	register_native("zpn_get_user_selected_class", "_zpn_get_user_selected_class")
+	register_native("zpn_send_weapon_deploy", "_zpn_send_weapon_deploy")
+}
+
+public _zpn_send_weapon_deploy(plugin_id, param_nums)
+{
+	if(param_nums != 1)
+		return false
+
+	new id = get_param(1)
+	deploy_weapon(id)
+
+	return true
 }
 
 public _zpn_gamemode_current(plugin_id, param_nums)
@@ -1269,8 +1282,8 @@ public _zpn_class_find(plugin_id, param_nums)
 	static findName[32]; findName[0] = EOS;
 	get_string(1, findName, charsmax(findName))
 
-	new xDataGetClass[ePropClasses]
 	new find = -1
+	new xDataGetClass[ePropClasses]
 
 	for(new i = 0; i < ArraySize(aDataClass); i++)
 	{
@@ -1297,8 +1310,8 @@ public _zpn_gamemode_find(plugin_id, param_nums)
 	static findName[32]; findName[0] = EOS;
 	get_string(1, findName, charsmax(findName))
 
-	new xDataGetGameMode[ePropGameModes]
 	new find = -1
+	new xDataGetGameMode[ePropGameModes]
 
 	for(new i = 0; i < ArraySize(aDataGameMode); i++)
 	{
@@ -1349,12 +1362,11 @@ public _zpn_print_color(plugin_id, param_nums)
 	new sender = get_param(2)
 
 	static msg[192]; msg[0] = EOS;
-	new i = formatex(msg, charsmax(msg), "%s ", xSettingsVars[CONFIG_PREFIX_CHAT])
 
-	if(param_nums == 3) get_string(3, msg[i], charsmax(msg) - i)
-	else vdformat(msg[i], charsmax(msg) - i, 3, 4)
+	if(param_nums == 3) get_string(3, msg, charsmax(msg))
+	else vdformat(msg, charsmax(msg), 3, 4)
 
-	return client_print_color(id, sender, msg)
+	return client_print_color(id, sender, "%s %s", xSettingsVars[CONFIG_PREFIX_CHAT], msg)
 }
 
 public bool:_zpn_is_user_zombie(plugin_id, param_nums)
@@ -1380,9 +1392,8 @@ public bool:_zpn_is_user_zombie_special(plugin_id, param_nums)
 	if(!is_user_connected(id))
 		return false
 
-	new xDataGetClass[ePropClasses], class_id
-	class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
-
+	new class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
+	new xDataGetClass[ePropClasses]
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
 	return (xUserData[id][UD_IS_ZOMBIE] && xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
@@ -1418,17 +1429,18 @@ public bool:_zpn_set_user_zombie(plugin_id, param_nums)
 
 public _zpn_item_init(plugin_id, param_nums)
 {
-	new xDataGetItem[ePropItems]
 	new index = (++xDataItemCount - 1)
+	new xDataGetItem[ePropItems]
 
 	xDataGetItem[ITEM_PROP_NAME] = EOS
 	xDataGetItem[ITEM_PROP_COST] = 0
 	xDataGetItem[ITEM_PROP_TEAM] = ITEM_TEAM_HUMAN
 	xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = 0
 	xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND] = 0
+	xDataGetItem[ITEM_PROP_LIMIT_PER_MAP] = 0
 	xDataGetItem[ITEM_PROP_MIN_ZOMBIES] = 0
 	xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS] = false
-	xDataGetItem[ITEM_PROP_FLAG] = ADMIN_USER
+	xDataGetItem[ITEM_PROP_FLAG] = ADMIN_ALL
 
 	ArrayPushArray(aDataItem, xDataGetItem)
 
@@ -1452,9 +1464,10 @@ public any:_zpn_item_get_prop(plugin_id, param_nums)
 	{
 		case ITEM_PROP_REGISTER_NAME: set_string(arg_value, xDataGetItem[ITEM_PROP_NAME], get_param_byref(arg_len))
 		case ITEM_PROP_REGISTER_COST: return xDataGetItem[ITEM_PROP_COST]
-		case ITEM_PROP_REGISTER_TEAM: return xDataGetItem[ITEM_PROP_REGISTER_TEAM]
+		case ITEM_PROP_REGISTER_TEAM: return xDataGetItem[ITEM_PROP_TEAM]
 		case ITEM_PROP_REGISTER_LIMIT_PLAYER_PER_ROUND: return xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND]
 		case ITEM_PROP_REGISTER_LIMIT_MAX_PER_ROUND: return xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND]
+		case ITEM_PROP_REGISTER_LIMIT_PER_MAP: return xDataGetItem[ITEM_PROP_LIMIT_PER_MAP]
 		case ITEM_PROP_REGISTER_MIN_ZOMBIES: return xDataGetItem[ITEM_PROP_MIN_ZOMBIES]
 		case ITEM_PROP_REGISTER_ALLOW_BUY_SPECIAL_MODS: return xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS]
 		case ITEM_PROP_REGISTER_FLAG: return xDataGetItem[ITEM_PROP_FLAG]
@@ -1481,9 +1494,10 @@ public any:_zpn_item_set_prop(plugin_id, param_nums)
 	{
 		case ITEM_PROP_REGISTER_NAME: get_string(arg_value, xDataGetItem[ITEM_PROP_NAME], charsmax(xDataGetItem[ITEM_PROP_NAME]))
 		case ITEM_PROP_REGISTER_COST: xDataGetItem[ITEM_PROP_COST] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_TEAM: xDataGetItem[ITEM_PROP_REGISTER_TEAM] = eItemTeams:get_param_byref(arg_value)
+		case ITEM_PROP_REGISTER_TEAM: xDataGetItem[ITEM_PROP_TEAM] = eItemTeams:get_param_byref(arg_value)
 		case ITEM_PROP_REGISTER_LIMIT_PLAYER_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = get_param_byref(arg_value)
 		case ITEM_PROP_REGISTER_LIMIT_MAX_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND] = get_param_byref(arg_value)
+		case ITEM_PROP_REGISTER_LIMIT_PER_MAP: xDataGetItem[ITEM_PROP_LIMIT_PER_MAP] = get_param_byref(arg_value)
 		case ITEM_PROP_REGISTER_MIN_ZOMBIES: xDataGetItem[ITEM_PROP_MIN_ZOMBIES] = get_param_byref(arg_value)
 		case ITEM_PROP_REGISTER_ALLOW_BUY_SPECIAL_MODS: xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS] = bool:get_param_byref(arg_value)
 		case ITEM_PROP_REGISTER_FLAG: xDataGetItem[ITEM_PROP_FLAG] = get_param_byref(arg_value)
@@ -1502,7 +1516,8 @@ public _zpn_gamemode_init(plugin_id, param_nums)
 
 	xDataGetGameMode[GAMEMODE_PROP_NAME] = EOS
 	xDataGetGameMode[GAMEMODE_PROP_NOTICE] = EOS
-	xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR] = { 255, 255, 255 }
+	xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR] = EOS
+	xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED] = { 255, 255, 255 }
 	xDataGetGameMode[GAMEMODE_PROP_CHANCE] = -1
 	xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] = 1
 	xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = 2.0
@@ -1564,7 +1579,13 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 	{
 		case GAMEMODE_PROP_REGISTER_NAME: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NAME], charsmax(xDataGetGameMode[GAMEMODE_PROP_NAME]))
 		case GAMEMODE_PROP_REGISTER_NOTICE: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NOTICE], charsmax(xDataGetGameMode[GAMEMODE_PROP_NOTICE]))
-		case GAMEMODE_PROP_REGISTER_HUD_COLOR: xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR] = get_param_byref(arg_value)
+		case GAMEMODE_PROP_REGISTER_HUD_COLOR:
+		{
+			get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR], charsmax(xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR]))
+
+			if(!zpn_is_null_string(xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR]))
+				parse_hex_color(xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR], xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED])
+		}
 		case GAMEMODE_PROP_REGISTER_CHANCE: xDataGetGameMode[GAMEMODE_PROP_CHANCE] = get_param_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_MIN_PLAYERS: xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] = get_param_byref(arg_value)
 		case GAMEMODE_PROP_REGISTER_ROUND_TIME: xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = get_float_byref(arg_value)
@@ -1599,7 +1620,10 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST] = EOS
 	xDataGetClass[CLASS_PROP_FIND_NAME] = EOS
 	xDataGetClass[CLASS_PROP_NV_COLOR] = EOS
+	xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED] = { 255, 255, 255 }
 	xDataGetClass[CLASS_PROP_HIDE_MENU] = false
+	xDataGetClass[CLASS_PROP_UPDATE_HITBOX] = false
+	xDataGetClass[CLASS_PROP_BLOOD_COLOR] = -1
 
 	ArrayPushArray(aDataClass, xDataGetClass)
 
@@ -1637,6 +1661,9 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_FIND_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], get_param_byref(arg_len))
 		case CLASS_PROP_REGISTER_NV_COLOR: set_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], get_param_byref(arg_len))
 		case CLASS_PROP_REGISTER_HIDE_MENU: return bool:xDataGetClass[CLASS_PROP_HIDE_MENU]
+		case CLASS_PROP_REGISTER_UPDATE_HITBOX: return bool:xDataGetClass[CLASS_PROP_UPDATE_HITBOX]
+		case CLASS_PROP_REGISTER_BLOOD_COLOR: return xDataGetClass[CLASS_PROP_BLOOD_COLOR]
+		case CLASS_PROP_REGISTER_SILENT_FOOTSTEPS: return bool:xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS]
 		default: return false
 	}
 
@@ -1684,8 +1711,17 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_CLAW_WEAPONLIST: get_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], charsmax(xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST]))
 		case CLASS_PROP_REGISTER_SKIN: xDataGetClass[CLASS_PROP_SKIN] = get_param_byref(arg_value)
 		case CLASS_PROP_REGISTER_FIND_NAME: get_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], charsmax(xDataGetClass[CLASS_PROP_FIND_NAME]))
-		case CLASS_PROP_REGISTER_NV_COLOR: get_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], charsmax(xDataGetClass[CLASS_PROP_NV_COLOR]))
+		case CLASS_PROP_REGISTER_NV_COLOR:
+		{
+			get_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], charsmax(xDataGetClass[CLASS_PROP_NV_COLOR]))
+
+			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_NV_COLOR]))
+				parse_hex_color(xDataGetClass[CLASS_PROP_NV_COLOR], xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED])
+		}
 		case CLASS_PROP_REGISTER_HIDE_MENU: xDataGetClass[CLASS_PROP_HIDE_MENU] = bool:get_param_byref(arg_value)
+		case CLASS_PROP_REGISTER_UPDATE_HITBOX: xDataGetClass[CLASS_PROP_UPDATE_HITBOX] = bool:get_param_byref(arg_value)
+		case CLASS_PROP_REGISTER_BLOOD_COLOR: xDataGetClass[CLASS_PROP_BLOOD_COLOR] = get_param_byref(arg_value)
+		case CLASS_PROP_REGISTER_SILENT_FOOTSTEPS: xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS] = bool:get_param_byref(arg_value)
 		default: return false
 	}
 
@@ -1746,20 +1782,20 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	rg_drop_items_by_slot(this, PISTOL_SLOT)
 	rg_drop_items_by_slot(this, GRENADE_SLOT)
 	rg_give_item(this, "weapon_knife")
+
+	if(xDataGetClass[CLASS_PROP_BLOOD_COLOR] != -1) set_member(this, m_bloodColor, xDataGetClass[CLASS_PROP_BLOOD_COLOR])
+	if(xDataGetClass[CLASS_PROP_BODY] != -1) set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
+	if(xDataGetClass[CLASS_PROP_SKIN] != -1) set_entvar(this, var_skin, xDataGetClass[CLASS_PROP_SKIN])
+
 	rg_set_user_team(this, TEAM_TERRORIST)
-	rg_set_user_model(this, xDataGetClass[CLASS_PROP_MODEL], true)
-
-	if(xDataGetClass[CLASS_PROP_BODY] != -1)
-		set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
-
-	if(xDataGetClass[CLASS_PROP_SKIN] != -1)
-		set_entvar(this, var_skin, xDataGetClass[CLASS_PROP_SKIN])
+	rg_set_user_model(this, xDataGetClass[CLASS_PROP_MODEL], xDataGetClass[CLASS_PROP_UPDATE_HITBOX])
 
 	set_entvar(this, var_health, xDataGetClass[CLASS_PROP_HEALTH])
 	set_entvar(this, var_max_health, xDataGetClass[CLASS_PROP_HEALTH])
 	set_entvar(this, var_gravity, xDataGetClass[CLASS_PROP_GRAVITY])
 	set_entvar(this, var_armorvalue, floatround(xDataGetClass[CLASS_PROP_ARMOR]))
 	set_entvar(this, var_maxspeed, xDataGetClass[CLASS_PROP_SPEED])
+	rg_set_user_footsteps(this, xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS])
 	deploy_weapon(this)
 
 	make_deathmsg(infector, this, 0, "teammate")
@@ -1801,15 +1837,13 @@ public set_user_human(this)
 		copy(model, charsmax(model), xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
 	else copy(model, charsmax(model), xDataGetClass[CLASS_PROP_MODEL])
 
-	if(xDataGetClass[CLASS_PROP_BODY] != -1)
-		set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
+	if(xDataGetClass[CLASS_PROP_BODY] != -1) set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
+	if(xDataGetClass[CLASS_PROP_SKIN] != -1) set_entvar(this, var_skin, xDataGetClass[CLASS_PROP_SKIN])
 
-	if(xDataGetClass[CLASS_PROP_SKIN] != -1)
-		set_entvar(this, var_skin, xDataGetClass[CLASS_PROP_SKIN])
-
-	rg_set_user_model(this, model, true)
 	rg_set_user_team(this, TEAM_CT)
-
+	rg_set_user_model(this, model, xDataGetClass[CLASS_PROP_UPDATE_HITBOX])
+	rg_set_user_footsteps(this, xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS])
+	
 	new armor = 0
 
 	if(xDataGetClass[CLASS_PROP_ARMOR] > 0)
@@ -1824,6 +1858,10 @@ public set_user_human(this)
 public set_user_nv(id)
 {
 	static Float:o[3]; get_entvar(id, var_origin, o)
+	static rgb[3]
+	
+	rgb[0] = 0; rgb[1] = 0; rgb[2] = 0
+	get_user_nv_color(id, rgb)
 
 	message_begin(MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, .player = id)
 	write_byte(TE_DLIGHT)
@@ -1831,12 +1869,32 @@ public set_user_nv(id)
 	write_coord_f(o[1])
 	write_coord_f(o[2])
 	write_byte(40) // radius
-	write_byte(xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][0] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][0])
-	write_byte(xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][1] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][1])
-	write_byte(xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][2] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][2])
+	write_byte(rgb[0])
+	write_byte(rgb[1])
+	write_byte(rgb[2])
 	write_byte(1) // life
 	write_byte(0) // decay
 	message_end()
+}
+
+get_user_nv_color(id, outRgb[3])
+{
+	static class_id; class_id = xUserData[id][UD_IS_ZOMBIE] ? xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_HUMAN_CLASS]
+	static xDataGetClass[ePropClasses]
+	ArrayGetArray(aDataClass, class_id, xDataGetClass)
+
+	if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_NV_COLOR]))
+	{
+		outRgb[0] = xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED][0]
+		outRgb[1] = xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED][1]
+		outRgb[2] = xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED][2]
+	}
+	else
+	{
+		outRgb[0] = xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][0] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][0]
+		outRgb[1] = xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][1] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][1]
+		outRgb[2] = xUserData[id][UD_IS_ZOMBIE] ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][2] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][2]
+	}
 }
 
 get_user_speed(const this)
@@ -1868,7 +1926,7 @@ get_class_name(const this)
 	if(xUserData[this][UD_IS_ZOMBIE])
 		class_id = xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
 	else class_id = xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] != -1 ? xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] : xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
-
+	
 	new xDataGetClass[ePropClasses]
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
@@ -1881,8 +1939,8 @@ get_class_name(const this)
 
 get_first_class(eClassTypes:class_type)
 {
-	new xDataGetClass[ePropClasses]
 	new class_id = 0
+	new xDataGetClass[ePropClasses]
 
 	for(new i = 0; i < ArraySize(aDataClass); i++)
 	{
@@ -1975,10 +2033,24 @@ check_game()
 		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
 }
 
+count_item(eItemTeams:item_team)
+{
+	new count = 0
+	new xDataGetItem[ePropItems]
+
+	for(new i = 0; i < ArraySize(aDataItem); i++)
+	{
+		ArrayGetArray(aDataItem, i, xDataGetItem)
+		if(xDataGetItem[ITEM_PROP_TEAM] == item_team) count ++;
+	}
+
+	return count
+}
+
 count_class(eClassTypes:class_type)
 {
-	new xDataGetClass[ePropClasses]
 	new count = 0
+	new xDataGetClass[ePropClasses]
 
 	for(new i = 0; i < ArraySize(aDataClass); i++)
 	{
@@ -2010,14 +2082,18 @@ random_gamemode()
 	new xDataGetGameMode[ePropGameModes]
 
 	for(i = 0; i < ArraySize(aDataGameMode); i++)
-		ArrayGetArray(aDataGameMode, i, xDataGetGameMode), totalChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE];
+	{
+		ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
+		totalChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE]
+	}
 
 	new randomNumber = random_num(1, totalChance)
 	new accumulatedChance = 0
 
 	for(i = 0; i < ArraySize(aDataGameMode); i++)
 	{
-		ArrayGetArray(aDataGameMode, i, xDataGetGameMode), accumulatedChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE];
+		ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
+		accumulatedChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE]
 
 		if(randomNumber <= accumulatedChance)
 			gm = i
@@ -2029,6 +2105,20 @@ random_gamemode()
 	return gm
 }
 
+get_classes_index()
+{
+	new xDataGetClass[ePropClasses]
+	for(new i = 0; i < ArraySize(aDataClass); i++)
+	{
+		ArrayGetArray(aDataClass, i, xDataGetClass)
+
+		if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE)
+			ArrayPushCell(aIndexClassesZombies, i)
+		else if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_HUMAN)
+			ArrayPushCell(aIndexClassesHumans, i)
+	}
+}
+
 update_users_next_class()
 {
 	for(new id = 1; id <= MaxClients; id++)
@@ -2037,8 +2127,8 @@ update_users_next_class()
 			continue
 
 		// estou com duvida nisso, por enquanto deixa comentado!
-		//xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] = -1
-		//xUserData[id][UD_CURRENT_TEMP_HUMAN_CLASS] = -1
+		xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] = -1
+		xUserData[id][UD_CURRENT_TEMP_HUMAN_CLASS] = -1
 
 		if(xUserData[id][UD_NEXT_ZOMBIE_CLASS] != -1)
 		{

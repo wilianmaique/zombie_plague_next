@@ -139,13 +139,18 @@ native zpn_item_set_prop(const item_id, ePropItemRegisters:prop, any:...);
 */
 native bool:zpn_set_user_zombie(const this, const attacker, bool:set_first = false);
 
-
 /*
 * Send message with prefix.
 */
-native zpn_print_color(id, sender, const msg[], any:...);
+native zpn_print_color(const id, const sender, const msg[], any:...);
 
 /*
 * Check is round started
 */
 native bool:zpn_is_round_started();
+
+
+/*
+* Send deploy weapon to user.
+*/
+native zpn_send_weapon_deploy(const this);

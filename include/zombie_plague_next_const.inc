@@ -9,12 +9,15 @@
 
 stock const PATH_SETTINGS_CONFIG[] = "zombie_plague_next/configs.json";
 stock const PATH_SETTINGS_CLASSES[] = "zombie_plague_next/classes.json";
+stock const PATH_SETTINGS_ITEMS[] = "zombie_plague_next/items.json";
+stock const PATH_SETTINGS_GAMEMODES[] = "zombie_plague_next/gamemodes.json";
 stock const SETTINGS_SECTION_CONFIG[] = "Main Config";
 
 enum
 {
 	ZPN_RETURN_CONTINUE = 333,
 	ZPN_RETURN_HANDLED,
+	ZPN_RETURN_SUPERCED
 }
 
 enum eItemTeams
@@ -38,9 +41,10 @@ enum ePropItemRegisters
 	ITEM_PROP_REGISTER_TEAM, // eItemTeams
 	ITEM_PROP_REGISTER_LIMIT_PLAYER_PER_ROUND, // int
 	ITEM_PROP_REGISTER_LIMIT_MAX_PER_ROUND, // int
+	ITEM_PROP_REGISTER_LIMIT_PER_MAP, // int
 	ITEM_PROP_REGISTER_MIN_ZOMBIES, // int
 	ITEM_PROP_REGISTER_ALLOW_BUY_SPECIAL_MODS, // bool
-	ITEM_PROP_REGISTER_FLAG, // int (flags ADMIN_RCON, ETC...)
+	ITEM_PROP_REGISTER_FLAG, // int (flags ADMIN_RCON, etc...)
 }
 
 enum ePropClassRegisters
@@ -61,6 +65,9 @@ enum ePropClassRegisters
 	CLASS_PROP_REGISTER_FIND_NAME, // string,
 	CLASS_PROP_REGISTER_NV_COLOR, // string, hex format: #ff0000
 	CLASS_PROP_REGISTER_HIDE_MENU, // bool
+	CLASS_PROP_REGISTER_UPDATE_HITBOX, // bool
+	CLASS_PROP_REGISTER_BLOOD_COLOR, // int
+	CLASS_PROP_REGISTER_SILENT_FOOTSTEPS, // bool
 }
 
 enum eGameModeDeathMatchTypes
@@ -76,7 +83,7 @@ enum ePropGameModeRegisters
 {
 	GAMEMODE_PROP_REGISTER_NAME = 0, // string
 	GAMEMODE_PROP_REGISTER_NOTICE, // string
-	GAMEMODE_PROP_REGISTER_HUD_COLOR, // array [3]
+	GAMEMODE_PROP_REGISTER_HUD_COLOR, // string, hex format: #ff0000
 	GAMEMODE_PROP_REGISTER_CHANCE, // int
 	GAMEMODE_PROP_REGISTER_MIN_PLAYERS, // int
 	GAMEMODE_PROP_REGISTER_ROUND_TIME, // float

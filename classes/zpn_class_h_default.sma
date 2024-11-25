@@ -21,4 +21,5 @@ public plugin_precache()
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_ARMOR, 15.0)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_GRAVITY, 0.5)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_KNOCKBACK, 1.0)
+	zpn_class_set_prop(class, CLASS_PROP_REGISTER_BLOOD_COLOR, 110)
 }
