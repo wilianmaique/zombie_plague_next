@@ -62,7 +62,7 @@ native zpn_class_random_class_id(eClassTypes:type);
 /*
 * Init new class, use in: plugin_precache
 */
-native zpn_class_init();
+native zpn_class_init(const name[], eClassTypes:type);
 
 /*
 * Get property info from class
@@ -120,7 +120,7 @@ native zpn_gamemode_set_prop(const gamemode_id, ePropGameModeRegisters:prop, any
 native zpn_gamemode_current();
 
 /*
-* Init new extra item
+* Init new extra item, use in plugin_precache
 */
 native zpn_item_init();
 
@@ -149,8 +149,17 @@ native zpn_print_color(const id, const sender, const msg[], any:...);
 */
 native bool:zpn_is_round_started();
 
-
 /*
 * Send deploy weapon to user.
 */
 native zpn_send_weapon_deploy(const this);
+
+/*
+* Set user frozen
+*/
+native bool:zpn_set_user_frozen(const this, const Float:time = 3.0, const bool:reset_time = false, const bool:play_sound = true);
+
+/*
+* Remove user frozen
+*/
+native bool:zpn_remove_user_frozen(const this);

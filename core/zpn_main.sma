@@ -193,7 +193,6 @@ public plugin_init()
 	RegisterHookChain(RG_HandleMenu_ChooseAppearance, "HandleMenu_ChooseAppearance_Post", true)
 
 	register_clcmd("nightvision", "clcmd_nightvision")
-	register_clcmd("say f", "ffff")
 
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
@@ -289,11 +288,6 @@ public plugin_init()
 	}
 
 	get_classes_index()
-}
-
-public ffff(id)
-{
-	set_user_frozen(id, 2.0, false)
 }
 
 public HandleMenu_ChooseAppearance_Post(const this, const slot)
@@ -775,7 +769,7 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 		xUserData[i][UD_LAST_LEAP_TIMEOUT] = get_gametime()
 		xUserData[i][UD_DMG_DEALT] = 0.0
 
-		set_task_ex(0.1, "remove_user_frozen", i + TASK_FROZEN)
+		remove_user_frozen(i + TASK_FROZEN)
 	}
 
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
@@ -1003,7 +997,7 @@ public CSGameRules_RestartRound_Post()
 		if(!is_user_connected(i))
 			continue
 
-		set_task_ex(0.1, "remove_user_frozen", i + TASK_FROZEN)
+		remove_user_frozen(i + TASK_FROZEN)
 	}
 
 	update_users_next_class()
@@ -1072,7 +1066,7 @@ public xInitRound()
 public plugin_precache()
 {
 	new i
-	for(i = 0; i < sizeof(CS_SOUNDS); i++) engfunc(EngFunc_PrecacheSound, CS_SOUNDS[i])
+	for(i = 0; i < sizeof(CS_SOUNDS); i++) precache_sound(CS_SOUNDS[i])
 
 	defaultIndexPlayer = precache_model("models/player.mdl")
 
@@ -1227,7 +1221,7 @@ public plugin_precache()
 		if(zpn_is_null_string(sound))
 			continue
 
-		if(file_exists(sound)) precache_sound(sound)
+		precache_sound(sound)
 	}
 }
 
@@ -1312,6 +1306,31 @@ public plugin_natives()
 	register_native("zpn_is_round_started", "_zpn_is_round_started")
 	register_native("zpn_get_user_selected_class", "_zpn_get_user_selected_class")
 	register_native("zpn_send_weapon_deploy", "_zpn_send_weapon_deploy")
+	register_native("zpn_set_user_frozen", "_zpn_set_user_frozen")
+	register_native("zpn_remove_user_frozen", "_zpn_remove_user_frozen")
+}
+
+public bool:_zpn_remove_user_frozen(plugin_id, param_nums)
+{
+	if(param_nums != 1)
+		return false
+
+	remove_user_frozen(get_param(1) + TASK_FROZEN)
+
+	return true
+}
+
+public bool:_zpn_set_user_frozen(plugin_id, param_nums)
+{
+	if(param_nums != 4)
+		return false
+
+	new id = get_param(1)
+	new Float:time = get_param_f(2)
+	new bool:reset_time = bool:get_param(3)
+	new bool:play_sound = bool:get_param(4)
+
+	return set_user_frozen(id, time, reset_time, play_sound)
 }
 
 public _zpn_send_weapon_deploy(plugin_id, param_nums)
@@ -2069,7 +2088,7 @@ public set_user_human(this)
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
 }
 
-public set_user_frozen(this, Float:time, bool:reset_time)
+public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 {
 	new Float:vecVelocity[3]
 	get_entvar(this, var_velocity, vecVelocity)
@@ -2088,7 +2107,17 @@ public set_user_frozen(this, Float:time, bool:reset_time)
 		remove_task(this + TASK_FROZEN)
 	
 	if(!task_exists(this + TASK_FROZEN))
+	{
+		if(play_sound)
+		{
+			new sound[64]; ArrayGetString(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS], random_num(0, ArraySize(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS]) - 1), sound, charsmax(sound))
+			emit_sound(this, CHAN_BODY, sound, 1.0, 0.5, 0, PITCH_NORM)
+		}
+
 		set_task_ex(floatclamp(time, 0.1, 60.0), "remove_user_frozen", this + TASK_FROZEN)
+	}
+
+	return true
 }
 
 public remove_user_frozen(this)
@@ -2450,4 +2479,4 @@ stock create_slug(const input[], output[], maxlen)
 	regex_free(rx_slug)
 
 	return strlen(output)
-A') : 0
+}

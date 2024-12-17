@@ -12,6 +12,10 @@ stock const PATH_SETTINGS_CLASSES[] = "zombie_plague_next/classes.json";
 stock const PATH_SETTINGS_ITEMS[] = "zombie_plague_next/items.json";
 stock const PATH_SETTINGS_GAMEMODES[] = "zombie_plague_next/gamemodes.json";
 stock const SETTINGS_SECTION_CONFIG[] = "Main Config";
+stock const SETTINGS_SECTION_CLASSES_ZOMBIE[] = "Zombies";
+stock const SETTINGS_SECTION_CLASSES_ZOMBIE_SP[] = "Zombies Special";
+stock const SETTINGS_SECTION_CLASSES_HUMAN[] = "Humans";
+stock const SETTINGS_SECTION_CLASSES_HUMAN_SP[] = "Humans Special";
 
 enum
 {
@@ -68,6 +72,8 @@ enum ePropClassRegisters
 	CLASS_PROP_REGISTER_UPDATE_HITBOX, // bool
 	CLASS_PROP_REGISTER_BLOOD_COLOR, // int
 	CLASS_PROP_REGISTER_SILENT_FOOTSTEPS, // bool
+	CLASS_PROP_REGISTER_LIMIT, // int
+	CLASS_PROP_REGISTER_LEVEL, // int
 }
 
 enum eGameModeDeathMatchTypes
