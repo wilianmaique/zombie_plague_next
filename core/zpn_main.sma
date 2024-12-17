@@ -7,6 +7,7 @@
 #include <fakemeta>
 #include <hamsandwich>
 #include <reapi>
+#include <regex>
 #include <api_json_settings>
 #include <zombie_plague_next_const>
 
@@ -14,12 +15,15 @@
 #define is_valid_player_connected(%1) (1 <= %1 <= MaxClients && is_user_connected(%1))
 #define is_valid_player(%1) (1 <= %1 <= MaxClients)
 
+const MAX_LEVEL = 10000
+
 enum
 {
 	TASK_COUNTDOWN = 1515,
 	TASK_HUD_PLAYER_INFO,
 	TASK_RESPAWN,
 	TASK_NV,
+	TASK_FROZEN,
 }
 
 enum _:eCvars
@@ -62,6 +66,7 @@ enum _:ePropClasses
 {
 	eClassTypes:CLASS_PROP_TYPE,
 	CLASS_PROP_NAME[64],
+	CLASS_PROP_CUSTOM_NAME[64],
 	CLASS_PROP_INFO[64],
 	CLASS_PROP_MODEL[64],
 	CLASS_PROP_MODEL_VIEW[64],
@@ -81,6 +86,8 @@ enum _:ePropClasses
 	CLASS_PROP_BLOOD_COLOR,
 	bool:CLASS_PROP_SILENT_FOOTSTEPS,
 	CLASS_PROP_MODEL_INDEX,
+	CLASS_PROP_LIMIT,
+	CLASS_PROP_LEVEL
 }
 
 enum _:ePropGameModes
@@ -122,6 +129,7 @@ enum _:eGameRules
 	GAME_RULE_LAST_GAMEMODE,
 	GAME_RULE_DEFAULT_NV_H[3],
 	GAME_RULE_DEFAULT_NV_Z[3],
+	Array:GAME_RULE_FROZEN_HIT_SOUNDS
 }
 
 enum _:eUserData
@@ -143,6 +151,8 @@ enum _:eUserData
 	UD_NEXT_HUMAN_CLASS,
 	UD_CURRENT_TEMP_ZOMBIE_CLASS,
 	UD_CURRENT_TEMP_HUMAN_CLASS,
+	UD_LEVEL,
+	bool:UD_IS_FREEZED,
 }
 
 enum _:eSyncHuds
@@ -152,7 +162,6 @@ enum _:eSyncHuds
 }
 
 new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "player/bhit_helmet-1.wav" };
-
 
 new xDataClassCount, xDataGameModeCount, xDataItemCount, xFirstClass[2], xClassCount[2], xItemCount[2]
 new Array:aDataClass, Array:aDataGameMode, Array:aDataItem, Array:aIndexClassesZombies, Array:aIndexClassesHumans
@@ -177,12 +186,14 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_TraceAttack, "CBasePlayer_TraceAttack_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "CBasePlayer_TakeDamage_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false)
+	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Post", true)
 	RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "RCBasePlayer_HasRestrictItem_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RG_HandleMenu_ChooseAppearance, "HandleMenu_ChooseAppearance_Post", true)
 
 	register_clcmd("nightvision", "clcmd_nightvision")
+	register_clcmd("say f", "ffff")
 
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
@@ -278,6 +289,11 @@ public plugin_init()
 	}
 
 	get_classes_index()
+}
+
+public ffff(id)
+{
+	set_user_frozen(id, 2.0, false)
 }
 
 public HandleMenu_ChooseAppearance_Post(const this, const slot)
@@ -429,11 +445,17 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 	new activeItem = get_member(this, m_pActiveItem)
 
 	if(!is_nullent(activeItem) && xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
-		speed -= float(rg_get_iteminfo(activeItem, ItemInfo_iWeight)) // descontar o peso da arma na velocidade da 'classe'
+		speed -= float(rg_get_iteminfo(activeItem, ItemInfo_iWeight))
 
 	set_entvar(this, var_maxspeed, speed)
 
 	return HC_SUPERCEDE
+}
+
+public CBasePlayer_ResetMaxSpeed_Post(const this)
+{
+	if(is_valid_player_alive(this) && xUserData[this][UD_IS_FREEZED])
+		set_entvar(this, var_maxspeed, 1.0)
 }
 
 public clcmd_changeteam(id)
@@ -454,7 +476,9 @@ public clcmd_changeteam(id)
 public client_putinserver(id)
 {
 	reset_user_vars(id)
-	set_task_ex(0.1, "xHudPlayerInfo", id + TASK_HUD_PLAYER_INFO, .flags = SetTask_Repeat)
+
+	if(!is_user_bot(id) && !is_user_hltv(id))
+		set_task_ex(0.1, "xHudPlayerInfo", id + TASK_HUD_PLAYER_INFO, .flags = SetTask_Repeat)
 
 	check_game()
 }
@@ -750,6 +774,8 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 		xUserData[i][UD_CLASS_TIMEOUT] = get_gametime()
 		xUserData[i][UD_LAST_LEAP_TIMEOUT] = get_gametime()
 		xUserData[i][UD_DMG_DEALT] = 0.0
+
+		set_task_ex(0.1, "remove_user_frozen", i + TASK_FROZEN)
 	}
 
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
@@ -766,13 +792,9 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 
 	new id = get_member(ent, m_pPlayer)
 	
-	new class_id
-	new xDataGetClass[ePropClasses]
-
-	new activeItem = get_member(id, m_pActiveItem)
-
-	if(xUserData[id][UD_IS_ZOMBIE] && get_member(activeItem, m_iId) == CSW_KNIFE)
+	if(xUserData[id][UD_IS_ZOMBIE] && get_member(ent, m_iId) == WEAPON_KNIFE)
 	{
+		new class_id, xDataGetClass[ePropClasses]
 		class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
 		ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
@@ -976,6 +998,14 @@ public CSGameRules_RestartRound_Pre()
 
 public CSGameRules_RestartRound_Post()
 {
+	for(new i = 1; i <= MaxClients; i++)
+	{
+		if(!is_user_connected(i))
+			continue
+
+		set_task_ex(0.1, "remove_user_frozen", i + TASK_FROZEN)
+	}
+
 	update_users_next_class()
 }
 
@@ -1059,7 +1089,7 @@ public plugin_precache()
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 	bind_pcvar_num(create_cvar("zpn_weapon_weight_discount_speed", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
 	//bind_pcvar_num(create_cvar("zpn_respawn_in_last_human", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_RESPAWN_IN_LAST_H])
-	bind_pcvar_float(create_cvar("zpn_ap_dmg_reached", "200", .has_min = true, .min_val = 50.0, .has_max = true, .max_val = 5000.0), xCvars[CVAR_DMG_DEALT_REACHED])
+	bind_pcvar_float(create_cvar("zpn_ap_dmg_reached", "1000", .has_min = true, .min_val = 50.0, .has_max = true, .max_val = 5000.0), xCvars[CVAR_DMG_DEALT_REACHED])
 	bind_pcvar_num(create_cvar("zpn_ap_dmg_reward", "1", .has_min = true, .min_val = 1.0, .has_max = true, .max_val = 1000.0), xCvars[CVAR_DMG_DEALT_REWARD])
 
 	bind_pcvar_string(xCvars[P_CVAR_DEFAULT_NV_H] = create_cvar("zpn_default_nv_h", "#00bbff", .flags = FCVAR_NOEXTRAWHITEPACE), xCvars[CVAR_DEFAULT_NV_H], charsmax(xCvars[CVAR_DEFAULT_NV_H]))
@@ -1172,6 +1202,33 @@ public plugin_precache()
 		ArrayPushString(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], "weapon_elite")
 		json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Secondary Weapons", xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS])
 	}
+
+	xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS] = ArrayCreate(64, 0)
+
+	if(!json_setting_get_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Frozen Hit Sounds", xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS]))
+	{
+		new const sounds[][] =
+		{
+			"zpn/frozen_hit1.wav",
+			"zpn/frozen_hit2.wav",
+		}
+
+		for(new i = 0; i < sizeof(sounds); i++)
+			ArrayPushString(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS], sounds[i])
+
+		json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Frozen Hit Sounds", xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS])
+	}
+
+	new sound[64]
+	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS]); i++)
+	{
+		ArrayGetString(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS], i, sound, charsmax(sound))
+		
+		if(zpn_is_null_string(sound))
+			continue
+
+		if(file_exists(sound)) precache_sound(sound)
+	}
 }
 
 public cvar_nightvision_changed(pcvar, const old_value[], const new_value[])
@@ -1224,6 +1281,7 @@ public plugin_end()
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS])
+	ArrayDestroy(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS])
 }
 
 public plugin_natives()
@@ -1606,11 +1664,16 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 
 public _zpn_class_init(plugin_id, param_nums)
 {
+	if(param_nums != 2)
+		return -1
+
 	new xDataGetClass[ePropClasses]
 	new index = (++xDataClassCount - 1)
 
-	xDataGetClass[CLASS_PROP_TYPE] = CLASS_TEAM_TYPE_ZOMBIE
-	xDataGetClass[CLASS_PROP_NAME] = EOS
+	get_string(1, xDataGetClass[CLASS_PROP_NAME], charsmax(xDataGetClass[CLASS_PROP_NAME]))
+	xDataGetClass[CLASS_PROP_TYPE] = eClassTypes:get_param(2)
+
+	xDataGetClass[CLASS_PROP_CUSTOM_NAME] = EOS
 	xDataGetClass[CLASS_PROP_INFO] = EOS
 	xDataGetClass[CLASS_PROP_MODEL] = EOS
 	xDataGetClass[CLASS_PROP_MODEL_VIEW] = EOS
@@ -1627,6 +1690,8 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_HIDE_MENU] = false
 	xDataGetClass[CLASS_PROP_UPDATE_HITBOX] = false
 	xDataGetClass[CLASS_PROP_BLOOD_COLOR] = -1
+	xDataGetClass[CLASS_PROP_LIMIT] = 0
+	xDataGetClass[CLASS_PROP_LEVEL] = 0
 
 	ArrayPushArray(aDataClass, xDataGetClass)
 
@@ -1667,6 +1732,8 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_UPDATE_HITBOX: return bool:xDataGetClass[CLASS_PROP_UPDATE_HITBOX]
 		case CLASS_PROP_REGISTER_BLOOD_COLOR: return xDataGetClass[CLASS_PROP_BLOOD_COLOR]
 		case CLASS_PROP_REGISTER_SILENT_FOOTSTEPS: return bool:xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS]
+		case CLASS_PROP_REGISTER_LIMIT: return xDataGetClass[CLASS_PROP_LIMIT]
+		case CLASS_PROP_REGISTER_LEVEL: return xDataGetClass[CLASS_PROP_LEVEL]
 		default: return false
 	}
 
@@ -1686,14 +1753,31 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 	new xDataGetClass[ePropClasses]
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
+	static class_section[64]; class_section[0] = EOS
+	static class_section_final[64]; class_section_final[0] = EOS
+
+	copy(xDataGetClass[CLASS_PROP_CUSTOM_NAME], charsmax(xDataGetClass[CLASS_PROP_CUSTOM_NAME]), xDataGetClass[CLASS_PROP_NAME])
+	create_slug(xDataGetClass[CLASS_PROP_NAME], class_section, charsmax(class_section))
+	formatex(class_section_final, charsmax(class_section_final), "%s.%s", get_section_class(xDataGetClass[CLASS_PROP_TYPE]), class_section)
+
+	if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "name", xDataGetClass[CLASS_PROP_CUSTOM_NAME], charsmax(xDataGetClass[CLASS_PROP_CUSTOM_NAME])))
+		json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "name", xDataGetClass[CLASS_PROP_CUSTOM_NAME])
+
 	switch(ePropClassRegisters:prop)
 	{
-		case CLASS_PROP_REGISTER_TYPE: xDataGetClass[CLASS_PROP_TYPE] = eClassTypes:get_param_byref(arg_value)
-		case CLASS_PROP_REGISTER_NAME: get_string(arg_value, xDataGetClass[CLASS_PROP_NAME], charsmax(xDataGetClass[CLASS_PROP_NAME]))
-		case CLASS_PROP_REGISTER_INFO: get_string(arg_value, xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO]))
+		case CLASS_PROP_REGISTER_INFO:
+		{
+			get_string(arg_value, xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO]))
+
+			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "description", xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO])))
+				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "description", xDataGetClass[CLASS_PROP_INFO])
+		}
 		case CLASS_PROP_REGISTER_MODEL:
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_MODEL], charsmax(xDataGetClass[CLASS_PROP_MODEL]))
+
+			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "model", xDataGetClass[CLASS_PROP_MODEL], charsmax(xDataGetClass[CLASS_PROP_MODEL])))
+				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "model", xDataGetClass[CLASS_PROP_MODEL])
 
 			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_MODEL]))
 				xDataGetClass[CLASS_PROP_MODEL_INDEX] = precache_player_model(xDataGetClass[CLASS_PROP_MODEL])
@@ -1702,29 +1786,127 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_MODEL_VIEW], charsmax(xDataGetClass[CLASS_PROP_MODEL_VIEW]))
 
+			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "model_view", xDataGetClass[CLASS_PROP_MODEL_VIEW], charsmax(xDataGetClass[CLASS_PROP_MODEL_VIEW])))
+				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "model_view", xDataGetClass[CLASS_PROP_MODEL_VIEW])
+
 			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_MODEL_VIEW]))
 				precache_model(xDataGetClass[CLASS_PROP_MODEL_VIEW])
 		}
-		case CLASS_PROP_REGISTER_BODY: xDataGetClass[CLASS_PROP_BODY] = get_param_byref(arg_value)
-		case CLASS_PROP_REGISTER_HEALTH: xDataGetClass[CLASS_PROP_HEALTH] = get_float_byref(arg_value)
-		case CLASS_PROP_REGISTER_ARMOR: xDataGetClass[CLASS_PROP_ARMOR] = get_float_byref(arg_value)
-		case CLASS_PROP_REGISTER_SPEED: xDataGetClass[CLASS_PROP_SPEED] = get_float_byref(arg_value)
-		case CLASS_PROP_REGISTER_GRAVITY: xDataGetClass[CLASS_PROP_GRAVITY] = get_float_byref(arg_value)
-		case CLASS_PROP_REGISTER_KNOCKBACK: xDataGetClass[CLASS_PROP_KNOCKBACK] = get_float_byref(arg_value)
-		case CLASS_PROP_REGISTER_CLAW_WEAPONLIST: get_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], charsmax(xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST]))
-		case CLASS_PROP_REGISTER_SKIN: xDataGetClass[CLASS_PROP_SKIN] = get_param_byref(arg_value)
-		case CLASS_PROP_REGISTER_FIND_NAME: get_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], charsmax(xDataGetClass[CLASS_PROP_FIND_NAME]))
+		case CLASS_PROP_REGISTER_BODY:
+		{
+			xDataGetClass[CLASS_PROP_BODY] = get_param_byref(arg_value)
+
+			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "body", xDataGetClass[CLASS_PROP_BODY], false))
+				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "body", xDataGetClass[CLASS_PROP_BODY], false)
+		}
+		case CLASS_PROP_REGISTER_SKIN:
+		{
+			xDataGetClass[CLASS_PROP_SKIN] = get_param_byref(arg_value)
+
+			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "skin", xDataGetClass[CLASS_PROP_SKIN], false))
+				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "skin", xDataGetClass[CLASS_PROP_SKIN], false)
+		}
+		case CLASS_PROP_REGISTER_HEALTH:
+		{
+			xDataGetClass[CLASS_PROP_HEALTH] = get_float_byref(arg_value)
+	
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "health", xDataGetClass[CLASS_PROP_HEALTH]))
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "health", xDataGetClass[CLASS_PROP_HEALTH])
+		}
+		case CLASS_PROP_REGISTER_SPEED:
+		{
+			xDataGetClass[CLASS_PROP_SPEED] = get_float_byref(arg_value)
+
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "speed", xDataGetClass[CLASS_PROP_SPEED]))
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "speed", xDataGetClass[CLASS_PROP_SPEED])
+		}
+		case CLASS_PROP_REGISTER_ARMOR:
+		{
+			xDataGetClass[CLASS_PROP_ARMOR] = get_float_byref(arg_value)
+
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "armor", xDataGetClass[CLASS_PROP_ARMOR]))
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "armor", xDataGetClass[CLASS_PROP_ARMOR])
+		}
+		case CLASS_PROP_REGISTER_GRAVITY:
+		{
+			xDataGetClass[CLASS_PROP_GRAVITY] = get_float_byref(arg_value)
+
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "gravity", xDataGetClass[CLASS_PROP_GRAVITY]))
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "gravity", xDataGetClass[CLASS_PROP_GRAVITY])
+		}
+		case CLASS_PROP_REGISTER_KNOCKBACK:
+		{
+			xDataGetClass[CLASS_PROP_KNOCKBACK] = get_float_byref(arg_value)
+
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "knockback", xDataGetClass[CLASS_PROP_KNOCKBACK]))
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "knockback", xDataGetClass[CLASS_PROP_KNOCKBACK])
+		}
+		case CLASS_PROP_REGISTER_CLAW_WEAPONLIST:
+		{
+			get_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], charsmax(xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST]))
+
+			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "claw_weapon_list", xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], charsmax(xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST])))
+				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "claw_weapon_list", xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST])
+		}
+		case CLASS_PROP_REGISTER_FIND_NAME:
+		{
+			get_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], charsmax(xDataGetClass[CLASS_PROP_FIND_NAME]))
+
+			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "find_name", xDataGetClass[CLASS_PROP_FIND_NAME], charsmax(xDataGetClass[CLASS_PROP_FIND_NAME])))
+				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "find_name", xDataGetClass[CLASS_PROP_FIND_NAME])
+		}
 		case CLASS_PROP_REGISTER_NV_COLOR:
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], charsmax(xDataGetClass[CLASS_PROP_NV_COLOR]))
 
+			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "nv_color", xDataGetClass[CLASS_PROP_NV_COLOR], charsmax(xDataGetClass[CLASS_PROP_NV_COLOR])))
+				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "nv_color", xDataGetClass[CLASS_PROP_NV_COLOR])
+
 			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_NV_COLOR]))
 				parse_hex_color(xDataGetClass[CLASS_PROP_NV_COLOR], xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED])
 		}
-		case CLASS_PROP_REGISTER_HIDE_MENU: xDataGetClass[CLASS_PROP_HIDE_MENU] = bool:get_param_byref(arg_value)
-		case CLASS_PROP_REGISTER_UPDATE_HITBOX: xDataGetClass[CLASS_PROP_UPDATE_HITBOX] = bool:get_param_byref(arg_value)
-		case CLASS_PROP_REGISTER_BLOOD_COLOR: xDataGetClass[CLASS_PROP_BLOOD_COLOR] = get_param_byref(arg_value)
-		case CLASS_PROP_REGISTER_SILENT_FOOTSTEPS: xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS] = bool:get_param_byref(arg_value)
+		case CLASS_PROP_REGISTER_HIDE_MENU:
+		{
+			xDataGetClass[CLASS_PROP_HIDE_MENU] = bool:get_param_byref(arg_value)
+
+			if(!json_setting_get_bool(PATH_SETTINGS_CLASSES, class_section_final, "hide_class_in_menu", xDataGetClass[CLASS_PROP_HIDE_MENU]))
+				json_setting_set_bool(PATH_SETTINGS_CLASSES, class_section_final, "hide_class_in_menu", xDataGetClass[CLASS_PROP_HIDE_MENU])
+		}
+		case CLASS_PROP_REGISTER_UPDATE_HITBOX:
+		{
+			xDataGetClass[CLASS_PROP_UPDATE_HITBOX] = bool:get_param_byref(arg_value)
+
+			if(!json_setting_get_bool(PATH_SETTINGS_CLASSES, class_section_final, "update_hitbox", xDataGetClass[CLASS_PROP_UPDATE_HITBOX]))
+				json_setting_set_bool(PATH_SETTINGS_CLASSES, class_section_final, "update_hitbox", xDataGetClass[CLASS_PROP_UPDATE_HITBOX])
+		}
+		case CLASS_PROP_REGISTER_BLOOD_COLOR:
+		{
+			xDataGetClass[CLASS_PROP_BLOOD_COLOR] = get_param_byref(arg_value)
+
+			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "blood_color", xDataGetClass[CLASS_PROP_BLOOD_COLOR], false))
+				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "blood_color", xDataGetClass[CLASS_PROP_BLOOD_COLOR], false)
+		}
+		case CLASS_PROP_REGISTER_SILENT_FOOTSTEPS:
+		{
+			xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS] = bool:get_param_byref(arg_value)
+
+			if(!json_setting_get_bool(PATH_SETTINGS_CLASSES, class_section_final, "silent_footsteps", xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS]))
+				json_setting_set_bool(PATH_SETTINGS_CLASSES, class_section_final, "silent_footsteps", xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS])
+		}
+		case CLASS_PROP_REGISTER_LIMIT:
+		{
+			xDataGetClass[CLASS_PROP_LIMIT] = clamp(get_param_byref(arg_value), 0, MAX_LEVEL)
+
+			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "limit", xDataGetClass[CLASS_PROP_LIMIT], false))
+				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "limit", xDataGetClass[CLASS_PROP_LIMIT], false)
+		}
+		case CLASS_PROP_REGISTER_LEVEL:
+		{
+			xDataGetClass[CLASS_PROP_LEVEL] = clamp(get_param_byref(arg_value), 0, MAX_LEVEL)
+
+			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "level", xDataGetClass[CLASS_PROP_LEVEL], false))
+				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "level", xDataGetClass[CLASS_PROP_LEVEL], false)
+		}
 		default: return false
 	}
 
@@ -1783,15 +1965,10 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	rg_remove_item(this, "weapon_shield")
 	rg_drop_items_by_slot(this, PRIMARY_WEAPON_SLOT)
 	rg_drop_items_by_slot(this, PISTOL_SLOT)
-	rg_drop_items_by_slot(this, GRENADE_SLOT)
+	rg_remove_items_by_slot(this, GRENADE_SLOT)
 	rg_give_item(this, "weapon_knife")
 
-	if(xDataGetClass[CLASS_PROP_BLOOD_COLOR] != -1)
-	{
-		new color = clamp(xDataGetClass[CLASS_PROP_BLOOD_COLOR], 0, 255)
-		set_member(this, m_bloodColor, color)
-	}
-
+	if(xDataGetClass[CLASS_PROP_BLOOD_COLOR] != -1) set_member(this, m_bloodColor, clamp(xDataGetClass[CLASS_PROP_BLOOD_COLOR], 0, 255))
 	if(xDataGetClass[CLASS_PROP_BODY] != -1) set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
 	if(xDataGetClass[CLASS_PROP_SKIN] != -1) set_entvar(this, var_skin, xDataGetClass[CLASS_PROP_SKIN])
 
@@ -1818,7 +1995,7 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	deploy_weapon(this)
 
 	make_deathmsg(infector, this, 0, "teammate")
-	set_score_attrib(this, 0)
+	rg_set_score_attrib(this, false)
 
 	ExecuteForward(xForwards[FW_INFECTED_POST], xForwardReturn, this, infector, class_id)
 
@@ -1851,17 +2028,13 @@ public set_user_human(this)
 	xUserData[this][UD_IS_ZOMBIE] = false
 	xUserData[this][UD_IS_LAST_HUMAN] = false
 
-	static model[64]
+	static model[64]; model[0] = EOS
+	
 	if(zpn_is_null_string(xDataGetClass[CLASS_PROP_MODEL]))
 		copy(model, charsmax(model), xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
 	else copy(model, charsmax(model), xDataGetClass[CLASS_PROP_MODEL])
-
-	if(xDataGetClass[CLASS_PROP_BLOOD_COLOR] != -1)
-	{
-		new color = clamp(xDataGetClass[CLASS_PROP_BLOOD_COLOR], 0, 255)
-		set_member(this, m_bloodColor, color)
-	}
 	
+	if(xDataGetClass[CLASS_PROP_BLOOD_COLOR] != -1) set_member(this, m_bloodColor, clamp(xDataGetClass[CLASS_PROP_BLOOD_COLOR], 0, 255))
 	if(xDataGetClass[CLASS_PROP_BODY] != -1) set_entvar(this, var_body, xDataGetClass[CLASS_PROP_BODY])
 	if(xDataGetClass[CLASS_PROP_SKIN] != -1) set_entvar(this, var_skin, xDataGetClass[CLASS_PROP_SKIN])
 
@@ -1880,15 +2053,58 @@ public set_user_human(this)
 		set_entvar(this, var_modelindex, defaultIndexPlayer)
 	}
 	
+	rg_set_score_attrib(this, false)
+
 	new armor = 0
 
 	if(xDataGetClass[CLASS_PROP_ARMOR] > 0)
 		armor = floatround(xDataGetClass[CLASS_PROP_ARMOR])
 
+	set_entvar(this, var_health, xDataGetClass[CLASS_PROP_HEALTH])
+	set_entvar(this, var_max_health, xDataGetClass[CLASS_PROP_HEALTH])
+	set_entvar(this, var_gravity, xDataGetClass[CLASS_PROP_GRAVITY])
 	set_entvar(this, var_armorvalue, armor)
 	set_entvar(this, var_maxspeed, xDataGetClass[CLASS_PROP_SPEED])
 
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
+}
+
+public set_user_frozen(this, Float:time, bool:reset_time)
+{
+	new Float:vecVelocity[3]
+	get_entvar(this, var_velocity, vecVelocity)
+
+	for(new i = 0; i < 3; i++)
+		vecVelocity[i] *= 0.5
+
+	xUserData[this][UD_IS_FREEZED] = true
+
+	set_entvar(this, var_velocity, vecVelocity)
+	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) | PLAYER_PREVENT_JUMP)
+	set_member(this, m_bIsDefusing, true)
+	rg_reset_maxspeed(this)
+
+	if(reset_time && task_exists(this + TASK_FROZEN))
+		remove_task(this + TASK_FROZEN)
+	
+	if(!task_exists(this + TASK_FROZEN))
+		set_task_ex(floatclamp(time, 0.1, 60.0), "remove_user_frozen", this + TASK_FROZEN)
+}
+
+public remove_user_frozen(this)
+{
+	this -= TASK_FROZEN
+
+	if(!is_user_connected(this)) { remove_task(this + TASK_FROZEN); return; }
+
+	xUserData[this][UD_IS_FREEZED] = false
+
+	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) & ~PLAYER_PREVENT_JUMP)
+	set_member(this, m_bIsDefusing, false)
+	rg_reset_maxspeed(this)
+
+	if(task_exists(this + TASK_FROZEN))
+		remove_task(this + TASK_FROZEN)
 }
 
 public set_user_nv(id)
@@ -1966,9 +2182,9 @@ get_class_name(const this)
 	new xDataGetClass[ePropClasses]
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
-	if(zpn_is_null_string(xDataGetClass[CLASS_PROP_NAME]))
+	if(zpn_is_null_string(xDataGetClass[CLASS_PROP_CUSTOM_NAME]))
 		copy(class, charsmax(class), "--")
-	else copy(class, charsmax(class), xDataGetClass[CLASS_PROP_NAME])
+	else copy(class, charsmax(class), xDataGetClass[CLASS_PROP_CUSTOM_NAME])
 
 	return class
 }
@@ -2097,6 +2313,22 @@ count_class(eClassTypes:class_type)
 	return count
 }
 
+get_section_class(eClassTypes:type)
+{
+	static section[64]; section[0] = EOS
+
+	switch(type)
+	{
+		case CLASS_TEAM_TYPE_ZOMBIE: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_ZOMBIE)
+		case CLASS_TEAM_TYPE_ZOMBIE_SPECIAL: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_ZOMBIE_SP)
+		case CLASS_TEAM_TYPE_HUMAN: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_HUMAN)
+		case CLASS_TEAM_TYPE_HUMAN_SPECIAL: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_HUMAN_SP)
+		default: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_ZOMBIE)
+	}
+
+	return section
+}
+
 get_current_class_index(id, eClassTypes:type, bool:check_temp = false)
 {
 	static class_type; class_type = 0
@@ -2162,7 +2394,7 @@ update_users_next_class()
 		if(!is_user_connected(id))
 			continue
 
-		// estou com duvida nisso, por enquanto deixa comentado!
+		// estou com duvida nisso
 		xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] = -1
 		xUserData[id][UD_CURRENT_TEMP_HUMAN_CLASS] = -1
 
@@ -2180,11 +2412,11 @@ update_users_next_class()
 	}
 }
 
-set_score_attrib(this, dead = 0)
+rg_set_score_attrib(this, bool:dead = false)
 {
 	message_begin(MSG_BROADCAST, xMsgScoreAttrib)
 	write_byte(this)
-	write_byte(dead)
+	write_byte(dead ? 1 : 0)
 	message_end()
 }
 
@@ -2203,3 +2435,19 @@ __parse_hex_color(const c)
 {
 	return (c >= '0' && c <= '9') ? (c - '0') : (c >= 'a' && c <= 'f') ? (10 + c - 'a') : (c >= 'A' && c <= 'F') ? (10 + c - 'A') : 0
 }
+
+stock create_slug(const input[], output[], maxlen)
+{
+	new Regex:rx_slug = regex_compile("[^^a-z0-9]+|^^-+|-+$|[áàãâäéèêëíìîïóòõôöúùûüçÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇ]")
+	new replaced[256]
+
+	copy(replaced, charsmax(replaced), input)
+	strtolower(replaced)
+
+	regex_replace(rx_slug, replaced, charsmax(replaced), "-")
+	copy(output, maxlen, replaced)
+
+	regex_free(rx_slug)
+
+	return strlen(output)
+A') : 0

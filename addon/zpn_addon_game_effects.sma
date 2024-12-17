@@ -30,8 +30,9 @@ public zpn_user_infected_post(const id, const infector, const class_id)
 	new Float:origin[3]; get_entvar(id, var_origin, origin)
 	origin[2] += 15.0
 
-	create_explosion(origin, spr_poison_explode_index, 15)
-	create_explosion(origin, spr_poison_index, 15)
+	create_explosion(origin, spr_poison_explode_index, 12)
+	create_explosion(origin, spr_poison_index, 10)
+	create_particles(origin, spr_toxic_gib_index, 5)
 
 	new activeItem = get_member(id, m_pActiveItem)
 
@@ -48,8 +49,7 @@ public zpn_user_infected_post(const id, const infector, const class_id)
 
 public deploy_weapon(const this)
 {
-	new activeItem = get_member(this, m_pActiveItem)
-	if(!is_nullent(activeItem)) ExecuteHamB(Ham_Item_Deploy, activeItem)
+	zpn_send_weapon_deploy(this)
 }
 
 create_explosion(Float:origin[3], spr_index, scale = 30, framerate = 30)
@@ -60,8 +60,27 @@ create_explosion(Float:origin[3], spr_index, scale = 30, framerate = 30)
 	write_coord(floatround(origin[1]))
 	write_coord(floatround(origin[2]))
 	write_short(spr_index)
-	write_byte(scale) //scale
-	write_byte(framerate) // framerate
+	write_byte(scale)
+	write_byte(framerate)
 	write_byte(TE_EXPLFLAG_NOSOUND)
+	message_end()
+}
+
+create_particles(const Float:origin[3], spr_index, count)
+{
+	message_begin(MSG_BROADCAST,SVC_TEMPENTITY)
+	write_byte(TE_SPRITETRAIL) // Throws a shower of sprites or models
+	write_coord(floatround(origin[0])) // start pos
+	write_coord(floatround(origin[1]))
+	write_coord(floatround(origin[2]))
+	write_coord(floatround(origin[0])) // velocity
+	write_coord(floatround(origin[1]))
+	write_coord(floatround(origin[2])+20)
+	write_short(spr_index)
+	write_byte(count)
+	write_byte(random_num(2 ,3)) // (life in 0.1's)
+	write_byte(3) // byte (scale in 0.1's)
+	write_byte(random_num(20, 30)) // (velocity along vector in 10's)
+	write_byte(10) // (randomness of velocity in 10's)
 	message_end()
 }

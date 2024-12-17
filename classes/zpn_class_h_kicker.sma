@@ -33,9 +33,7 @@ public plugin_init()
 
 register_class()
 {
-	class = zpn_class_init()
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_TYPE, CLASS_TEAM_TYPE_HUMAN)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_NAME, "Kick")
+	class = zpn_class_init("Kick", CLASS_TEAM_TYPE_HUMAN)
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_INFO, "You can kick zombies")
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL, "vip")
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_SPEED, 300.0)
