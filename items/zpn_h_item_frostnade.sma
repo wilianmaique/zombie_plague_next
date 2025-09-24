@@ -3,6 +3,8 @@
 #include <zombie_plague_next>
 #include <zombie_plague_next_const>
 
+const ITEM_UID = 7799
+
 new item
 
 public plugin_init()
@@ -23,5 +25,5 @@ public zpn_item_selected_post(const id, const item_id)
 	if(item_id != item)
 		return
 
-	rg_give_item(id, "weapon_flashbang")
+	rg_give_custom_item(id, "weapon_flashbang", GT_APPEND, ITEM_UID)
 }
