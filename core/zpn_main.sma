@@ -186,18 +186,18 @@ public plugin_init()
 	if(xNeedGameMode == -1)
 		set_fail_state("[ZP NEXT] Need GameMode Infection")
 
-	xFirstClass[0] = 0 //get_first_class(CLASS_TEAM_TYPE_ZOMBIE)
+	xFirstClass[0] = get_first_class(CLASS_TEAM_TYPE_ZOMBIE)
 
 	if(xFirstClass[0] == -1)
 		set_fail_state("[ZP NEXT] Need 1 Class Zombie")
 
-	xFirstClass[1] = 0 //get_first_class(CLASS_TEAM_TYPE_HUMAN)
+	xFirstClass[1] = get_first_class(CLASS_TEAM_TYPE_HUMAN)
 
 	if(xFirstClass[1] == -1)
 		set_fail_state("[ZP NEXT] Need 1 Class Human")
 
-	xClassCount[0] = 1 //count_class(CLASS_TEAM_TYPE_ZOMBIE)
-	xClassCount[1] = 1 //count_class(CLASS_TEAM_TYPE_HUMAN)
+	xClassCount[0] = count_class(CLASS_TEAM_TYPE_ZOMBIE)
+	xClassCount[1] = count_class(CLASS_TEAM_TYPE_HUMAN)
 
 	xItemCount[0] = count_item(ITEM_TEAM_ZOMBIE)
 	xItemCount[1] = count_item(ITEM_TEAM_HUMAN)
@@ -248,8 +248,6 @@ public plugin_init()
 
 		server_print("^n^n")
 	}
-
-	//get_classes_index()
 }
 
 public HandleMenu_ChooseAppearance_Post(const this, const slot)
@@ -1827,7 +1825,6 @@ public set_user_nv(id)
 get_user_nv_color(id, outRgb[3])
 {
 	static class_id; class_id = xUserData[id][UD_IS_ZOMBIE] ? xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_HUMAN_CLASS]
-
 	static nv_color[12]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NV_COLOR, nv_color)
 
 	if(!zpn_is_null_string(nv_color))
@@ -1885,24 +1882,21 @@ get_class_name(const this)
 	return class
 }
 
-// get_first_class(eClassTypes:class_type)
-// {
-// 	new class_id = -1
-// 	new xDataGetClass[ePropClasses]
+get_first_class(eClassTypes:class_type)
+{
+	new class_id = -1
 
-// 	for(new i = 0; i < zpn_class_total(); i++)
-// 	{
-// 		ArrayGetArray(aDataClass, i, xDataGetClass)
+	for(new i = 0; i < zpn_class_total(); i++)
+	{
+		if(zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE) == class_type)
+		{
+			class_id = i
+			break
+		}
+	}
 
-// 		if(xDataGetClass[CLASS_PROP_TYPE] == class_type)
-// 		{
-// 			class_id = i
-// 			break
-// 		}
-// 	}
-
-// 	return class_id
-// }
+	return class_id
+}
 
 get_first_human_id()
 {
@@ -1995,19 +1989,17 @@ count_item(eItemTeams:item_team)
 	return count
 }
 
-// count_class(eClassTypes:class_type)
-// {
-// 	new count = 0
-// 	new xDataGetClass[ePropClasses]
+count_class(eClassTypes:class_type)
+{
+	new count = 0
 
-// 	for(new i = 0; i < zpn_class_total(); i++)
-// 	{
-// 		ArrayGetArray(aDataClass, i, xDataGetClass)
-// 		if(xDataGetClass[CLASS_PROP_TYPE] == class_type) count ++;
-// 	}
+	for(new i = 0; i < zpn_class_total(); i++)
+	{
+		if(zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE) == class_type) count ++;
+	}
 
-// 	return count
-// }
+	return count
+}
 
 get_current_class_index(id, eClassTypes:type, bool:check_temp = false)
 {
@@ -2052,20 +2044,6 @@ random_gamemode()
 
 	return gm
 }
-
-// get_classes_index()
-// {
-// 	new xDataGetClass[ePropClasses]
-// 	for(new i = 0; i < zpn_class_total(); i++)
-// 	{
-// 		ArrayGetArray(aDataClass, i, xDataGetClass)
-
-// 		if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE)
-// 			ArrayPushCell(aIndexClassesZombies, i)
-// 		else if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_HUMAN)
-// 			ArrayPushCell(aIndexClassesHumans, i)
-// 	}
-// }
 
 update_users_next_class()
 {

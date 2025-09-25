@@ -42,6 +42,8 @@ new xDataClassCount
 public plugin_init()
 {
 	register_plugin("Zombie Plague Next", "1.0", "Wilian M.")
+
+	get_classes_index()
 }
 
 public plugin_natives()
@@ -149,7 +151,7 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_MODEL_INDEX: return xDataGetClass[CLASS_PROP_MODEL_INDEX]
 		case CLASS_PROP_REGISTER_LIMIT: return xDataGetClass[CLASS_PROP_LIMIT]
 		case CLASS_PROP_REGISTER_LEVEL: return xDataGetClass[CLASS_PROP_LEVEL]
-		case CLASS_PROP_REGISTER_NV_COLOR_CONVERTED: return xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED]
+		case CLASS_PROP_REGISTER_NV_COLOR_CONVERTED: return set_array(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED], get_param_byref(arg_len))
 		default: return false
 	}
 
@@ -169,8 +171,8 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 	new xDataGetClass[ePropClasses]
 	ArrayGetArray(aDataClass, class_id, xDataGetClass)
 
-	static class_section[64]; class_section[0] = EOS
-	static class_section_final[64]; class_section_final[0] = EOS
+	new class_section[64]; class_section[0] = EOS
+	new class_section_final[64]; class_section_final[0] = EOS
 
 	copy(xDataGetClass[CLASS_PROP_CUSTOM_NAME], charsmax(xDataGetClass[CLASS_PROP_CUSTOM_NAME]), xDataGetClass[CLASS_PROP_NAME])
 	create_slug(xDataGetClass[CLASS_PROP_NAME], class_section, charsmax(class_section))
@@ -279,7 +281,14 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "nv_color", xDataGetClass[CLASS_PROP_NV_COLOR])
 
 			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_NV_COLOR]))
-				parse_hex_color(xDataGetClass[CLASS_PROP_NV_COLOR], xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED])
+			{
+				if(!parse_hex_color(xDataGetClass[CLASS_PROP_NV_COLOR], xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED]))
+				{
+					server_print("^n")
+					server_print("Falha ao converter HEX COLOR: %s - %s", xDataGetClass[CLASS_PROP_CUSTOM_NAME], xDataGetClass[CLASS_PROP_NV_COLOR])
+					server_print("^n")
+				}
+			}
 		}
 		case CLASS_PROP_REGISTER_HIDE_MENU:
 		{
@@ -391,4 +400,19 @@ get_section_class(eClassTypes:type)
 	}
 
 	return section
+}
+
+get_classes_index()
+{
+	new xDataGetClass[ePropClasses]
+	
+	for(new i = 0; i < ArraySize(aDataClass); i++)
+	{
+		ArrayGetArray(aDataClass, i, xDataGetClass)
+
+		if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE)
+			ArrayPushCell(aIndexClassesZombies, i)
+		else if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_HUMAN)
+			ArrayPushCell(aIndexClassesHumans, i)
+	}
 }
