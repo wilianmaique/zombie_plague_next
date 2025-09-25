@@ -105,6 +105,7 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_BLOOD_COLOR] = -1
 	xDataGetClass[CLASS_PROP_LIMIT] = 0
 	xDataGetClass[CLASS_PROP_LEVEL] = 0
+	xDataGetClass[CLASS_PROP_MODEL_INDEX] = -1
 
 	ArrayPushArray(aDataClass, xDataGetClass)
 
@@ -148,6 +149,7 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_MODEL_INDEX: return xDataGetClass[CLASS_PROP_MODEL_INDEX]
 		case CLASS_PROP_REGISTER_LIMIT: return xDataGetClass[CLASS_PROP_LIMIT]
 		case CLASS_PROP_REGISTER_LEVEL: return xDataGetClass[CLASS_PROP_LEVEL]
+		case CLASS_PROP_REGISTER_NV_COLOR_CONVERTED: return xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED]
 		default: return false
 	}
 

@@ -1408,9 +1408,8 @@ public bool:_zpn_is_user_zombie_special(plugin_id, param_nums)
 		return false
 
 	new class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
-	new eClassTypes:type = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_TYPE)
 
-	return (xUserData[id][UD_IS_ZOMBIE] && type == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
+	return (xUserData[id][UD_IS_ZOMBIE] && zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
 }
 
 public _zpn_get_user_selected_class(plugin_id, param_nums)
@@ -1639,23 +1638,15 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 
 	xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] = class_id
 
-	new name[32], info[32], model[64]
-	new bool:update_hitbox = false, bool:silent_footsteps = false, Float:speed, Float:gravity, Float:health, Float:armor, blood_color, body, skin, model_index
+	new class_model[64]
+	new bool:class_update_hitbox = false, class_blood_color, class_body, class_skin, class_model_index
 
-	silent_footsteps = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SILENT_FOOTSTEPS)
-	speed = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SPEED)
-	gravity = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_GRAVITY)
-	health = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
-	armor = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_ARMOR)
-	blood_color = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
-	body = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_BODY)
-	skin = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SKIN)
-	update_hitbox = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_UPDATE_HITBOX)
-	model_index = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_INDEX)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NAME, name)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_INFO, info)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, model)
-
+	class_update_hitbox = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_UPDATE_HITBOX)
+	class_blood_color = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
+	class_model_index = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_INDEX)
+	class_body = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_BODY)
+	class_skin = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SKIN)
+	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, class_model)
 
 	xUserData[this][UD_IS_ZOMBIE] = true
 	xUserData[this][UD_IS_FIRST_ZOMBIE] = set_first
@@ -1663,33 +1654,24 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	rg_remove_item(this, "weapon_shield")
 	rg_drop_items_by_slot(this, PRIMARY_WEAPON_SLOT)
 	rg_drop_items_by_slot(this, PISTOL_SLOT)
-	rg_remove_items_by_slot(this, GRENADE_SLOT)
 	rg_give_item(this, "weapon_knife")
 
-	if(blood_color != -1) set_member(this, m_bloodColor, clamp(blood_color, 0, 255))
-	if(body != -1) set_entvar(this, var_body, body)
-	if(skin != -1) set_entvar(this, var_skin, skin)
+	if(class_blood_color != -1) set_member(this, m_bloodColor, clamp(class_blood_color, 0, 255))
+	if(class_body != -1) set_entvar(this, var_body, class_body)
+	if(class_skin != -1) set_entvar(this, var_skin, class_skin)
 
 	rg_set_user_team(this, TEAM_TERRORIST)
-	rg_set_user_model(this, model, update_hitbox)
+	rg_set_user_model(this, class_model, class_update_hitbox)
 
-	if(update_hitbox)
-	{
-		set_member(this, m_modelIndexPlayer, model_index)
-		set_entvar(this, var_modelindex, model_index)
-	}
-	else
-	{
-		set_member(this, m_modelIndexPlayer, defaultIndexPlayer)
-		set_entvar(this, var_modelindex, defaultIndexPlayer)
-	}
+	set_member(this, m_modelIndexPlayer, (class_update_hitbox && class_model_index != -1) ? class_model_index : defaultIndexPlayer)
+	set_entvar(this, var_modelindex, (class_update_hitbox && class_model_index != -1) ? class_model_index : defaultIndexPlayer)
 
-	set_entvar(this, var_health, health)
-	set_entvar(this, var_max_health, health)
-	set_entvar(this, var_gravity, gravity)
-	set_entvar(this, var_armorvalue, floatround(armor))
-	set_entvar(this, var_maxspeed, speed)
-	rg_set_user_footsteps(this, silent_footsteps)
+	set_entvar(this, var_health, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH))
+	set_entvar(this, var_max_health, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH))
+	set_entvar(this, var_gravity, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_GRAVITY))
+	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_ARMOR)), 0, 1000))
+	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SPEED))
+	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SILENT_FOOTSTEPS))
 	deploy_weapon(this)
 
 	make_deathmsg(infector, this, 0, "teammate")
@@ -1717,21 +1699,14 @@ public set_user_human(this)
 
 	xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] = class_id
 
-	new name[32], info[32], class_model[64]
-	new bool:update_hitbox = false, bool:silent_footsteps = false, Float:speed, Float:gravity, Float:health, Float:class_armor, blood_color, body, skin, model_index
+	new class_model[64]
+	new bool:class_update_hitbox = false, class_blood_color, class_body, class_skin, class_model_index
 
-	silent_footsteps = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SILENT_FOOTSTEPS)
-	speed = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SPEED)
-	gravity = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_GRAVITY)
-	health = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
-	class_armor = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_ARMOR)
-	blood_color = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
-	body = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_BODY)
-	skin = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SKIN)
-	update_hitbox = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_UPDATE_HITBOX)
-	model_index = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_INDEX)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NAME, name)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_INFO, info)
+	class_update_hitbox = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_UPDATE_HITBOX)
+	class_blood_color = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
+	class_model_index = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_INDEX)
+	class_body = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_BODY)
+	class_skin = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SKIN)
 	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, class_model)
 
 	xUserData[this][UD_IS_ZOMBIE] = false
@@ -1739,41 +1714,28 @@ public set_user_human(this)
 
 	static model[64]; model[0] = EOS
 	
-	if(zpn_is_null_string(model))
+	if(zpn_is_null_string(class_model))
 		copy(model, charsmax(model), xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
 	else copy(model, charsmax(model), class_model)
 	
-	if(blood_color != -1) set_member(this, m_bloodColor, clamp(blood_color, 0, 255))
-	if(body != -1) set_entvar(this, var_body, body)
-	if(skin != -1) set_entvar(this, var_skin, skin)
+	if(class_blood_color != -1) set_member(this, m_bloodColor, clamp(class_blood_color, 0, 255))
+	if(class_body != -1) set_entvar(this, var_body, class_body)
+	if(class_skin != -1) set_entvar(this, var_skin, class_skin)
 
 	rg_set_user_team(this, TEAM_CT)
-	rg_set_user_model(this, model, update_hitbox)
-	rg_set_user_footsteps(this, silent_footsteps)
+	rg_set_user_model(this, model, class_update_hitbox)
 
-	if(update_hitbox)
-	{
-		set_member(this, m_modelIndexPlayer, model_index)
-		set_entvar(this, var_modelindex, model_index)
-	}
-	else
-	{
-		set_member(this, m_modelIndexPlayer, defaultIndexPlayer)
-		set_entvar(this, var_modelindex, defaultIndexPlayer)
-	}
+	set_member(this, m_modelIndexPlayer, (class_update_hitbox && class_model_index != -1) ? class_model_index : defaultIndexPlayer)
+	set_entvar(this, var_modelindex, (class_update_hitbox && class_model_index != -1) ? class_model_index : defaultIndexPlayer)
 	
+
+	set_entvar(this, var_health, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH))
+	set_entvar(this, var_max_health, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH))
+	set_entvar(this, var_gravity, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_GRAVITY))
+	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_ARMOR)), 0, 1000))
+	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SPEED))
+	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SILENT_FOOTSTEPS))
 	rg_set_score_attrib(this, false)
-
-	new armor = 0
-
-	if(armor > 0)
-		armor = floatround(class_armor)
-
-	set_entvar(this, var_health, health)
-	set_entvar(this, var_max_health, health)
-	set_entvar(this, var_gravity, gravity)
-	set_entvar(this, var_armorvalue, class_armor)
-	set_entvar(this, var_maxspeed, speed)
 
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
 }
@@ -1792,15 +1754,15 @@ public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 	if(xForwardReturn >= ZPN_RETURN_HANDLED)
 		return false
 
-	new Float:vecVelocity[3]
-	get_entvar(this, var_velocity, vecVelocity)
+	// new Float:vecVelocity[3]
+	// get_entvar(this, var_velocity, vecVelocity)
 
-	for(new i = 0; i < 3; i++)
-		vecVelocity[i] *= 0.5
+	// for(new i = 0; i < 3; i++)
+	// 	vecVelocity[i] *= 0.5
 
 	xUserData[this][UD_IS_FREEZED] = true
 
-	set_entvar(this, var_velocity, vecVelocity)
+	set_entvar(this, var_velocity, 1.0)
 	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) | PLAYER_PREVENT_JUMP)
 	set_member(this, m_bIsDefusing, true)
 	rg_reset_maxspeed(this)
@@ -1870,9 +1832,11 @@ get_user_nv_color(id, outRgb[3])
 
 	if(!zpn_is_null_string(nv_color))
 	{
-		outRgb[0] = 0 //xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED][0]
-		outRgb[1] = 0 //xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED][1]
-		outRgb[2] = 0 //xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED][2]
+		static nv_color_converted[3]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NV_COLOR_CONVERTED, nv_color_converted)
+		
+		outRgb[0] = nv_color_converted[0]
+		outRgb[1] = nv_color_converted[1]
+		outRgb[2] = nv_color_converted[2]
 	}
 	else
 	{
