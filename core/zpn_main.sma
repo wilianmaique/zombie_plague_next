@@ -59,21 +59,6 @@ enum _:eSettingsConfigs
 	CONFIG_PREFIX_CHAT[32],
 }
 
-enum _:ePropGameModes
-{
-	GAMEMODE_PROP_NAME[32],
-	GAMEMODE_PROP_NOTICE[64],
-	GAMEMODE_PROP_HUD_COLOR[9],
-	GAMEMODE_PROP_HUD_COLOR_CONVERTED[3],
-	GAMEMODE_PROP_CHANCE,
-	GAMEMODE_PROP_MIN_PLAYERS,
-	Float:GAMEMODE_PROP_ROUND_TIME,
-	bool:GAMEMODE_PROP_CHANGE_CLASS,
-	eGameModeDeathMatchTypes:GAMEMODE_PROP_DEATHMATCH,
-	Float:GAMEMODE_PROP_RESPAWN_TIME,
-	GAMEMODE_PROP_FIND_NAME[32]
-}
-
 enum _:ePropItems
 {
 	ITEM_PROP_NAME[32],
@@ -132,8 +117,8 @@ enum _:eSyncHuds
 
 new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "player/bhit_helmet-1.wav" };
 
-new xDataGameModeCount, xDataItemCount, xFirstClass[2], xClassCount[2], xItemCount[2]
-new Array:aDataGameMode, Array:aDataItem
+new xDataItemCount, xFirstClass[2], xClassCount[2], xItemCount[2]
+new Array:aDataItem
 new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
 
 new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
@@ -181,7 +166,7 @@ public plugin_init()
 
     // DPS OTIMIZAR ESSAS VERIFICAÇÕES
 	new xNeedGameMode
-	xNeedGameMode = iternal_zpn_gamemode_find("gm_infection")
+	xNeedGameMode = zpn_gamemode_find("gm_infection")
 
 	if(xNeedGameMode == -1)
 		set_fail_state("[ZP NEXT] Need GameMode Infection")
@@ -207,47 +192,6 @@ public plugin_init()
 
 	if (xFwSpawn_Pre)
 		unregister_forward(FM_Spawn, xFwSpawn_Pre, false)
-
-	if(xSettingsVars[CONFIG_DEBUG_ON])
-	{
-		new i, text[128]
-
-		server_print("^n")
-		server_print("GameModes loaded: %d", ArraySize(aDataGameMode))
-		
-		new xDataGetGameMode[ePropGameModes]
-		for(i = 0; i < ArraySize(aDataGameMode); i++)
-		{
-			ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
-
-			text[0] = EOS
-			
-			add(text, charsmax(text), fmt("GameMode: %s | ", xDataGetGameMode[GAMEMODE_PROP_NAME]))
-			add(text, charsmax(text), fmt("Chance: %d | ", xDataGetGameMode[GAMEMODE_PROP_CHANCE]))
-			add(text, charsmax(text), fmt("Min Players: %d | ", xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS]))
-			add(text, charsmax(text), fmt("Round Time: %0.1f", xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME]))
-
-			server_print(text)
-		}
-
-		server_print("^n")
-		server_print("Items loaded: %d", ArraySize(aDataItem))
-
-		new xDataGetItem[ePropItems]
-		for(i = 0; i < ArraySize(aDataItem); i++)
-		{
-			ArrayGetArray(aDataItem, i, xDataGetItem)
-
-			text[0] = EOS
-			
-			add(text, charsmax(text), fmt("Item: %s | ", xDataGetItem[ITEM_PROP_NAME]))
-			add(text, charsmax(text), fmt("Cost: %d | ", xDataGetItem[ITEM_PROP_COST]))
-			add(text, charsmax(text), fmt("Team: %s", xDataGetItem[ITEM_PROP_TEAM] == ITEM_TEAM_ZOMBIE ? "z" : "h"))
-			server_print(text)
-		}
-
-		server_print("^n^n")
-	}
 }
 
 public HandleMenu_ChooseAppearance_Post(const this, const slot)
@@ -267,13 +211,12 @@ public clcmd_nightvision(id)
 
 public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
-	new xDataGetGameMode[ePropGameModes]
-	ArrayGetArray(aDataGameMode, xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE], xDataGetGameMode)
+	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
 
-	if(xUserData[this][UD_IS_ZOMBIE] && xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] == GAMEMODE_DEATHMATCH_ONLY_TR && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+	if(xUserData[this][UD_IS_ZOMBIE] && zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_DEATHMATCH) == GAMEMODE_DEATHMATCH_ONLY_TR && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 	{
 		remove_task(this + TASK_RESPAWN)
-		set_task_ex(xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME], "respawn_user", this + TASK_RESPAWN)
+		set_task_ex(zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_RESPAWN_TIME), "respawn_user", this + TASK_RESPAWN)
 	}
 }
 
@@ -370,10 +313,7 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 		new last_human = get_first_human_id()
 		
 		if(last_human != -1 && !xUserData[last_human][UD_IS_LAST_HUMAN])
-		{
 			xUserData[last_human][UD_IS_LAST_HUMAN] = true
-			//server_print("ultimo humano: %n", last_human)
-		}
 	}
 
 	return HC_CONTINUE
@@ -611,7 +551,7 @@ public _select_class_type(id, menu, item)
 	new eClassTypes:type, name[32], class_info[32]
 	new bool:hide_menu = false
 
-	for(new i = 0; i < zpn_class_total(); i++)
+	for(new i = 0; i < zpn_class_array_size(); i++)
 	{
 		type = zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE)
 		hide_menu = zpn_class_get_prop(i, CLASS_PROP_REGISTER_HIDE_MENU)
@@ -746,7 +686,7 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
 
-	if(zpn_is_invalid_array(aDataGameMode))
+	if(zpn_gamemode_array_size() <= 0)
 		xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = -1
 	else xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = 0
 }
@@ -1021,24 +961,24 @@ public xInitRound()
 {
 	update_users_next_class()
 
-	new gm = random_gamemode()
+	new gamemode_id = random_gamemode()
 
-	if(gm == -1) gm = 0
+	if(gamemode_id == -1) gamemode_id = 0
 
-	new xDataGetGameMode[ePropGameModes]
-	ArrayGetArray(aDataGameMode, gm, xDataGetGameMode)
+	if(zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_MIN_PLAYERS) < get_num_alive())
+		gamemode_id = zpn_gamemode_find("gm_infection")
 
-	if(xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] < get_num_alive())
-		gm = iternal_zpn_gamemode_find("gm_infection")
-
-	xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] = gm
-	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gm
+	xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] = gamemode_id
+	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gamemode_id
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
 
-	set_hudmessage(xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED][0], xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED][1], xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED][2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
-	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", xDataGetGameMode[GAMEMODE_PROP_NOTICE])
+	new gm_hud_color_converted[3]; zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_HUD_COLOR_CONVERTED, gm_hud_color_converted)
+	new gm_hud_notice[32]; zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_NOTICE, gm_hud_notice)
 
-	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gm)
+	set_hudmessage(gm_hud_color_converted[0], gm_hud_color_converted[1], gm_hud_color_converted[2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
+	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", gm_hud_notice)
+
+	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gamemode_id)
 }
 
 public plugin_precache()
@@ -1048,7 +988,6 @@ public plugin_precache()
 
 	defaultIndexPlayer = precache_model("models/player.mdl")
 
-	aDataGameMode = ArrayCreate(ePropGameModes, 0)
 	aDataItem = ArrayCreate(ePropItems, 0)
 
 	bind_pcvar_num(create_cvar("zpn_delay", "15", .has_min = true, .min_val = 1.0), xCvars[CVAR_START_DELAY])
@@ -1241,7 +1180,6 @@ public Spawn_Pre(this)
 
 public plugin_end()
 {
-	ArrayDestroy(aDataGameMode)
 	ArrayDestroy(aDataItem)
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS])
@@ -1253,11 +1191,8 @@ public plugin_natives()
 {
 	register_library("zombie_plague_next")
 
-	register_native("zpn_gamemode_init", "_zpn_gamemode_init")
-	register_native("zpn_gamemode_get_prop", "_zpn_gamemode_get_prop")
-	register_native("zpn_gamemode_set_prop", "_zpn_gamemode_set_prop")
-	register_native("zpn_gamemode_find", "_zpn_gamemode_find")
-	register_native("zpn_gamemode_current", "_zpn_gamemode_current")
+	
+	register_native("zpn_gamemode_current", "_zpn_gamemode_current") // dps remover isso, VER A MELHOR OPÇÃO
 
 	register_native("zpn_item_init", "_zpn_item_init")
 	register_native("zpn_item_get_prop", "_zpn_item_get_prop")
@@ -1326,39 +1261,6 @@ public _zpn_gamemode_current(plugin_id, param_nums)
 public bool:_zpn_is_round_started(plugin_id, param_nums)
 {
 	return xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
-}
-
-public _zpn_gamemode_find(plugin_id, param_nums)
-{
-	if(param_nums != 1)
-		return 0
-
-	static findName[32]; findName[0] = EOS;
-	get_string(1, findName, charsmax(findName))
-
-	return iternal_zpn_gamemode_find(findName)
-}
-
-public iternal_zpn_gamemode_find(const findName[])
-{
-	new find = -1
-	new xDataGetGameMode[ePropGameModes]
-
-	for(new i = 0; i < ArraySize(aDataGameMode); i++)
-	{
-		ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
-		
-		if(zpn_is_null_string(xDataGetGameMode[GAMEMODE_PROP_FIND_NAME]))
-			continue
-
-		if(equal(xDataGetGameMode[GAMEMODE_PROP_FIND_NAME], findName))
-			find = i
-
-		if(find != -1)
-			break
-	}
-
-	return find
 }
 
 public _zpn_set_fw_param_int(plugin_id, param_nums)
@@ -1516,98 +1418,6 @@ public any:_zpn_item_set_prop(plugin_id, param_nums)
 	}
 
 	ArraySetArray(aDataItem, item_id, xDataGetItem)
-	
-	return true
-}
-
-public _zpn_gamemode_init(plugin_id, param_nums)
-{
-	new xDataGetGameMode[ePropGameModes]
-	new index = (++xDataGameModeCount - 1)
-
-	xDataGetGameMode[GAMEMODE_PROP_NAME] = EOS
-	xDataGetGameMode[GAMEMODE_PROP_NOTICE] = EOS
-	xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR] = EOS
-	xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED] = { 255, 255, 255 }
-	xDataGetGameMode[GAMEMODE_PROP_CHANCE] = -1
-	xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] = 1
-	xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = 2.0
-	xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS] = false
-	xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = GAMEMODE_DEATHMATCH_DISABLED
-	xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = -1.0
-	xDataGetGameMode[GAMEMODE_PROP_FIND_NAME] = EOS
-
-	ArrayPushArray(aDataGameMode, xDataGetGameMode)
-
-	return index
-}
-
-public any:_zpn_gamemode_get_prop(plugin_id, param_nums)
-{
-	if(zpn_is_invalid_array(aDataGameMode))
-		return false
-
-	enum { arg_gamemode_id = 1, arg_prop, arg_value, arg_len }
-
-	new gamemode_id = get_param(arg_gamemode_id)
-	new prop = get_param(arg_prop)
-
-	new xDataGetGameMode[ePropGameModes]
-	ArrayGetArray(aDataGameMode, gamemode_id, xDataGetGameMode)
-
-	switch(ePropGameModeRegisters:prop)
-	{
-		case GAMEMODE_PROP_REGISTER_NAME: set_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NAME], get_param_byref(arg_len))
-		case GAMEMODE_PROP_REGISTER_NOTICE: set_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NOTICE], get_param_byref(arg_len))
-		case GAMEMODE_PROP_REGISTER_HUD_COLOR: return xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR]
-		case GAMEMODE_PROP_REGISTER_CHANCE: return xDataGetGameMode[GAMEMODE_PROP_CHANCE]
-		case GAMEMODE_PROP_REGISTER_MIN_PLAYERS: return xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS]
-		case GAMEMODE_PROP_REGISTER_ROUND_TIME: return Float:xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME]
-		case GAMEMODE_PROP_REGISTER_CHANGE_CLASS: return bool:xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS]
-		case GAMEMODE_PROP_REGISTER_DEATHMATCH: return xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH]
-		case GAMEMODE_PROP_REGISTER_RESPAWN_TIME: return xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME]
-		case GAMEMODE_PROP_REGISTER_FIND_NAME: set_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_FIND_NAME], get_param_byref(arg_len))
-		default: return false
-	}
-
-	return true
-}
-
-public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
-{
-	if(zpn_is_invalid_array(aDataGameMode))
-		return false
-
-	enum { arg_gamemode_id = 1, arg_prop, arg_value }
-
-	new gamemode_id = get_param(arg_gamemode_id)
-	new prop = get_param(arg_prop)
-
-	new xDataGetGameMode[ePropGameModes]
-	ArrayGetArray(aDataGameMode, gamemode_id, xDataGetGameMode)
-
-	switch(ePropGameModeRegisters:prop)
-	{
-		case GAMEMODE_PROP_REGISTER_NAME: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NAME], charsmax(xDataGetGameMode[GAMEMODE_PROP_NAME]))
-		case GAMEMODE_PROP_REGISTER_NOTICE: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_NOTICE], charsmax(xDataGetGameMode[GAMEMODE_PROP_NOTICE]))
-		case GAMEMODE_PROP_REGISTER_HUD_COLOR:
-		{
-			get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR], charsmax(xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR]))
-
-			if(!zpn_is_null_string(xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR]))
-				parse_hex_color(xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR], xDataGetGameMode[GAMEMODE_PROP_HUD_COLOR_CONVERTED])
-		}
-		case GAMEMODE_PROP_REGISTER_CHANCE: xDataGetGameMode[GAMEMODE_PROP_CHANCE] = get_param_byref(arg_value)
-		case GAMEMODE_PROP_REGISTER_MIN_PLAYERS: xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS] = get_param_byref(arg_value)
-		case GAMEMODE_PROP_REGISTER_ROUND_TIME: xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME] = get_float_byref(arg_value)
-		case GAMEMODE_PROP_REGISTER_CHANGE_CLASS: xDataGetGameMode[GAMEMODE_PROP_CHANGE_CLASS] = bool:get_param_byref(arg_value)
-		case GAMEMODE_PROP_REGISTER_DEATHMATCH: xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = eGameModeDeathMatchTypes:get_param_byref(arg_value)
-		case GAMEMODE_PROP_REGISTER_RESPAWN_TIME: xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = get_float_byref(arg_value)
-		case GAMEMODE_PROP_REGISTER_FIND_NAME: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_FIND_NAME], charsmax(xDataGetGameMode[GAMEMODE_PROP_FIND_NAME]))
-		default: return false
-	}
-
-	ArraySetArray(aDataGameMode, gamemode_id, xDataGetGameMode)
 	
 	return true
 }
@@ -1852,15 +1662,13 @@ get_user_speed(const this)
 get_gamemode_name()
 {
 	static gm[64]; gm[0] = EOS
-
-	new xDataGetGameMode[ePropGameModes]
-	ArrayGetArray(aDataGameMode, xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], xDataGetGameMode)
+	static gm_name[64]; zpn_gamemode_get_prop(xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], GAMEMODE_PROP_REGISTER_NAME, gm_name)
 
 	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		copy(gm, charsmax(gm), "--")
-	else if(zpn_is_null_string(xDataGetGameMode[GAMEMODE_PROP_NAME]))
+	else if(zpn_is_null_string(gm_name))
 		copy(gm, charsmax(gm), "--")
-	else copy(gm, charsmax(gm), xDataGetGameMode[GAMEMODE_PROP_NAME])
+	else copy(gm, charsmax(gm), gm_name)
 
 	return gm
 }
@@ -1886,7 +1694,7 @@ get_first_class(eClassTypes:class_type)
 {
 	new class_id = -1
 
-	for(new i = 0; i < zpn_class_total(); i++)
+	for(new i = 0; i < zpn_class_array_size(); i++)
 	{
 		if(zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE) == class_type)
 		{
@@ -1993,7 +1801,7 @@ count_class(eClassTypes:class_type)
 {
 	new count = 0
 
-	for(new i = 0; i < zpn_class_total(); i++)
+	for(new i = 0; i < zpn_class_array_size(); i++)
 	{
 		if(zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE) == class_type) count ++;
 	}
@@ -2019,21 +1827,18 @@ random_gamemode()
 {
 	new gm = -1, i
 	new totalChance = 0
-	new xDataGetGameMode[ePropGameModes]
 
-	for(i = 0; i < ArraySize(aDataGameMode); i++)
+	for(i = 0; i < zpn_gamemode_array_size(); i++)
 	{
-		ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
-		totalChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE]
+		totalChance += zpn_gamemode_get_prop(i, GAMEMODE_PROP_REGISTER_CHANCE)
 	}
 
 	new randomNumber = random_num(1, totalChance)
 	new accumulatedChance = 0
 
-	for(i = 0; i < ArraySize(aDataGameMode); i++)
+	for(i = 0; i < zpn_gamemode_array_size(); i++)
 	{
-		ArrayGetArray(aDataGameMode, i, xDataGetGameMode)
-		accumulatedChance += xDataGetGameMode[GAMEMODE_PROP_CHANCE]
+		accumulatedChance += zpn_gamemode_get_prop(i, GAMEMODE_PROP_REGISTER_CHANCE)
 
 		if(randomNumber <= accumulatedChance)
 			gm = i

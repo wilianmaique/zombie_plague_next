@@ -37,13 +37,34 @@ enum _:ePropClasses
 }
 
 new Array:aDataClass, Array:aIndexClassesZombies, Array:aIndexClassesHumans
-new xDataClassCount
 
 public plugin_init()
 {
 	register_plugin("Zombie Plague Next", "1.0", "Wilian M.")
 
 	get_classes_index()
+
+	// LOG
+	new i, text[128]
+
+	server_print("^n")
+	server_print("Classes loaded: %d", ArraySize(aDataClass))
+	
+	new xDataGetClass[ePropClasses]
+	for(i = 0; i < ArraySize(aDataClass); i++)
+	{
+		ArrayGetArray(aDataClass, i, xDataGetClass)
+
+		text[0] = EOS
+		
+		add(text, charsmax(text), fmt("ClassIndex: %d | ", i))
+		add(text, charsmax(text), fmt("Name: %s | ", xDataGetClass[CLASS_PROP_NAME]))
+		add(text, charsmax(text), fmt("Model: %s | ", xDataGetClass[CLASS_PROP_MODEL]))
+		add(text, charsmax(text), fmt("ModelView: %s | ", xDataGetClass[CLASS_PROP_MODEL_VIEW]))
+		add(text, charsmax(text), fmt("BloodColor: %d | ", xDataGetClass[CLASS_PROP_BLOOD_COLOR]))
+
+		server_print(text)
+	}
 }
 
 public plugin_natives()
@@ -55,7 +76,7 @@ public plugin_natives()
 	register_native("zpn_class_set_prop", "_zpn_class_set_prop")
 	register_native("zpn_class_random_class_id", "_zpn_class_random_class_id")
 	register_native("zpn_class_find", "_zpn_class_find")
-	register_native("zpn_class_total", "_zpn_class_total")
+	register_native("zpn_class_array_size", "_zpn_class_array_size")
 }
 
 public plugin_precache()
@@ -72,9 +93,9 @@ public plugin_end()
 	ArrayDestroy(aIndexClassesHumans)
 }
 
-public _zpn_class_total(plugin_id, param_nums)
+public _zpn_class_array_size(plugin_id, param_nums)
 {
-	return xDataClassCount
+	return ArraySize(aDataClass)
 }
 
 public _zpn_class_init(plugin_id, param_nums)
@@ -83,7 +104,6 @@ public _zpn_class_init(plugin_id, param_nums)
 		return -1
 
 	new xDataGetClass[ePropClasses]
-	new index = (++xDataClassCount - 1)
 
 	get_string(1, xDataGetClass[CLASS_PROP_NAME], charsmax(xDataGetClass[CLASS_PROP_NAME]))
 	xDataGetClass[CLASS_PROP_TYPE] = eClassTypes:get_param(2)
@@ -109,9 +129,7 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_LEVEL] = 0
 	xDataGetClass[CLASS_PROP_MODEL_INDEX] = -1
 
-	ArrayPushArray(aDataClass, xDataGetClass)
-
-	return index
+	return ArrayPushArray(aDataClass, xDataGetClass)
 }
 
 public any:_zpn_class_get_prop(plugin_id, param_nums)
@@ -144,6 +162,7 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_SKIN: return xDataGetClass[CLASS_PROP_SKIN]
 		case CLASS_PROP_REGISTER_FIND_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], get_param_byref(arg_len))
 		case CLASS_PROP_REGISTER_NV_COLOR: set_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], get_param_byref(arg_len))
+		case CLASS_PROP_REGISTER_NV_COLOR_CONVERTED: set_array(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED], get_param_byref(arg_len))
 		case CLASS_PROP_REGISTER_HIDE_MENU: return bool:xDataGetClass[CLASS_PROP_HIDE_MENU]
 		case CLASS_PROP_REGISTER_UPDATE_HITBOX: return bool:xDataGetClass[CLASS_PROP_UPDATE_HITBOX]
 		case CLASS_PROP_REGISTER_BLOOD_COLOR: return xDataGetClass[CLASS_PROP_BLOOD_COLOR]
@@ -151,7 +170,6 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_MODEL_INDEX: return xDataGetClass[CLASS_PROP_MODEL_INDEX]
 		case CLASS_PROP_REGISTER_LIMIT: return xDataGetClass[CLASS_PROP_LIMIT]
 		case CLASS_PROP_REGISTER_LEVEL: return xDataGetClass[CLASS_PROP_LEVEL]
-		case CLASS_PROP_REGISTER_NV_COLOR_CONVERTED: return set_array(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED], get_param_byref(arg_len))
 		default: return false
 	}
 
@@ -361,7 +379,7 @@ public _zpn_class_random_class_id(plugin_id, param_nums)
 public _zpn_class_find(plugin_id, param_nums)
 {
 	if(param_nums != 1)
-		return 0
+		return -1
 
 	static findName[32]; findName[0] = EOS;
 	get_string(1, findName, charsmax(findName))
