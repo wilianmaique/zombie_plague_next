@@ -25,14 +25,14 @@ public plugin_precache()
 	zpn_class_set_prop(class, CLASS_PROP_REGISTER_SILENT_FOOTSTEPS, true)
 }
 
-// public zpn_user_infect_attempt(const this, const infector, const class_id)
-// {
-// 	if(zpn_get_user_selected_class(infector, CLASS_TEAM_TYPE_ZOMBIE, true) == class)
-// 	{
-// 		server_print("nemesis: this: %n - infector: %n", this, infector)
-// 		// damage?
-// 		return ZPN_RETURN_HANDLED
-// 	}
+public zpn_user_infect_attempt(const this, const infector, const class_id)
+{
+	if(zpn_get_user_selected_class(infector, CLASS_TEAM_TYPE_ZOMBIE, true) == class)
+	{
+		server_print("nemesis: this: %n - infector: %n", this, infector)
+		// damage?
+		return ZPN_RETURN_HANDLED
+	}
 
-// 	return ZPN_RETURN_CONTINUE
-// }
+	return ZPN_RETURN_CONTINUE
+}

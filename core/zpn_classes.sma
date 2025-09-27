@@ -59,6 +59,7 @@ public plugin_init()
 		
 		add(text, charsmax(text), fmt("ClassIndex: %d | ", i))
 		add(text, charsmax(text), fmt("Name: %s | ", xDataGetClass[CLASS_PROP_NAME]))
+		add(text, charsmax(text), fmt("Type: %s | ", (xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE) ? "zombie" : "human"))
 		add(text, charsmax(text), fmt("Model: %s | ", xDataGetClass[CLASS_PROP_MODEL]))
 		add(text, charsmax(text), fmt("ModelView: %s | ", xDataGetClass[CLASS_PROP_MODEL_VIEW]))
 		add(text, charsmax(text), fmt("BloodColor: %d | ", xDataGetClass[CLASS_PROP_BLOOD_COLOR]))
@@ -158,7 +159,7 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case CLASS_PROP_REGISTER_SPEED: return xDataGetClass[CLASS_PROP_SPEED]
 		case CLASS_PROP_REGISTER_GRAVITY: return xDataGetClass[CLASS_PROP_GRAVITY]
 		case CLASS_PROP_REGISTER_KNOCKBACK: return xDataGetClass[CLASS_PROP_KNOCKBACK]
-		case CLASS_PROP_REGISTER_CLAW_WEAPONLIST: return set_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], get_param_byref(arg_len))
+		case CLASS_PROP_REGISTER_CLAW_WEAPONLIST: set_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], get_param_byref(arg_len))
 		case CLASS_PROP_REGISTER_SKIN: return xDataGetClass[CLASS_PROP_SKIN]
 		case CLASS_PROP_REGISTER_FIND_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], get_param_byref(arg_len))
 		case CLASS_PROP_REGISTER_NV_COLOR: set_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], get_param_byref(arg_len))
@@ -414,7 +415,10 @@ get_section_class(eClassTypes:type)
 		case CLASS_TEAM_TYPE_ZOMBIE_SPECIAL: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_ZOMBIE_SP)
 		case CLASS_TEAM_TYPE_HUMAN: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_HUMAN)
 		case CLASS_TEAM_TYPE_HUMAN_SPECIAL: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_HUMAN_SP)
-		default: copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_ZOMBIE)
+		default:
+		{
+			copy(section, charsmax(section), SETTINGS_SECTION_CLASSES_ZOMBIE)
+		}
 	}
 
 	return section

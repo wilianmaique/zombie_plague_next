@@ -555,8 +555,8 @@ public _select_class_type(id, menu, item)
 	{
 		type = zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE)
 		hide_menu = zpn_class_get_prop(i, CLASS_PROP_REGISTER_HIDE_MENU)
-		zpn_class_get_prop(i, CLASS_PROP_REGISTER_NAME, name)
-		zpn_class_get_prop(i, CLASS_PROP_REGISTER_INFO, class_info)
+		zpn_class_get_prop(i, CLASS_PROP_REGISTER_NAME, name, charsmax(name))
+		zpn_class_get_prop(i, CLASS_PROP_REGISTER_INFO, class_info, charsmax(class_info))
 
 		if(type == class_type && !hide_menu)
 			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)%s", name, class_info, i == get_current_class_index(id, class_type) ? " \r*" : ""), fmt("%d", i))
@@ -591,8 +591,8 @@ public _select_class(id, menu, item)
 	speed = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SPEED)
 	gravity = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_GRAVITY)
 	health = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NAME, name)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_INFO, class_info)
+	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NAME, name, charsmax(name))
+	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_INFO, class_info, charsmax(class_info))
 
 	if(xCvars[CVAR_CLASS_SELECT_INSTANT] && xUserData[id][UD_CLASS_TIMEOUT] > get_gametime())
 	{
@@ -706,7 +706,7 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 		new class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
 
 		new view[64]
-		zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_VIEW, view)
+		zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_VIEW, view, charsmax(view))
 
 		SetHookChainArg(2, ATYPE_STRING, view)
 		SetHookChainArg(3, ATYPE_STRING, "")
@@ -972,8 +972,8 @@ public xInitRound()
 	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gamemode_id
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
 
-	new gm_hud_color_converted[3]; zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_HUD_COLOR_CONVERTED, gm_hud_color_converted)
-	new gm_hud_notice[32]; zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_NOTICE, gm_hud_notice)
+	new gm_hud_color_converted[4]; zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_HUD_COLOR_CONVERTED, gm_hud_color_converted, charsmax(gm_hud_color_converted))
+	new gm_hud_notice[32]; zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_NOTICE, gm_hud_notice, charsmax(gm_hud_notice))
 
 	set_hudmessage(gm_hud_color_converted[0], gm_hud_color_converted[1], gm_hud_color_converted[2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
 	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", gm_hud_notice)
@@ -1454,7 +1454,7 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	class_model_index = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_INDEX)
 	class_body = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_BODY)
 	class_skin = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SKIN)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, class_model)
+	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, class_model, charsmax(class_model))
 
 	xUserData[this][UD_IS_ZOMBIE] = true
 	xUserData[this][UD_IS_FIRST_ZOMBIE] = set_first
@@ -1515,7 +1515,7 @@ public set_user_human(this)
 	class_model_index = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_INDEX)
 	class_body = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_BODY)
 	class_skin = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SKIN)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, class_model)
+	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, class_model, charsmax(class_model))
 
 	xUserData[this][UD_IS_ZOMBIE] = false
 	xUserData[this][UD_IS_LAST_HUMAN] = false
@@ -1639,7 +1639,7 @@ get_user_nv_color(id, outRgb[3])
 
 	if(!zpn_is_null_string(nv_color))
 	{
-		static nv_color_converted[3]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NV_COLOR_CONVERTED, nv_color_converted)
+		static nv_color_converted[4]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NV_COLOR_CONVERTED, nv_color_converted, charsmax(nv_color_converted))
 		
 		outRgb[0] = nv_color_converted[0]
 		outRgb[1] = nv_color_converted[1]
@@ -1662,7 +1662,7 @@ get_user_speed(const this)
 get_gamemode_name()
 {
 	static gm[64]; gm[0] = EOS
-	static gm_name[64]; zpn_gamemode_get_prop(xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], GAMEMODE_PROP_REGISTER_NAME, gm_name)
+	static gm_name[64]; zpn_gamemode_get_prop(xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], GAMEMODE_PROP_REGISTER_NAME, gm_name, charsmax(gm_name))
 
 	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		copy(gm, charsmax(gm), "--")
@@ -1681,7 +1681,7 @@ get_class_name(const this)
 		class_id = xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
 	else class_id = xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] != -1 ? xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] : xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
 	
-	static class_name[64]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NAME, class_name)
+	static class_name[64]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NAME, class_name, charsmax(class_name))
 
 	if(zpn_is_null_string(class_name))
 		copy(class, charsmax(class), "--")
