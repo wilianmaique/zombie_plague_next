@@ -59,19 +59,6 @@ enum _:eSettingsConfigs
 	CONFIG_PREFIX_CHAT[32],
 }
 
-enum _:ePropItems
-{
-	ITEM_PROP_NAME[32],
-	ITEM_PROP_COST,
-	eItemTeams:ITEM_PROP_TEAM,
-	ITEM_PROP_LIMIT_PLAYER_PER_ROUND,
-	ITEM_PROP_LIMIT_MAX_PER_ROUND,
-	ITEM_PROP_LIMIT_PER_MAP,
-	ITEM_PROP_MIN_ZOMBIES,
-	bool:ITEM_PROP_ALLOW_BUY_SPECIAL_MODS,
-	ITEM_PROP_FLAG,
-}
-
 enum _:eGameRules
 {
 	GAME_RULE_CURRENT_GAMEMODE,
@@ -117,8 +104,7 @@ enum _:eSyncHuds
 
 new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "player/bhit_helmet-1.wav" };
 
-new xDataItemCount, xFirstClass[2], xClassCount[2], xItemCount[2]
-new Array:aDataItem
+new xFirstClass[2], xClassCount[2], xItemCount[2]
 new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
 
 new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
@@ -281,7 +267,7 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 		if(get_num_alive() == 1 && !xCvars[CVAR_LAST_HUMAN_INFECT])
 			return HC_CONTINUE
 
-		static Float:armor
+		new Float:armor
 		get_entvar(victim, var_armorvalue, armor)
 
 		if(armor > 0.0)
@@ -455,7 +441,6 @@ public _show_menu_game(id, menu, item)
 
 public buy_items(id)
 {
-	new xDataGetItem[ePropItems]
 	new eItemTeams:itemTeam = xUserData[id][UD_IS_ZOMBIE] ? ITEM_TEAM_ZOMBIE : ITEM_TEAM_HUMAN
 	new countCheck = itemTeam == ITEM_TEAM_ZOMBIE ? xItemCount[0] : xItemCount[1]
 
@@ -467,12 +452,14 @@ public buy_items(id)
 		return
 	}
 
-	for(new i = 0; i < ArraySize(aDataItem); i++)
-	{
-		ArrayGetArray(aDataItem, i, xDataGetItem)
+	new item_name[32]
 
-		if(xDataGetItem[ITEM_PROP_TEAM] == itemTeam)
-			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)", xDataGetItem[ITEM_PROP_NAME], format_number_point(xDataGetItem[ITEM_PROP_COST])), fmt("%d", i))
+	for(new i = 0; i < zpn_item_array_size(); i++)
+	{
+		zpn_item_get_prop(i, ITEM_PROP_REGISTER_NAME, item_name, charsmax(item_name))
+
+		if(zpn_item_get_prop(i, ITEM_PROP_REGISTER_TEAM) == itemTeam)
+			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)", item_name, format_number_point(zpn_item_get_prop(i, ITEM_PROP_REGISTER_COST))), fmt("%d", i))
 	}
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
@@ -496,14 +483,11 @@ public _buy_items(id, menu, item)
 	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
 
 	new item_index = str_to_num(info)
-	new xDataGetItem[ePropItems]
 
-	ArrayGetArray(aDataItem, item_index, xDataGetItem)
-
-	if(xUserData[id][UD_IS_ZOMBIE] && xDataGetItem[ITEM_PROP_TEAM] == ITEM_TEAM_HUMAN)
+	if(xUserData[id][UD_IS_ZOMBIE] && zpn_item_get_prop(item_index, ITEM_PROP_REGISTER_TEAM) == ITEM_TEAM_HUMAN)
 		return
 	
-	if(xUserData[id][UD_AMMO_PACKS] < xDataGetItem[ITEM_PROP_COST])
+	if(xUserData[id][UD_AMMO_PACKS] < zpn_item_get_prop(item_index, ITEM_PROP_REGISTER_COST))
 	{
 		buy_items(id)
 		client_print_color(id, print_team_red, "%s ^3Você não tem ^4Ammo Packs ^3suficiente.", xSettingsVars[CONFIG_PREFIX_CHAT])
@@ -988,8 +972,6 @@ public plugin_precache()
 
 	defaultIndexPlayer = precache_model("models/player.mdl")
 
-	aDataItem = ArrayCreate(ePropItems, 0)
-
 	bind_pcvar_num(create_cvar("zpn_delay", "15", .has_min = true, .min_val = 1.0), xCvars[CVAR_START_DELAY])
 	bind_pcvar_num(create_cvar("zpn_class_select_instant", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_CLASS_SELECT_INSTANT])
 	bind_pcvar_float(create_cvar("zpn_class_select_instant_timeout", "30", .has_min = true, .min_val = 10.0, .has_max = true, .max_val = 500.0), xCvars[CVAR_CLASS_SELECT_INSTANT_TIMEOUT])
@@ -1180,7 +1162,6 @@ public Spawn_Pre(this)
 
 public plugin_end()
 {
-	ArrayDestroy(aDataItem)
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS])
@@ -1191,13 +1172,7 @@ public plugin_natives()
 {
 	register_library("zombie_plague_next")
 
-	
-	register_native("zpn_gamemode_current", "_zpn_gamemode_current") // dps remover isso, VER A MELHOR OPÇÃO
-
-	register_native("zpn_item_init", "_zpn_item_init")
-	register_native("zpn_item_get_prop", "_zpn_item_get_prop")
-	register_native("zpn_item_set_prop", "_zpn_item_set_prop")
-
+	register_native("zpn_get_current_gamemode", "_zpn_get_current_gamemode")
 	register_native("zpn_set_user_zombie", "_zpn_set_user_zombie")
 	register_native("zpn_is_user_zombie", "_zpn_is_user_zombie")
 	register_native("zpn_is_user_zombie_special", "_zpn_is_user_zombie_special")
@@ -1253,7 +1228,7 @@ public _zpn_send_weapon_deploy(plugin_id, param_nums)
 	return true
 }
 
-public _zpn_gamemode_current(plugin_id, param_nums)
+public _zpn_get_current_gamemode(plugin_id, param_nums)
 {
 	return xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
 }
@@ -1338,88 +1313,6 @@ public bool:_zpn_set_user_zombie(plugin_id, param_nums)
 	new bool:set_first = bool:get_param(3)
 
 	return set_user_zombie(id, attacker, set_first)
-}
-
-public _zpn_item_init(plugin_id, param_nums)
-{
-	new index = (++xDataItemCount - 1)
-	new xDataGetItem[ePropItems]
-
-	xDataGetItem[ITEM_PROP_NAME] = EOS
-	xDataGetItem[ITEM_PROP_COST] = 0
-	xDataGetItem[ITEM_PROP_TEAM] = ITEM_TEAM_HUMAN
-	xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = 0
-	xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND] = 0
-	xDataGetItem[ITEM_PROP_LIMIT_PER_MAP] = 0
-	xDataGetItem[ITEM_PROP_MIN_ZOMBIES] = 0
-	xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS] = false
-	xDataGetItem[ITEM_PROP_FLAG] = ADMIN_ALL
-
-	ArrayPushArray(aDataItem, xDataGetItem)
-
-	return index
-}
-
-public any:_zpn_item_get_prop(plugin_id, param_nums)
-{
-	if(zpn_is_invalid_array(aDataItem))
-		return false
-
-	enum { arg_item_id = 1, arg_prop, arg_value, arg_len }
-
-	new item_id = get_param(arg_item_id)
-	new prop = get_param(arg_prop)
-
-	new xDataGetItem[ePropItems]
-	ArrayGetArray(aDataItem, item_id, xDataGetItem)
-
-	switch(ePropItemRegisters:prop)
-	{
-		case ITEM_PROP_REGISTER_NAME: set_string(arg_value, xDataGetItem[ITEM_PROP_NAME], get_param_byref(arg_len))
-		case ITEM_PROP_REGISTER_COST: return xDataGetItem[ITEM_PROP_COST]
-		case ITEM_PROP_REGISTER_TEAM: return xDataGetItem[ITEM_PROP_TEAM]
-		case ITEM_PROP_REGISTER_LIMIT_PLAYER_PER_ROUND: return xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND]
-		case ITEM_PROP_REGISTER_LIMIT_MAX_PER_ROUND: return xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND]
-		case ITEM_PROP_REGISTER_LIMIT_PER_MAP: return xDataGetItem[ITEM_PROP_LIMIT_PER_MAP]
-		case ITEM_PROP_REGISTER_MIN_ZOMBIES: return xDataGetItem[ITEM_PROP_MIN_ZOMBIES]
-		case ITEM_PROP_REGISTER_ALLOW_BUY_SPECIAL_MODS: return xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS]
-		case ITEM_PROP_REGISTER_FLAG: return xDataGetItem[ITEM_PROP_FLAG]
-		default: return false
-	}
-
-	return true
-}
-
-public any:_zpn_item_set_prop(plugin_id, param_nums)
-{
-	if(zpn_is_invalid_array(aDataItem))
-		return false
-
-	enum { arg_item_id = 1, arg_prop, arg_value }
-
-	new item_id = get_param(arg_item_id)
-	new prop = get_param(arg_prop)
-
-	new xDataGetItem[ePropItems]
-	ArrayGetArray(aDataItem, item_id, xDataGetItem)
-
-	switch(ePropItemRegisters:prop)
-	{
-		case ITEM_PROP_REGISTER_NAME: get_string(arg_value, xDataGetItem[ITEM_PROP_NAME], charsmax(xDataGetItem[ITEM_PROP_NAME]))
-		case ITEM_PROP_REGISTER_COST: xDataGetItem[ITEM_PROP_COST] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_TEAM: xDataGetItem[ITEM_PROP_TEAM] = eItemTeams:get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_LIMIT_PLAYER_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_LIMIT_MAX_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_LIMIT_PER_MAP: xDataGetItem[ITEM_PROP_LIMIT_PER_MAP] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_MIN_ZOMBIES: xDataGetItem[ITEM_PROP_MIN_ZOMBIES] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_ALLOW_BUY_SPECIAL_MODS: xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS] = bool:get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_FLAG: xDataGetItem[ITEM_PROP_FLAG] = get_param_byref(arg_value)
-		default: return false
-	}
-
-	ArraySetArray(aDataItem, item_id, xDataGetItem)
-	
-	return true
 }
 
 public bool:set_user_zombie(this, infector, bool:set_first)
@@ -1786,12 +1679,10 @@ check_game()
 count_item(eItemTeams:item_team)
 {
 	new count = 0
-	new xDataGetItem[ePropItems]
 
-	for(new i = 0; i < ArraySize(aDataItem); i++)
+	for(new i = 0; i < zpn_item_array_size(); i++)
 	{
-		ArrayGetArray(aDataItem, i, xDataGetItem)
-		if(xDataGetItem[ITEM_PROP_TEAM] == item_team) count ++;
+		if(zpn_item_get_prop(i, ITEM_PROP_REGISTER_TEAM) == item_team) count ++;
 	}
 
 	return count

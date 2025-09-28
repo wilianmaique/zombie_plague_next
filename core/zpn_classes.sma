@@ -40,12 +40,12 @@ new Array:aDataClass, Array:aIndexClassesZombies, Array:aIndexClassesHumans
 
 public plugin_init()
 {
-	register_plugin("Zombie Plague Next", "1.0", "Wilian M.")
+	register_plugin("[ZPN] Core: Classes", "1.0", "Wilian M.")
 
 	get_classes_index()
 
 	// LOG
-	new i, text[128]
+	new i, text[256]
 
 	server_print("^n")
 	server_print("Classes loaded: %d", ArraySize(aDataClass))
@@ -63,9 +63,10 @@ public plugin_init()
 		add(text, charsmax(text), fmt("Model: %s | ", xDataGetClass[CLASS_PROP_MODEL]))
 		add(text, charsmax(text), fmt("ModelView: %s | ", xDataGetClass[CLASS_PROP_MODEL_VIEW]))
 		add(text, charsmax(text), fmt("BloodColor: %d | ", xDataGetClass[CLASS_PROP_BLOOD_COLOR]))
-
 		server_print(text)
 	}
+
+	server_print("^n")
 }
 
 public plugin_natives()

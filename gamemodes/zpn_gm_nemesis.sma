@@ -27,7 +27,7 @@ public plugin_precache()
 
 public zpn_user_infected_pre(const this, const infector, const class_id)
 {
-	new gamemode_id = zpn_gamemode_current()
+	new gamemode_id = zpn_get_current_gamemode()
 
 	if(gamemode != gamemode_id)
 		return

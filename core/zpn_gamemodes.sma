@@ -30,7 +30,7 @@ public plugin_init()
 	register_plugin("[ZPN] Core: GameModes", "1.0", "Wilian M.")
 
 	// LOG
-	new i, text[128]
+	new i, text[256]
 
 	server_print("^n")
 	server_print("GameModes loaded: %d", ArraySize(aDataGameMode))
@@ -47,9 +47,10 @@ public plugin_init()
 		add(text, charsmax(text), fmt("Chance: %d | ", xDataGetGameMode[GAMEMODE_PROP_CHANCE]))
 		add(text, charsmax(text), fmt("Min Players: %d | ", xDataGetGameMode[GAMEMODE_PROP_MIN_PLAYERS]))
 		add(text, charsmax(text), fmt("Round Time: %0.1f", xDataGetGameMode[GAMEMODE_PROP_ROUND_TIME]))
-
 		server_print(text)
 	}
+
+	server_print("^n")
 }
 
 public plugin_precache()
@@ -71,7 +72,6 @@ public plugin_natives()
 	register_native("zpn_gamemode_set_prop", "_zpn_gamemode_set_prop")
 	register_native("zpn_gamemode_find", "_zpn_gamemode_find")
 	register_native("zpn_gamemode_array_size", "_zpn_gamemode_array_size")
-	//register_native("zpn_gamemode_current", "_zpn_gamemode_current")
 }
 
 public _zpn_gamemode_init(plugin_id, param_nums)

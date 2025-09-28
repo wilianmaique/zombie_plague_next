@@ -15,7 +15,7 @@ public zpn_user_infected_pre(const this, const infector, const class_id)
 {
 	if(is_user_bot(this))
 	{
-		new gamemode_id = zpn_gamemode_current()
+		new gamemode_id = zpn_get_current_gamemode()
 
 		if(gamemode_id == gm_infection)
 			zpn_set_fw_param_int(3, zpn_class_random_class_id(CLASS_TEAM_TYPE_ZOMBIE))
