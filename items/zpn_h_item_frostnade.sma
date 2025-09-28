@@ -15,10 +15,10 @@ public plugin_init()
 public plugin_precache()
 {
 	item = zpn_item_init()
-	zpn_item_set_prop(item, ITEM_PROP_REGISTER_TEAM, ITEM_TEAM_HUMAN)
-	zpn_item_set_prop(item, ITEM_PROP_REGISTER_FIND_NAME, "item_h_frostnade")
-	zpn_item_set_prop(item, ITEM_PROP_REGISTER_NAME, "Frost Nade")
-	zpn_item_set_prop(item, ITEM_PROP_REGISTER_COST, 0)
+	zpn_item_set_prop(item, PROP_ITEM_REGISTER_TEAM, ITEM_TEAM_HUMAN)
+	zpn_item_set_prop(item, PROP_ITEM_REGISTER_FIND_NAME, "item_h_frostnade")
+	zpn_item_set_prop(item, PROP_ITEM_REGISTER_NAME, "Frost Nade")
+	zpn_item_set_prop(item, PROP_ITEM_REGISTER_COST, 0)
 }
 
 public zpn_item_selected_post(const id, const item_id)

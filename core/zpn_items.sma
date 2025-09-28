@@ -1,9 +1,4 @@
 #include <amxmodx>
-#include <amxmisc>
-#include <cstrike>
-#include <fakemeta>
-#include <hamsandwich>
-#include <reapi>
 #include <regex>
 #include <api_json_settings>
 #include <zombie_plague_next_const>
@@ -12,6 +7,7 @@ enum _:ePropItems
 {
 	ITEM_PROP_NAME[32],
 	ITEM_PROP_FIND_NAME[32],
+	ITEM_PROP_CMD_BUY[32],
 	ITEM_PROP_COST,
 	eItemTeams:ITEM_PROP_TEAM,
 	ITEM_PROP_LIMIT_PLAYER_PER_ROUND,
@@ -78,6 +74,7 @@ public _zpn_item_init(plugin_id, param_nums)
 
 	xDataGetItem[ITEM_PROP_NAME] = EOS
 	xDataGetItem[ITEM_PROP_FIND_NAME] = EOS
+	xDataGetItem[ITEM_PROP_CMD_BUY] = EOS
 	xDataGetItem[ITEM_PROP_COST] = 0
 	xDataGetItem[ITEM_PROP_TEAM] = ITEM_TEAM_HUMAN
 	xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = 0
@@ -105,16 +102,17 @@ public any:_zpn_item_get_prop(plugin_id, param_nums)
 
 	switch(ePropItemRegisters:prop)
 	{
-		case ITEM_PROP_REGISTER_NAME: set_string(arg_value, xDataGetItem[ITEM_PROP_NAME], get_param_byref(arg_len))
-		case ITEM_PROP_REGISTER_FIND_NAME: set_string(arg_value, xDataGetItem[ITEM_PROP_FIND_NAME], get_param_byref(arg_len))
-		case ITEM_PROP_REGISTER_COST: return xDataGetItem[ITEM_PROP_COST]
-		case ITEM_PROP_REGISTER_TEAM: return xDataGetItem[ITEM_PROP_TEAM]
-		case ITEM_PROP_REGISTER_LIMIT_PLAYER_PER_ROUND: return xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND]
-		case ITEM_PROP_REGISTER_LIMIT_MAX_PER_ROUND: return xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND]
-		case ITEM_PROP_REGISTER_LIMIT_PER_MAP: return xDataGetItem[ITEM_PROP_LIMIT_PER_MAP]
-		case ITEM_PROP_REGISTER_MIN_ZOMBIES: return xDataGetItem[ITEM_PROP_MIN_ZOMBIES]
-		case ITEM_PROP_REGISTER_ALLOW_BUY_SPECIAL_MODS: return xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS]
-		case ITEM_PROP_REGISTER_FLAG: return xDataGetItem[ITEM_PROP_FLAG]
+		case PROP_ITEM_REGISTER_NAME: set_string(arg_value, xDataGetItem[ITEM_PROP_NAME], get_param_byref(arg_len))
+		case PROP_ITEM_REGISTER_FIND_NAME: set_string(arg_value, xDataGetItem[ITEM_PROP_FIND_NAME], get_param_byref(arg_len))
+		case PROP_ITEM_REGISTER_CMD_BUY: set_string(arg_value, xDataGetItem[ITEM_PROP_CMD_BUY], get_param_byref(arg_len))
+		case PROP_ITEM_REGISTER_COST: return xDataGetItem[ITEM_PROP_COST]
+		case PROP_ITEM_REGISTER_TEAM: return xDataGetItem[ITEM_PROP_TEAM]
+		case PROP_ITEM_REGISTER_LIMIT_PLAYER_PER_ROUND: return xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND]
+		case PROP_ITEM_REGISTER_LIMIT_MAX_PER_ROUND: return xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND]
+		case PROP_ITEM_REGISTER_LIMIT_PER_MAP: return xDataGetItem[ITEM_PROP_LIMIT_PER_MAP]
+		case PROP_ITEM_REGISTER_MIN_ZOMBIES: return xDataGetItem[ITEM_PROP_MIN_ZOMBIES]
+		case PROP_ITEM_REGISTER_ALLOW_BUY_SPECIAL_MODS: return xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS]
+		case PROP_ITEM_REGISTER_FLAG: return xDataGetItem[ITEM_PROP_FLAG]
 		default: return false
 	}
 
@@ -136,16 +134,17 @@ public any:_zpn_item_set_prop(plugin_id, param_nums)
 
 	switch(ePropItemRegisters:prop)
 	{
-		case ITEM_PROP_REGISTER_NAME: get_string(arg_value, xDataGetItem[ITEM_PROP_NAME], charsmax(xDataGetItem[ITEM_PROP_NAME]))
-		case ITEM_PROP_REGISTER_FIND_NAME: get_string(arg_value, xDataGetItem[ITEM_PROP_FIND_NAME], charsmax(xDataGetItem[ITEM_PROP_FIND_NAME]))
-		case ITEM_PROP_REGISTER_COST: xDataGetItem[ITEM_PROP_COST] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_TEAM: xDataGetItem[ITEM_PROP_TEAM] = eItemTeams:get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_LIMIT_PLAYER_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_LIMIT_MAX_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_LIMIT_PER_MAP: xDataGetItem[ITEM_PROP_LIMIT_PER_MAP] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_MIN_ZOMBIES: xDataGetItem[ITEM_PROP_MIN_ZOMBIES] = get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_ALLOW_BUY_SPECIAL_MODS: xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS] = bool:get_param_byref(arg_value)
-		case ITEM_PROP_REGISTER_FLAG: xDataGetItem[ITEM_PROP_FLAG] = get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_NAME: get_string(arg_value, xDataGetItem[ITEM_PROP_NAME], charsmax(xDataGetItem[ITEM_PROP_NAME]))
+		case PROP_ITEM_REGISTER_FIND_NAME: get_string(arg_value, xDataGetItem[ITEM_PROP_FIND_NAME], charsmax(xDataGetItem[ITEM_PROP_FIND_NAME]))
+		case PROP_ITEM_REGISTER_CMD_BUY: get_string(arg_value, xDataGetItem[ITEM_PROP_CMD_BUY], charsmax(xDataGetItem[ITEM_PROP_CMD_BUY]))
+		case PROP_ITEM_REGISTER_COST: xDataGetItem[ITEM_PROP_COST] = get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_TEAM: xDataGetItem[ITEM_PROP_TEAM] = eItemTeams:get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_LIMIT_PLAYER_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_LIMIT_MAX_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND] = get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_LIMIT_PER_MAP: xDataGetItem[ITEM_PROP_LIMIT_PER_MAP] = get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_MIN_ZOMBIES: xDataGetItem[ITEM_PROP_MIN_ZOMBIES] = get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_ALLOW_BUY_SPECIAL_MODS: xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS] = bool:get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_FLAG: xDataGetItem[ITEM_PROP_FLAG] = get_param_byref(arg_value)
 		default: return false
 	}
 

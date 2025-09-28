@@ -1,9 +1,4 @@
 #include <amxmodx>
-#include <amxmisc>
-#include <cstrike>
-#include <fakemeta>
-#include <hamsandwich>
-#include <reapi>
 #include <regex>
 #include <api_json_settings>
 #include <zombie_plague_next_const>
@@ -149,29 +144,29 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 
 	switch(ePropClassRegisters:prop)
 	{
-		case CLASS_PROP_REGISTER_TYPE: return xDataGetClass[CLASS_PROP_TYPE]
-		case CLASS_PROP_REGISTER_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_NAME], get_param_byref(arg_len))
-		case CLASS_PROP_REGISTER_INFO: set_string(arg_value, xDataGetClass[CLASS_PROP_INFO], get_param_byref(arg_len))
-		case CLASS_PROP_REGISTER_MODEL: set_string(arg_value, xDataGetClass[CLASS_PROP_MODEL], get_param_byref(arg_len))
-		case CLASS_PROP_REGISTER_MODEL_VIEW: set_string(arg_value, xDataGetClass[CLASS_PROP_MODEL_VIEW], get_param_byref(arg_len))
-		case CLASS_PROP_REGISTER_BODY: return xDataGetClass[CLASS_PROP_BODY]
-		case CLASS_PROP_REGISTER_HEALTH: return xDataGetClass[CLASS_PROP_HEALTH]
-		case CLASS_PROP_REGISTER_ARMOR: return xDataGetClass[CLASS_PROP_ARMOR]
-		case CLASS_PROP_REGISTER_SPEED: return xDataGetClass[CLASS_PROP_SPEED]
-		case CLASS_PROP_REGISTER_GRAVITY: return xDataGetClass[CLASS_PROP_GRAVITY]
-		case CLASS_PROP_REGISTER_KNOCKBACK: return xDataGetClass[CLASS_PROP_KNOCKBACK]
-		case CLASS_PROP_REGISTER_CLAW_WEAPONLIST: set_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], get_param_byref(arg_len))
-		case CLASS_PROP_REGISTER_SKIN: return xDataGetClass[CLASS_PROP_SKIN]
-		case CLASS_PROP_REGISTER_FIND_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], get_param_byref(arg_len))
-		case CLASS_PROP_REGISTER_NV_COLOR: set_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], get_param_byref(arg_len))
-		case CLASS_PROP_REGISTER_NV_COLOR_CONVERTED: set_array(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED], get_param_byref(arg_len))
-		case CLASS_PROP_REGISTER_HIDE_MENU: return bool:xDataGetClass[CLASS_PROP_HIDE_MENU]
-		case CLASS_PROP_REGISTER_UPDATE_HITBOX: return bool:xDataGetClass[CLASS_PROP_UPDATE_HITBOX]
-		case CLASS_PROP_REGISTER_BLOOD_COLOR: return xDataGetClass[CLASS_PROP_BLOOD_COLOR]
-		case CLASS_PROP_REGISTER_SILENT_FOOTSTEPS: return bool:xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS]
-		case CLASS_PROP_REGISTER_MODEL_INDEX: return xDataGetClass[CLASS_PROP_MODEL_INDEX]
-		case CLASS_PROP_REGISTER_LIMIT: return xDataGetClass[CLASS_PROP_LIMIT]
-		case CLASS_PROP_REGISTER_LEVEL: return xDataGetClass[CLASS_PROP_LEVEL]
+		case PROP_CLASS_REGISTER_TYPE: return xDataGetClass[CLASS_PROP_TYPE]
+		case PROP_CLASS_REGISTER_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_NAME], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_INFO: set_string(arg_value, xDataGetClass[CLASS_PROP_INFO], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_MODEL: set_string(arg_value, xDataGetClass[CLASS_PROP_MODEL], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_MODEL_VIEW: set_string(arg_value, xDataGetClass[CLASS_PROP_MODEL_VIEW], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_BODY: return xDataGetClass[CLASS_PROP_BODY]
+		case PROP_CLASS_REGISTER_HEALTH: return xDataGetClass[CLASS_PROP_HEALTH]
+		case PROP_CLASS_REGISTER_ARMOR: return xDataGetClass[CLASS_PROP_ARMOR]
+		case PROP_CLASS_REGISTER_SPEED: return xDataGetClass[CLASS_PROP_SPEED]
+		case PROP_CLASS_REGISTER_GRAVITY: return xDataGetClass[CLASS_PROP_GRAVITY]
+		case PROP_CLASS_REGISTER_KNOCKBACK: return xDataGetClass[CLASS_PROP_KNOCKBACK]
+		case PROP_CLASS_REGISTER_CLAW_WEAPONLIST: set_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_SKIN: return xDataGetClass[CLASS_PROP_SKIN]
+		case PROP_CLASS_REGISTER_FIND_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_NV_COLOR: set_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_NV_COLOR_CONVERTED: set_array(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_HIDE_MENU: return bool:xDataGetClass[CLASS_PROP_HIDE_MENU]
+		case PROP_CLASS_REGISTER_UPDATE_HITBOX: return bool:xDataGetClass[CLASS_PROP_UPDATE_HITBOX]
+		case PROP_CLASS_REGISTER_BLOOD_COLOR: return xDataGetClass[CLASS_PROP_BLOOD_COLOR]
+		case PROP_CLASS_REGISTER_SILENT_FOOTSTEPS: return bool:xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS]
+		case PROP_CLASS_REGISTER_MODEL_INDEX: return xDataGetClass[CLASS_PROP_MODEL_INDEX]
+		case PROP_CLASS_REGISTER_LIMIT: return xDataGetClass[CLASS_PROP_LIMIT]
+		case PROP_CLASS_REGISTER_LEVEL: return xDataGetClass[CLASS_PROP_LEVEL]
 		default: return false
 	}
 
@@ -203,14 +198,14 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 
 	switch(ePropClassRegisters:prop)
 	{
-		case CLASS_PROP_REGISTER_INFO:
+		case PROP_CLASS_REGISTER_INFO:
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO]))
 
 			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "description", xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO])))
 				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "description", xDataGetClass[CLASS_PROP_INFO])
 		}
-		case CLASS_PROP_REGISTER_MODEL:
+		case PROP_CLASS_REGISTER_MODEL:
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_MODEL], charsmax(xDataGetClass[CLASS_PROP_MODEL]))
 
@@ -220,7 +215,7 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_MODEL]))
 				xDataGetClass[CLASS_PROP_MODEL_INDEX] = precache_player_model(xDataGetClass[CLASS_PROP_MODEL])
 		}
-		case CLASS_PROP_REGISTER_MODEL_VIEW:
+		case PROP_CLASS_REGISTER_MODEL_VIEW:
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_MODEL_VIEW], charsmax(xDataGetClass[CLASS_PROP_MODEL_VIEW]))
 
@@ -230,70 +225,70 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 			if(!zpn_is_null_string(xDataGetClass[CLASS_PROP_MODEL_VIEW]))
 				precache_model(xDataGetClass[CLASS_PROP_MODEL_VIEW])
 		}
-		case CLASS_PROP_REGISTER_BODY:
+		case PROP_CLASS_REGISTER_BODY:
 		{
 			xDataGetClass[CLASS_PROP_BODY] = get_param_byref(arg_value)
 
 			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "body", xDataGetClass[CLASS_PROP_BODY], false))
 				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "body", xDataGetClass[CLASS_PROP_BODY], false)
 		}
-		case CLASS_PROP_REGISTER_SKIN:
+		case PROP_CLASS_REGISTER_SKIN:
 		{
 			xDataGetClass[CLASS_PROP_SKIN] = get_param_byref(arg_value)
 
 			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "skin", xDataGetClass[CLASS_PROP_SKIN], false))
 				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "skin", xDataGetClass[CLASS_PROP_SKIN], false)
 		}
-		case CLASS_PROP_REGISTER_HEALTH:
+		case PROP_CLASS_REGISTER_HEALTH:
 		{
 			xDataGetClass[CLASS_PROP_HEALTH] = get_float_byref(arg_value)
 	
 			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "health", xDataGetClass[CLASS_PROP_HEALTH]))
 				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "health", xDataGetClass[CLASS_PROP_HEALTH])
 		}
-		case CLASS_PROP_REGISTER_SPEED:
+		case PROP_CLASS_REGISTER_SPEED:
 		{
 			xDataGetClass[CLASS_PROP_SPEED] = get_float_byref(arg_value)
 
 			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "speed", xDataGetClass[CLASS_PROP_SPEED]))
 				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "speed", xDataGetClass[CLASS_PROP_SPEED])
 		}
-		case CLASS_PROP_REGISTER_ARMOR:
+		case PROP_CLASS_REGISTER_ARMOR:
 		{
 			xDataGetClass[CLASS_PROP_ARMOR] = get_float_byref(arg_value)
 
 			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "armor", xDataGetClass[CLASS_PROP_ARMOR]))
 				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "armor", xDataGetClass[CLASS_PROP_ARMOR])
 		}
-		case CLASS_PROP_REGISTER_GRAVITY:
+		case PROP_CLASS_REGISTER_GRAVITY:
 		{
 			xDataGetClass[CLASS_PROP_GRAVITY] = get_float_byref(arg_value)
 
 			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "gravity", xDataGetClass[CLASS_PROP_GRAVITY]))
 				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "gravity", xDataGetClass[CLASS_PROP_GRAVITY])
 		}
-		case CLASS_PROP_REGISTER_KNOCKBACK:
+		case PROP_CLASS_REGISTER_KNOCKBACK:
 		{
 			xDataGetClass[CLASS_PROP_KNOCKBACK] = get_float_byref(arg_value)
 
 			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "knockback", xDataGetClass[CLASS_PROP_KNOCKBACK]))
 				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "knockback", xDataGetClass[CLASS_PROP_KNOCKBACK])
 		}
-		case CLASS_PROP_REGISTER_CLAW_WEAPONLIST:
+		case PROP_CLASS_REGISTER_CLAW_WEAPONLIST:
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], charsmax(xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST]))
 
 			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "claw_weapon_list", xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST], charsmax(xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST])))
 				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "claw_weapon_list", xDataGetClass[CLASS_PROP_CLAW_WEAPONLIST])
 		}
-		case CLASS_PROP_REGISTER_FIND_NAME:
+		case PROP_CLASS_REGISTER_FIND_NAME:
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_FIND_NAME], charsmax(xDataGetClass[CLASS_PROP_FIND_NAME]))
 
 			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "find_name", xDataGetClass[CLASS_PROP_FIND_NAME], charsmax(xDataGetClass[CLASS_PROP_FIND_NAME])))
 				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "find_name", xDataGetClass[CLASS_PROP_FIND_NAME])
 		}
-		case CLASS_PROP_REGISTER_NV_COLOR:
+		case PROP_CLASS_REGISTER_NV_COLOR:
 		{
 			get_string(arg_value, xDataGetClass[CLASS_PROP_NV_COLOR], charsmax(xDataGetClass[CLASS_PROP_NV_COLOR]))
 
@@ -310,42 +305,42 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 				}
 			}
 		}
-		case CLASS_PROP_REGISTER_HIDE_MENU:
+		case PROP_CLASS_REGISTER_HIDE_MENU:
 		{
 			xDataGetClass[CLASS_PROP_HIDE_MENU] = bool:get_param_byref(arg_value)
 
 			if(!json_setting_get_bool(PATH_SETTINGS_CLASSES, class_section_final, "hide_class_in_menu", xDataGetClass[CLASS_PROP_HIDE_MENU]))
 				json_setting_set_bool(PATH_SETTINGS_CLASSES, class_section_final, "hide_class_in_menu", xDataGetClass[CLASS_PROP_HIDE_MENU])
 		}
-		case CLASS_PROP_REGISTER_UPDATE_HITBOX:
+		case PROP_CLASS_REGISTER_UPDATE_HITBOX:
 		{
 			xDataGetClass[CLASS_PROP_UPDATE_HITBOX] = bool:get_param_byref(arg_value)
 
 			if(!json_setting_get_bool(PATH_SETTINGS_CLASSES, class_section_final, "update_hitbox", xDataGetClass[CLASS_PROP_UPDATE_HITBOX]))
 				json_setting_set_bool(PATH_SETTINGS_CLASSES, class_section_final, "update_hitbox", xDataGetClass[CLASS_PROP_UPDATE_HITBOX])
 		}
-		case CLASS_PROP_REGISTER_BLOOD_COLOR:
+		case PROP_CLASS_REGISTER_BLOOD_COLOR:
 		{
 			xDataGetClass[CLASS_PROP_BLOOD_COLOR] = get_param_byref(arg_value)
 
 			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "blood_color", xDataGetClass[CLASS_PROP_BLOOD_COLOR], false))
 				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "blood_color", xDataGetClass[CLASS_PROP_BLOOD_COLOR], false)
 		}
-		case CLASS_PROP_REGISTER_SILENT_FOOTSTEPS:
+		case PROP_CLASS_REGISTER_SILENT_FOOTSTEPS:
 		{
 			xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS] = bool:get_param_byref(arg_value)
 
 			if(!json_setting_get_bool(PATH_SETTINGS_CLASSES, class_section_final, "silent_footsteps", xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS]))
 				json_setting_set_bool(PATH_SETTINGS_CLASSES, class_section_final, "silent_footsteps", xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS])
 		}
-		case CLASS_PROP_REGISTER_LIMIT:
+		case PROP_CLASS_REGISTER_LIMIT:
 		{
 			xDataGetClass[CLASS_PROP_LIMIT] = clamp(get_param_byref(arg_value), 0, MAX_LEVEL)
 
 			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "limit", xDataGetClass[CLASS_PROP_LIMIT], false))
 				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "limit", xDataGetClass[CLASS_PROP_LIMIT], false)
 		}
-		case CLASS_PROP_REGISTER_LEVEL:
+		case PROP_CLASS_REGISTER_LEVEL:
 		{
 			xDataGetClass[CLASS_PROP_LEVEL] = clamp(get_param_byref(arg_value), 0, MAX_LEVEL)
 

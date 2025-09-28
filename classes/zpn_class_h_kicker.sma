@@ -34,12 +34,12 @@ public plugin_init()
 register_class()
 {
 	class = zpn_class_init("Kick", CLASS_TEAM_TYPE_HUMAN)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_INFO, "You can kick zombies")
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_MODEL, "vip")
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_SPEED, 300.0)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_HEALTH, 180.0)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_ARMOR, 25.0)
-	zpn_class_set_prop(class, CLASS_PROP_REGISTER_GRAVITY, 0.75)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "You can kick zombies")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL, "vip")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_SPEED, 300.0)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_HEALTH, 180.0)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_ARMOR, 25.0)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_GRAVITY, 0.75)
 }
 
 bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_HUMAN) == class && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_HUMAN, true) == class && is_user_alive(id));

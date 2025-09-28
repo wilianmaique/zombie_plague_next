@@ -319,7 +319,7 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 
 	new classTeam = xUserData[this][UD_IS_ZOMBIE] ? xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
 	
-	new Float:speed = zpn_class_get_prop(classTeam, CLASS_PROP_REGISTER_SPEED)
+	new Float:speed = zpn_class_get_prop(classTeam, PROP_CLASS_REGISTER_SPEED)
 	new activeItem = get_member(this, m_pActiveItem)
 
 	if(!is_nullent(activeItem) && xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
@@ -456,10 +456,10 @@ public buy_items(id)
 
 	for(new i = 0; i < zpn_item_array_size(); i++)
 	{
-		zpn_item_get_prop(i, ITEM_PROP_REGISTER_NAME, item_name, charsmax(item_name))
+		zpn_item_get_prop(i, PROP_ITEM_REGISTER_NAME, item_name, charsmax(item_name))
 
-		if(zpn_item_get_prop(i, ITEM_PROP_REGISTER_TEAM) == itemTeam)
-			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)", item_name, format_number_point(zpn_item_get_prop(i, ITEM_PROP_REGISTER_COST))), fmt("%d", i))
+		if(zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) == itemTeam)
+			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)", item_name, format_number_point(zpn_item_get_prop(i, PROP_ITEM_REGISTER_COST))), fmt("%d", i))
 	}
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
@@ -484,10 +484,10 @@ public _buy_items(id, menu, item)
 
 	new item_index = str_to_num(info)
 
-	if(xUserData[id][UD_IS_ZOMBIE] && zpn_item_get_prop(item_index, ITEM_PROP_REGISTER_TEAM) == ITEM_TEAM_HUMAN)
+	if(xUserData[id][UD_IS_ZOMBIE] && zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_TEAM) == ITEM_TEAM_HUMAN)
 		return
 	
-	if(xUserData[id][UD_AMMO_PACKS] < zpn_item_get_prop(item_index, ITEM_PROP_REGISTER_COST))
+	if(xUserData[id][UD_AMMO_PACKS] < zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_COST))
 	{
 		buy_items(id)
 		client_print_color(id, print_team_red, "%s ^3Você não tem ^4Ammo Packs ^3suficiente.", xSettingsVars[CONFIG_PREFIX_CHAT])
@@ -537,10 +537,10 @@ public _select_class_type(id, menu, item)
 
 	for(new i = 0; i < zpn_class_array_size(); i++)
 	{
-		type = zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE)
-		hide_menu = zpn_class_get_prop(i, CLASS_PROP_REGISTER_HIDE_MENU)
-		zpn_class_get_prop(i, CLASS_PROP_REGISTER_NAME, name, charsmax(name))
-		zpn_class_get_prop(i, CLASS_PROP_REGISTER_INFO, class_info, charsmax(class_info))
+		type = zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE)
+		hide_menu = zpn_class_get_prop(i, PROP_CLASS_REGISTER_HIDE_MENU)
+		zpn_class_get_prop(i, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
+		zpn_class_get_prop(i, PROP_CLASS_REGISTER_INFO, class_info, charsmax(class_info))
 
 		if(type == class_type && !hide_menu)
 			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)%s", name, class_info, i == get_current_class_index(id, class_type) ? " \r*" : ""), fmt("%d", i))
@@ -571,12 +571,12 @@ public _select_class(id, menu, item)
 	new eClassTypes:type, name[32], class_info[32]
 	new Float:speed, Float:gravity, Float:health
 
-	type = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_TYPE)
-	speed = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SPEED)
-	gravity = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_GRAVITY)
-	health = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NAME, name, charsmax(name))
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_INFO, class_info, charsmax(class_info))
+	type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+	speed = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED)
+	gravity = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY)
+	health = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
+	zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
+	zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_INFO, class_info, charsmax(class_info))
 
 	if(xCvars[CVAR_CLASS_SELECT_INSTANT] && xUserData[id][UD_CLASS_TIMEOUT] > get_gametime())
 	{
@@ -690,7 +690,7 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 		new class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
 
 		new view[64]
-		zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_VIEW, view, charsmax(view))
+		zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL_VIEW, view, charsmax(view))
 
 		SetHookChainArg(2, ATYPE_STRING, view)
 		SetHookChainArg(3, ATYPE_STRING, "")
@@ -1284,7 +1284,7 @@ public bool:_zpn_is_user_zombie_special(plugin_id, param_nums)
 
 	new class_id = xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[id][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
 
-	return (xUserData[id][UD_IS_ZOMBIE] && zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
+	return (xUserData[id][UD_IS_ZOMBIE] && zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
 }
 
 public _zpn_get_user_selected_class(plugin_id, param_nums)
@@ -1342,12 +1342,12 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	new class_model[64]
 	new bool:class_update_hitbox = false, class_blood_color, class_body, class_skin, class_model_index
 
-	class_update_hitbox = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_UPDATE_HITBOX)
-	class_blood_color = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
-	class_model_index = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_INDEX)
-	class_body = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_BODY)
-	class_skin = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SKIN)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, class_model, charsmax(class_model))
+	class_update_hitbox = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_UPDATE_HITBOX)
+	class_blood_color = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
+	class_model_index = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL_INDEX)
+	class_body = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_BODY)
+	class_skin = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SKIN)
+	zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL, class_model, charsmax(class_model))
 
 	xUserData[this][UD_IS_ZOMBIE] = true
 	xUserData[this][UD_IS_FIRST_ZOMBIE] = set_first
@@ -1367,12 +1367,12 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	set_member(this, m_modelIndexPlayer, (class_update_hitbox && class_model_index != -1) ? class_model_index : defaultIndexPlayer)
 	set_entvar(this, var_modelindex, (class_update_hitbox && class_model_index != -1) ? class_model_index : defaultIndexPlayer)
 
-	set_entvar(this, var_health, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH))
-	set_entvar(this, var_max_health, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH))
-	set_entvar(this, var_gravity, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_GRAVITY))
-	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_ARMOR)), 0, 1000))
-	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SPEED))
-	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SILENT_FOOTSTEPS))
+	set_entvar(this, var_health, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH))
+	set_entvar(this, var_max_health, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH))
+	set_entvar(this, var_gravity, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY))
+	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_ARMOR)), 0, 1000))
+	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED))
+	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SILENT_FOOTSTEPS))
 	deploy_weapon(this)
 
 	make_deathmsg(infector, this, 0, "teammate")
@@ -1403,12 +1403,12 @@ public set_user_human(this)
 	new class_model[64]
 	new bool:class_update_hitbox = false, class_blood_color, class_body, class_skin, class_model_index
 
-	class_update_hitbox = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_UPDATE_HITBOX)
-	class_blood_color = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH)
-	class_model_index = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL_INDEX)
-	class_body = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_BODY)
-	class_skin = zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SKIN)
-	zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_MODEL, class_model, charsmax(class_model))
+	class_update_hitbox = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_UPDATE_HITBOX)
+	class_blood_color = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
+	class_model_index = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL_INDEX)
+	class_body = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_BODY)
+	class_skin = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SKIN)
+	zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL, class_model, charsmax(class_model))
 
 	xUserData[this][UD_IS_ZOMBIE] = false
 	xUserData[this][UD_IS_LAST_HUMAN] = false
@@ -1430,12 +1430,12 @@ public set_user_human(this)
 	set_entvar(this, var_modelindex, (class_update_hitbox && class_model_index != -1) ? class_model_index : defaultIndexPlayer)
 	
 
-	set_entvar(this, var_health, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH))
-	set_entvar(this, var_max_health, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_HEALTH))
-	set_entvar(this, var_gravity, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_GRAVITY))
-	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_ARMOR)), 0, 1000))
-	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SPEED))
-	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_SILENT_FOOTSTEPS))
+	set_entvar(this, var_health, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH))
+	set_entvar(this, var_max_health, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH))
+	set_entvar(this, var_gravity, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY))
+	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_ARMOR)), 0, 1000))
+	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED))
+	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SILENT_FOOTSTEPS))
 	rg_set_score_attrib(this, false)
 
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
@@ -1528,11 +1528,11 @@ public set_user_nv(id)
 get_user_nv_color(id, outRgb[3])
 {
 	static class_id; class_id = xUserData[id][UD_IS_ZOMBIE] ? xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_HUMAN_CLASS]
-	static nv_color[12]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NV_COLOR, nv_color)
+	static nv_color[12]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NV_COLOR, nv_color)
 
 	if(!zpn_is_null_string(nv_color))
 	{
-		static nv_color_converted[4]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NV_COLOR_CONVERTED, nv_color_converted, charsmax(nv_color_converted))
+		static nv_color_converted[4]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NV_COLOR_CONVERTED, nv_color_converted, charsmax(nv_color_converted))
 		
 		outRgb[0] = nv_color_converted[0]
 		outRgb[1] = nv_color_converted[1]
@@ -1574,7 +1574,7 @@ get_class_name(const this)
 		class_id = xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] != -1 ? xUserData[this][UD_CURRENT_TEMP_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS]
 	else class_id = xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] != -1 ? xUserData[this][UD_CURRENT_TEMP_HUMAN_CLASS] : xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
 	
-	static class_name[64]; zpn_class_get_prop(class_id, CLASS_PROP_REGISTER_NAME, class_name, charsmax(class_name))
+	static class_name[64]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, class_name, charsmax(class_name))
 
 	if(zpn_is_null_string(class_name))
 		copy(class, charsmax(class), "--")
@@ -1589,7 +1589,7 @@ get_first_class(eClassTypes:class_type)
 
 	for(new i = 0; i < zpn_class_array_size(); i++)
 	{
-		if(zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE) == class_type)
+		if(zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE) == class_type)
 		{
 			class_id = i
 			break
@@ -1682,7 +1682,7 @@ count_item(eItemTeams:item_team)
 
 	for(new i = 0; i < zpn_item_array_size(); i++)
 	{
-		if(zpn_item_get_prop(i, ITEM_PROP_REGISTER_TEAM) == item_team) count ++;
+		if(zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) == item_team) count ++;
 	}
 
 	return count
@@ -1694,7 +1694,7 @@ count_class(eClassTypes:class_type)
 
 	for(new i = 0; i < zpn_class_array_size(); i++)
 	{
-		if(zpn_class_get_prop(i, CLASS_PROP_REGISTER_TYPE) == class_type) count ++;
+		if(zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE) == class_type) count ++;
 	}
 
 	return count
