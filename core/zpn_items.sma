@@ -185,4 +185,3 @@ public _zpn_item_array_size(plugin_id, param_nums)
 {
 	return ArraySize(aDataItem)
 }
-	

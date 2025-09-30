@@ -5,6 +5,7 @@
 #include <amxmisc>
 #include <cstrike>
 #include <fakemeta>
+#include <fun>
 #include <hamsandwich>
 #include <reapi>
 #include <regex>
@@ -146,7 +147,7 @@ public plugin_init()
 	xForwards[FW_HUMANIZED_POST] = CreateMultiForward("zpn_user_humanized_post", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_ITEM_SELECTED_POST] = CreateMultiForward("zpn_item_selected_post", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_USER_FROZEN_PRE] = CreateMultiForward("zpn_user_frozen_pre", ET_CONTINUE, FP_CELL)
-	xForwards[FW_USER_FROZEN_POST] = CreateMultiForward("zpn_user_frozen_post", ET_CONTINUE, FP_CELL)
+	xForwards[FW_USER_FROZEN_POST] = CreateMultiForward("zpn_user_frozen_post", ET_IGNORE, FP_CELL)
 	
 	xMsgScoreAttrib = get_user_msgid("ScoreAttrib")
 
@@ -199,10 +200,10 @@ public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
 	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
 
-	if(xUserData[this][UD_IS_ZOMBIE] && zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_DEATHMATCH) == GAMEMODE_DEATHMATCH_ONLY_TR && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+	if(xUserData[this][UD_IS_ZOMBIE] && zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_DEATHMATCH) == GAMEMODE_DEATHMATCH_ONLY_TR && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 	{
 		remove_task(this + TASK_RESPAWN)
-		set_task_ex(zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_RESPAWN_TIME), "respawn_user", this + TASK_RESPAWN)
+		set_task_ex(zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_RESPAWN_TIME), "respawn_user", this + TASK_RESPAWN)
 	}
 }
 
@@ -949,15 +950,15 @@ public xInitRound()
 
 	if(gamemode_id == -1) gamemode_id = 0
 
-	if(zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_MIN_PLAYERS) < get_num_alive())
+	if(zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_MIN_PLAYERS) < get_num_alive())
 		gamemode_id = zpn_gamemode_find("gm_infection")
 
 	xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] = gamemode_id
 	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gamemode_id
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
 
-	new gm_hud_color_converted[4]; zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_HUD_COLOR_CONVERTED, gm_hud_color_converted, charsmax(gm_hud_color_converted))
-	new gm_hud_notice[32]; zpn_gamemode_get_prop(gamemode_id, GAMEMODE_PROP_REGISTER_NOTICE, gm_hud_notice, charsmax(gm_hud_notice))
+	new gm_hud_color_converted[4]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_HUD_COLOR_CONVERTED, gm_hud_color_converted, charsmax(gm_hud_color_converted))
+	new gm_hud_notice[32]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_NOTICE, gm_hud_notice, charsmax(gm_hud_notice))
 
 	set_hudmessage(gm_hud_color_converted[0], gm_hud_color_converted[1], gm_hud_color_converted[2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
 	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", gm_hud_notice)
@@ -1443,9 +1444,10 @@ public set_user_human(this)
 
 public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 {
-	// xFwFloatParam[1] = -1.0
-	// xFwBoolParam[2] = false
+	// xFwIntParam[1] = -1
 	// xFwFloatParam[2] = -1.0
+	// xFwBoolParam[3] = false
+	// xFwBoolParam[4] = false
 
 	// if(xFwFloatParam[1] != -1.0) this = xFwFloatParam[1]
 	// if(xFwFloatParam[2] != -1.0) class_id = xFwFloatParam[2]
@@ -1455,18 +1457,13 @@ public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 	if(xForwardReturn >= ZPN_RETURN_HANDLED)
 		return false
 
-	// new Float:vecVelocity[3]
-	// get_entvar(this, var_velocity, vecVelocity)
-
-	// for(new i = 0; i < 3; i++)
-	// 	vecVelocity[i] *= 0.5
-
 	xUserData[this][UD_IS_FREEZED] = true
 
 	set_entvar(this, var_velocity, 1.0)
 	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) | PLAYER_PREVENT_JUMP)
 	set_member(this, m_bIsDefusing, true)
 	rg_reset_maxspeed(this)
+	set_user_rendering(this, kRenderFxGlowShell, 0, 160, 255, kRenderNormal, 10)
 
 	if(reset_time && task_exists(this + TASK_FROZEN))
 		remove_task(this + TASK_FROZEN)
@@ -1476,7 +1473,7 @@ public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 		if(play_sound)
 		{
 			new sound[64]; ArrayGetString(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS], random_num(0, ArraySize(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS]) - 1), sound, charsmax(sound))
-			emit_sound(this, CHAN_BODY, sound, 1.0, 0.5, 0, PITCH_NORM)
+			rh_emit_sound2(this, 0, CHAN_STATIC, sound, VOL_NORM, 0.8)
 		}
 
 		set_task_ex(floatclamp(time, 0.1, 60.0), "remove_user_frozen", this + TASK_FROZEN)
@@ -1498,6 +1495,7 @@ public remove_user_frozen(this)
 	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) & ~PLAYER_PREVENT_JUMP)
 	set_member(this, m_bIsDefusing, false)
 	rg_reset_maxspeed(this)
+	set_user_rendering(this, kRenderFxNone, 0, 0, 0, kRenderNormal, 0)
 
 	if(task_exists(this + TASK_FROZEN))
 		remove_task(this + TASK_FROZEN)
@@ -1555,7 +1553,7 @@ get_user_speed(const this)
 get_gamemode_name()
 {
 	static gm[64]; gm[0] = EOS
-	static gm_name[64]; zpn_gamemode_get_prop(xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], GAMEMODE_PROP_REGISTER_NAME, gm_name, charsmax(gm_name))
+	static gm_name[64]; zpn_gamemode_get_prop(xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], PROP_GAMEMODE_REGISTER_NAME, gm_name, charsmax(gm_name))
 
 	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		copy(gm, charsmax(gm), "--")
@@ -1721,7 +1719,7 @@ random_gamemode()
 
 	for(i = 0; i < zpn_gamemode_array_size(); i++)
 	{
-		totalChance += zpn_gamemode_get_prop(i, GAMEMODE_PROP_REGISTER_CHANCE)
+		totalChance += zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_CHANCE)
 	}
 
 	new randomNumber = random_num(1, totalChance)
@@ -1729,7 +1727,7 @@ random_gamemode()
 
 	for(i = 0; i < zpn_gamemode_array_size(); i++)
 	{
-		accumulatedChance += zpn_gamemode_get_prop(i, GAMEMODE_PROP_REGISTER_CHANCE)
+		accumulatedChance += zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_CHANCE)
 
 		if(randomNumber <= accumulatedChance)
 			gm = i

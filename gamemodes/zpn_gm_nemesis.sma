@@ -25,6 +25,14 @@ public plugin_precache()
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_ROUND_TIME, 5.0)
 }
 
+public zpn_user_frozen_pre(const this)
+{
+	if(zpn_get_user_selected_class(this, CLASS_TEAM_TYPE_ZOMBIE_SPECIAL) == class_nemesis || zpn_get_user_selected_class(this, CLASS_TEAM_TYPE_ZOMBIE_SPECIAL, true) == class_nemesis)
+		return ZPN_RETURN_HANDLED
+	
+	return ZPN_RETURN_CONTINUE
+}
+
 public zpn_user_infected_pre(const this, const infector, const class_id)
 {
 	new gamemode_id = zpn_get_current_gamemode()
