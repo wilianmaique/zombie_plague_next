@@ -167,7 +167,6 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_MODEL_INDEX: return xDataGetClass[CLASS_PROP_MODEL_INDEX]
 		case PROP_CLASS_REGISTER_LIMIT: return xDataGetClass[CLASS_PROP_LIMIT]
 		case PROP_CLASS_REGISTER_LEVEL: return xDataGetClass[CLASS_PROP_LEVEL]
-		default: return false
 	}
 
 	return true
@@ -347,7 +346,6 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "level", xDataGetClass[CLASS_PROP_LEVEL], false))
 				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "level", xDataGetClass[CLASS_PROP_LEVEL], false)
 		}
-		default: return false
 	}
 
 	ArraySetArray(aDataClass, class_id, xDataGetClass)

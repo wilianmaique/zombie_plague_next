@@ -114,7 +114,6 @@ public any:_zpn_gamemode_get_prop(plugin_id, param_nums)
 		case PROP_GAMEMODE_REGISTER_DEATHMATCH: return xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH]
 		case PROP_GAMEMODE_REGISTER_RESPAWN_TIME: return xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME]
 		case PROP_GAMEMODE_REGISTER_FIND_NAME: set_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_FIND_NAME], get_param_byref(arg_len))
-		default: return false
 	}
 
 	return true
@@ -151,7 +150,6 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 		case PROP_GAMEMODE_REGISTER_DEATHMATCH: xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = eGameModeDeathMatchTypes:get_param_byref(arg_value)
 		case PROP_GAMEMODE_REGISTER_RESPAWN_TIME: xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = get_float_byref(arg_value)
 		case PROP_GAMEMODE_REGISTER_FIND_NAME: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_FIND_NAME], charsmax(xDataGetGameMode[GAMEMODE_PROP_FIND_NAME]))
-		default: return false
 	}
 
 	ArraySetArray(aDataGameMode, gamemode_id, xDataGetGameMode)

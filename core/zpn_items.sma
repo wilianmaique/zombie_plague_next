@@ -113,7 +113,6 @@ public any:_zpn_item_get_prop(plugin_id, param_nums)
 		case PROP_ITEM_REGISTER_MIN_ZOMBIES: return xDataGetItem[ITEM_PROP_MIN_ZOMBIES]
 		case PROP_ITEM_REGISTER_ALLOW_BUY_SPECIAL_MODS: return xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS]
 		case PROP_ITEM_REGISTER_FLAG: return xDataGetItem[ITEM_PROP_FLAG]
-		default: return false
 	}
 
 	return true
@@ -145,7 +144,6 @@ public any:_zpn_item_set_prop(plugin_id, param_nums)
 		case PROP_ITEM_REGISTER_MIN_ZOMBIES: xDataGetItem[ITEM_PROP_MIN_ZOMBIES] = get_param_byref(arg_value)
 		case PROP_ITEM_REGISTER_ALLOW_BUY_SPECIAL_MODS: xDataGetItem[ITEM_PROP_ALLOW_BUY_SPECIAL_MODS] = bool:get_param_byref(arg_value)
 		case PROP_ITEM_REGISTER_FLAG: xDataGetItem[ITEM_PROP_FLAG] = get_param_byref(arg_value)
-		default: return false
 	}
 
 	ArraySetArray(aDataItem, item_id, xDataGetItem)
