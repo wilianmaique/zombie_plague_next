@@ -230,12 +230,12 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 	// is human
 	if(!zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_IS_ZOMBIE) && zpn_player_data_get_prop(victim, PROP_PD_REGISTER_IS_ZOMBIE))
 	{
-		zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_DMG_DEALT) += flDamage
+		zpn_player_data_set_prop(attacker, PROP_PD_REGISTER_DMG_DEALT, zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_DMG_DEALT) + flDamage)
 
 		while(zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_DMG_DEALT) >= xCvars[CVAR_DMG_DEALT_REACHED])
 		{
 			zpn_player_data_set_prop(attacker, PROP_PD_REGISTER_DMG_DEALT, 0.0)
-			xUserData[attacker][UD_AMMO_PACKS] += xCvars[CVAR_DMG_DEALT_REWARD]
+			zpn_player_data_set_prop(attacker, PROP_PD_REGISTER_AMMO_PACKS, zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_AMMO_PACKS) + xCvars[CVAR_DMG_DEALT_REWARD])
 		}
 	}
 
@@ -260,10 +260,10 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 			return HC_SUPERCEDE
 		}
 		
-		if(xUserData[victim][UD_NEXT_ZOMBIE_CLASS] != -1)
+		if(zpn_player_data_get_prop(victim, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS) != -1)
 		{
-			xUserData[victim][UD_CURRENT_SELECTED_ZOMBIE_CLASS] = xUserData[victim][UD_NEXT_ZOMBIE_CLASS]
-			xUserData[victim][UD_NEXT_ZOMBIE_CLASS] = -1
+			zpn_player_data_set_prop(victim, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS, zpn_player_data_get_prop(victim, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS))
+			zpn_player_data_set_prop(victim, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, -1)
 		}
 
 		set_user_zombie(victim, attacker, false)
@@ -276,8 +276,8 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 	{
 		new last_human = get_first_human_id()
 		
-		if(last_human != -1 && !xUserData[last_human][UD_IS_LAST_HUMAN])
-			xUserData[last_human][UD_IS_LAST_HUMAN] = true
+		if(last_human != -1 && !zpn_player_data_get_prop(last_human, PROP_PD_REGISTER_IS_LAST_HUMAN))
+			zpn_player_data_set_prop(last_human, PROP_PD_REGISTER_IS_LAST_HUMAN, true)
 	}
 
 	return HC_CONTINUE
@@ -295,7 +295,7 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 	if(!zpn_is_valid_player_alive(this))
 		return HC_CONTINUE
 
-	new classTeam = zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE) ? xUserData[this][UD_CURRENT_SELECTED_ZOMBIE_CLASS] : xUserData[this][UD_CURRENT_SELECTED_HUMAN_CLASS]
+	new classTeam = zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE) ? zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS) : zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS)
 	
 	new Float:speed = zpn_class_get_prop(classTeam, PROP_CLASS_REGISTER_SPEED)
 	new activeItem = get_member(this, m_pActiveItem)
@@ -310,7 +310,7 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 
 public CBasePlayer_ResetMaxSpeed_Post(const this)
 {
-	if(zpn_is_valid_player_alive(this) && xUserData[this][UD_IS_FREEZED])
+	if(zpn_is_valid_player_alive(this) && zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
 		set_entvar(this, var_maxspeed, 1.0)
 }
 
@@ -357,7 +357,7 @@ public xHudPlayerInfo(id)
 	if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 		add(txt, charsmax(txt), fmt("» Colete: %d^n", get_entvar(id, var_armorvalue)))
 
-	add(txt, charsmax(txt), fmt("» Ammo Packs: %s^n", format_number_point(xUserData[id][UD_AMMO_PACKS])))
+	add(txt, charsmax(txt), fmt("» Ammo Packs: %s^n", format_number_point(zpn_player_data_get_prop(id, PROP_PD_REGISTER_AMMO_PACKS))))
 	add(txt, charsmax(txt), fmt("» Velocidade: %d", get_user_speed(id)))
 
 	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], txt)
@@ -393,8 +393,8 @@ public _show_menu_game(id, menu, item)
 	{
 		case 0:
 		{
-			xUserData[id][UD_PRIMARY_WEAPON] = -1
-			xUserData[id][UD_SECONDARY_WEAPON] = -1
+			zpn_player_data_set_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON, -1)
+			zpn_player_data_set_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON, -1)
 			select_primary_weapon(id)
 		}
 
@@ -463,7 +463,7 @@ public _buy_items(id, menu, item)
 	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_TEAM) == ITEM_TEAM_HUMAN)
 		return
 	
-	if(xUserData[id][UD_AMMO_PACKS] < zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_COST))
+	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_AMMO_PACKS) < zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_COST))
 	{
 		buy_items(id)
 		client_print_color(id, print_team_red, "%s ^3Você não tem ^4Ammo Packs ^3suficiente.", xSettingsVars[CONFIG_PREFIX_CHAT])
@@ -581,15 +581,15 @@ public _select_class(id, menu, item)
 		{
 			if(xCvars[CVAR_CLASS_SELECT_INSTANT])
 			{
-				xUserData[id][UD_NEXT_ZOMBIE_CLASS] = -1
-				xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS] = class_id
+				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, -1)
+				zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS, class_id)
 
 				if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 					set_user_zombie(id, 0, false)
 			}
 			else
 			{
-				xUserData[id][UD_NEXT_ZOMBIE_CLASS] = class_id
+				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, class_id)
 			}
 		}
 
@@ -597,15 +597,15 @@ public _select_class(id, menu, item)
 		{
 			if(xCvars[CVAR_CLASS_SELECT_INSTANT])
 			{
-				xUserData[id][UD_NEXT_HUMAN_CLASS] = -1
-				xUserData[id][UD_CURRENT_SELECTED_HUMAN_CLASS] = class_id
+				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_HUMAN_CLASS, -1)
+				zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS, class_id)
 
 				if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 					set_user_human(id)
 			}
 			else
 			{
-				xUserData[id][UD_NEXT_HUMAN_CLASS] = class_id
+				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_HUMAN_CLASS, class_id)
 			}
 		}
 	}
@@ -620,8 +620,8 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 		if(!is_user_connected(i))
 			continue
 
-		zpn_player_data_get_prop(i, PROP_PD_REGISTER_CLASS_TIMEOUT, get_gametime())
-		zpn_player_data_get_prop(i, PROP_PD_REGISTER_LAST_LEAP_TIMEOUT, get_gametime())
+		zpn_player_data_set_prop(i, PROP_PD_REGISTER_CLASS_TIMEOUT, get_gametime())
+		zpn_player_data_set_prop(i, PROP_PD_REGISTER_LAST_LEAP_TIMEOUT, get_gametime())
 		zpn_player_data_set_prop(i, PROP_PD_REGISTER_DMG_DEALT, 0.0)
 
 		remove_user_frozen(i + TASK_FROZEN)
@@ -709,14 +709,14 @@ public CBasePlayer_Spawn_Post(id)
 		}
 	}
 
-	if(xUserData[id][UD_PRIMARY_WEAPON] == -1 && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON) == -1 && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 		select_primary_weapon(id)
-	else if(xUserData[id][UD_PRIMARY_WEAPON] != -1 && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+	else if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON) != -1 && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 	{
-		get_selected_weapon(id, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], xUserData[id][UD_PRIMARY_WEAPON], PRIMARY_WEAPON_SLOT)
+		get_selected_weapon(id, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], zpn_player_data_get_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON), PRIMARY_WEAPON_SLOT)
 
-		if(xUserData[id][UD_SECONDARY_WEAPON] != -1)
-			get_selected_weapon(id, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], xUserData[id][UD_SECONDARY_WEAPON], PISTOL_SLOT)
+		if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON) != -1)
+			get_selected_weapon(id, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], zpn_player_data_get_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON), PISTOL_SLOT)
 	}
 }
 
@@ -776,7 +776,7 @@ public _select_primary_weapon(id, menu, item)
 	new xInfo[11], xWpnArrayIndex
 	menu_item_getinfo(menu, item, _, xInfo, charsmax(xInfo))
 	xWpnArrayIndex = str_to_num(xInfo)
-	xUserData[id][UD_PRIMARY_WEAPON] = xWpnArrayIndex
+	zpn_player_data_set_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON, xWpnArrayIndex)
 	
 	get_selected_weapon(id, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], xWpnArrayIndex, PRIMARY_WEAPON_SLOT)
 	select_secondary_weapon(id)
@@ -817,7 +817,7 @@ public _select_secondary_weapon(id, menu, item)
 	new xInfo[11], xWpnArrayIndex
 	menu_item_getinfo(menu, item, _, xInfo, charsmax(xInfo))
 	xWpnArrayIndex = str_to_num(xInfo)
-	xUserData[id][UD_SECONDARY_WEAPON] = xWpnArrayIndex
+	zpn_player_data_set_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON, xWpnArrayIndex)
 
 	get_selected_weapon(id, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], xWpnArrayIndex, PISTOL_SLOT)
 }
@@ -1150,7 +1150,7 @@ public bool:_zpn_is_user_freezed(plugin_id, param_nums)
 	if(param_nums != 1)
 		return false
 
-	return xUserData[get_param(1)][UD_IS_FREEZED]
+	return zpn_player_data_get_prop(get_param(1), PROP_PD_REGISTER_IS_FREEZED)
 }
 
 public bool:_zpn_remove_user_frozen(plugin_id, param_nums)
@@ -1482,7 +1482,7 @@ public set_user_nv(id)
 
 get_user_nv_color(id, outRgb[3])
 {
-	static class_id; class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS] : xUserData[id][UD_CURRENT_SELECTED_HUMAN_CLASS]
+	static class_id; class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS) : zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS)
 	static nv_color[12]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NV_COLOR, nv_color)
 
 	if(!zpn_is_null_string(nv_color))
@@ -1657,7 +1657,7 @@ count_class(eClassTypes:class_type)
 
 get_current_class_index(id, eClassTypes:type, bool:check_temp = false)
 {
-	static class_type; class_type = 0
+	static ePropPlayerDataRegisters:class_type; class_type = ePropPlayerDataRegisters:0
 
 	switch(type)
 	{
