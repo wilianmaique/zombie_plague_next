@@ -6,7 +6,7 @@
 #define VERSION "1.3"
 #define AUTHOR  "Wilian M."
 
-new dir[128], path_file_name[128], section[128], key[128], sec_key[128]
+new dir[128], file_path[256], path_file_name[128], section[128], key[128], sec_key[128]
 
 public plugin_init()
 {
@@ -40,15 +40,36 @@ public plugin_natives()
 	register_native("json_setting_set_string_arr", "_setting_set_string_arr")
 }
 
+JSON:_load_settings_object(const file_name_path[], file_path_output[], len, bool:create_if_missing = false)
+{
+	formatex(file_path_output, len, "%s/%s", dir, file_name_path)
+
+	new JSON:object = json_parse(file_path_output, true)
+
+	if(object == Invalid_JSON && create_if_missing)
+	{
+		_create_dirs(file_name_path)
+		object = json_init_object()
+	}
+
+	return object
+}
+
+bool:_should_update_setting(JSON:object, const setting_key[], JSONType:json_type, bool:replace)
+{
+	new bool:exists = json_object_has_value(object, setting_key, json_type, true)
+
+	return (!exists || replace)
+}
+
 public bool:_setting_remove_section(plugin_id, param_nums)
 {
 	enum { arg_file_name_path = 1, arg_section }
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	get_string(arg_section, section, charsmax(section))
@@ -60,7 +81,7 @@ public bool:_setting_remove_section(plugin_id, param_nums)
 	}
 
 	json_object_remove(object, section, false)
-	json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	json_serial_to_file(object, file_path, true)
 	json_free(object)
 
 	return true
@@ -72,9 +93,8 @@ public bool:_setting_remove_key(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	get_string(arg_section, section, charsmax(section))
@@ -88,7 +108,7 @@ public bool:_setting_remove_key(plugin_id, param_nums)
 	}
 
 	json_object_remove(object, sec_key, true)
-	json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	json_serial_to_file(object, file_path, true)
 	json_free(object)
 
 	return true
@@ -100,9 +120,8 @@ public bool:_setting_get_int(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	get_string(arg_section, section, charsmax(section))
@@ -129,16 +148,7 @@ public bool:_setting_set_int(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
-
-	if(object == Invalid_JSON)
-	{
-		_create_dirs(path_file_name)
-		object = json_init_object()
-	}
-
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
 	if(object == Invalid_JSON)
 		return false
 
@@ -150,15 +160,12 @@ public bool:_setting_set_int(plugin_id, param_nums)
 	new bool:replace = bool:get_param(arg_replace)
 	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
 
-	new bool:updated = false
-
-	if(json_object_has_value(object, sec_key, json_type, true) && replace)
-		json_object_set_number(object, sec_key, value, true), updated = true;
-	else if(!json_object_has_value(object, sec_key, json_type, true))
-		json_object_set_number(object, sec_key, value, true), updated = true;
-
+	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
 	if(updated)
-		json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	{
+		json_object_set_number(object, sec_key, value, true)
+		json_serial_to_file(object, file_path, true)
+	}
 
 	json_free(object)
 
@@ -171,9 +178,8 @@ public bool:_setting_get_bool(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	get_string(arg_section, section, charsmax(section))
@@ -200,16 +206,7 @@ public bool:_setting_set_bool(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
-
-	if(object == Invalid_JSON)
-	{
-		_create_dirs(path_file_name)
-		object = json_init_object()
-	}
-
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
 	if(object == Invalid_JSON)
 		return false
 
@@ -221,15 +218,12 @@ public bool:_setting_set_bool(plugin_id, param_nums)
 	new bool:replace = bool:get_param(arg_replace)
 	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
 
-	new bool:updated = false
-
-	if(json_object_has_value(object, sec_key, json_type, true) && replace)
-		json_object_set_bool(object, sec_key, value, true), updated = true;
-	else if(!json_object_has_value(object, sec_key, json_type, true))
-		json_object_set_bool(object, sec_key, value, true), updated = true;
-
+	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
 	if(updated)
-		json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	{
+		json_object_set_bool(object, sec_key, value, true)
+		json_serial_to_file(object, file_path, true)
+	}
 
 	json_free(object)
 
@@ -242,9 +236,8 @@ public bool:_setting_get_float(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	get_string(arg_section, section, charsmax(section))
@@ -271,16 +264,7 @@ public bool:_setting_set_float(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
-
-	if(object == Invalid_JSON)
-	{
-		_create_dirs(path_file_name)
-		object = json_init_object()
-	}
-
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
 	if(object == Invalid_JSON)
 		return false
 
@@ -292,15 +276,12 @@ public bool:_setting_set_float(plugin_id, param_nums)
 	new bool:replace = bool:get_param(arg_replace)
 	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
 
-	new bool:updated = false
-
-	if(json_object_has_value(object, sec_key, json_type, true) && replace)
-		json_object_set_real(object, sec_key, value, true), updated = true;
-	else if(!json_object_has_value(object, sec_key, json_type, true))
-		json_object_set_real(object, sec_key, value, true), updated = true;
-
+	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
 	if(updated)
-		json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	{
+		json_object_set_real(object, sec_key, value, true)
+		json_serial_to_file(object, file_path, true)
+	}
 
 	json_free(object)
 
@@ -313,9 +294,8 @@ public bool:_setting_get_string(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONString : JSONError
@@ -343,16 +323,7 @@ public bool:_setting_set_string(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
-
-	if(object == Invalid_JSON)
-	{
-		_create_dirs(path_file_name)
-		object = json_init_object()
-	}
-
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
 	if(object == Invalid_JSON)
 		return false
 
@@ -365,15 +336,12 @@ public bool:_setting_set_string(plugin_id, param_nums)
 
 	new str_value[128]; get_string(arg_value, str_value, charsmax(str_value))
 
-	new bool:updated = false
-
-	if(json_object_has_value(object, sec_key, json_type, true) && replace)
-		json_object_set_string(object, sec_key, str_value, true), updated = true;
-	else if(!json_object_has_value(object, sec_key, json_type, true))
-		json_object_set_string(object, sec_key, str_value, true), updated = true;
-
+	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
 	if(updated)
-		json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	{
+		json_object_set_string(object, sec_key, str_value, true)
+		json_serial_to_file(object, file_path, true)
+	}
 
 	json_free(object)
 
@@ -386,9 +354,8 @@ public bool:_setting_get_int_arr(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
@@ -439,16 +406,7 @@ public bool:_setting_set_int_arr(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
-
-	if(object == Invalid_JSON)
-	{
-		_create_dirs(path_file_name)
-		object = json_init_object()
-	}
-
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
 	if(object == Invalid_JSON)
 		return false
 
@@ -464,23 +422,23 @@ public bool:_setting_set_int_arr(plugin_id, param_nums)
 		return false
 	}
 
+	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
+	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
+
+	if(!updated)
+	{
+		json_free(object)
+		return false
+	}
+
 	new countArr = ArraySize(value)
 	new JSON:newArray = json_init_array()
 
 	for(new i = 0; i < countArr; i++)
 		json_array_append_number(newArray, ArrayGetCell(value, i))
 
-	new bool:updated = false
-
-	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
-
-	if(json_object_has_value(object, sec_key, json_type, true) && replace)
-		json_object_set_value(object, sec_key, newArray, true), updated = true;
-	else if(!json_object_has_value(object, sec_key, json_type, true))
-		json_object_set_value(object, sec_key, newArray, true), updated = true;
-
-	if(updated)
-		json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	json_object_set_value(object, sec_key, newArray, true)
+	json_serial_to_file(object, file_path, true)
 
 	json_free(newArray)
 	json_free(object)
@@ -494,9 +452,8 @@ public bool:_setting_get_string_arr(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	get_string(arg_section, section, charsmax(section))
@@ -552,16 +509,7 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
-
-	if(object == Invalid_JSON)
-	{
-		_create_dirs(path_file_name)
-		object = json_init_object()
-	}
-
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
 	if(object == Invalid_JSON)
 		return false
 
@@ -572,6 +520,15 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
 
 	if(value == Invalid_Array)
+	{
+		json_free(object)
+		return false
+	}
+
+	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
+	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
+
+	if(!updated)
 	{
 		json_free(object)
 		return false
@@ -588,16 +545,8 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 		json_array_append_string(newArray, str_value)
 	}
 
-	new bool:updated = false
-	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
-
-	if(json_object_has_value(object, sec_key, json_type, true) && replace)
-		json_object_set_value(object, sec_key, newArray, true), updated = true;
-	else if(!json_object_has_value(object, sec_key, json_type, true))
-		json_object_set_value(object, sec_key, newArray, true), updated = true;
-
-	if(updated)
-		json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	json_object_set_value(object, sec_key, newArray, true)
+	json_serial_to_file(object, file_path, true)
 
 	json_free(newArray)
 	json_free(object)
@@ -611,9 +560,8 @@ public bool:_setting_get_float_arr(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
+	if(object == Invalid_JSON)
 		return false
 
 	get_string(arg_section, section, charsmax(section))
@@ -664,16 +612,7 @@ public bool:_setting_set_float_arr(plugin_id, param_nums)
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
-	new JSON:object
-
-	if((object = json_parse(fmt("%s/%s", dir, path_file_name), true)) == Invalid_JSON)
-
-	if(object == Invalid_JSON)
-	{
-		_create_dirs(path_file_name)
-		object = json_init_object()
-	}
-
+	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
 	if(object == Invalid_JSON)
 		return false
 
@@ -689,22 +628,23 @@ public bool:_setting_set_float_arr(plugin_id, param_nums)
 		return false
 	}
 
+	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
+	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
+
+	if(!updated)
+	{
+		json_free(object)
+		return false
+	}
+
 	new countArr = ArraySize(value)
 	new JSON:newArray = json_init_array()
 
 	for(new i = 0; i < countArr; i++)
 		json_array_append_real(newArray, ArrayGetCell(value, i))
 
-	new bool:updated = false
-	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
-
-	if(json_object_has_value(object, sec_key, json_type, true) && replace)
-		json_object_set_value(object, sec_key, newArray, true), updated = true;
-	else if(!json_object_has_value(object, sec_key, json_type, true))
-		json_object_set_value(object, sec_key, newArray, true), updated = true;
-
-	if(updated)
-		json_serial_to_file(object, fmt("%s/%s", dir, path_file_name), true)
+	json_object_set_value(object, sec_key, newArray, true)
+	json_serial_to_file(object, file_path, true)
 
 	json_free(newArray)
 	json_free(object)
@@ -714,18 +654,20 @@ public bool:_setting_set_float_arr(plugin_id, param_nums)
 
 _create_dirs(const original_path[])
 {
-	new find = 0
-	new paths[128]
-	new cpath_file_name[128]; copy(cpath_file_name, charsmax(cpath_file_name), original_path)
+	new full_path[256], partial_path[128]
+	copy(partial_path, charsmax(partial_path), original_path)
 
-	while((find = contain(cpath_file_name, "/")) != -1)
+	for(new i = 0; partial_path[i] != EOS; i++)
 	{
-		copy(cpath_file_name, find, cpath_file_name)
-		strcat(paths, fmt("%s/", cpath_file_name), charsmax(cpath_file_name))
-		
-		if(!dir_exists(fmt("%s/%s", dir, paths)))
-			mkdir(fmt("%s/%s", dir, paths))
-		
-		formatex(cpath_file_name, charsmax(cpath_file_name), "%s", cpath_file_name[find + 1])
+		if(partial_path[i] != '/')
+			continue
+
+		partial_path[i] = EOS
+		formatex(full_path, charsmax(full_path), "%s/%s", dir, partial_path)
+
+		if(!dir_exists(full_path))
+			mkdir(full_path)
+
+		partial_path[i] = '/'
 	}
 }
