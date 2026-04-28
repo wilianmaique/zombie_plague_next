@@ -49,6 +49,7 @@ register_class()
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_KNOCKBACK, 1.0)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_BLOOD_COLOR, 208)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_SILENT_FOOTSTEPS, true)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_UPDATE_HITBOX, true)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_NV_COLOR, "#872dcc")
 }
 

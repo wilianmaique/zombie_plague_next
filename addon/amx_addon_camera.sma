@@ -47,7 +47,7 @@ public plugin_precache()
 
 public plugin_init()
 {
-	register_plugin("AMX Camera", "1.1", "Vexd | Wilian M.")
+	register_plugin("AMXX Camera", "1.1", "Vexd | Wilian M.")
 
 	register_clcmd("say /cam", "command_camera_menu")
 	register_clcmd("say /camera", "command_camera_menu")
