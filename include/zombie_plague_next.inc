@@ -126,6 +126,19 @@ forward zpn_user_humanized_post(const this, const class_id);
 forward zpn_round_started_post(const gamemode_id);
 
 /**
+ * Called after a client's ammo pack balance changes.
+ *
+ * @param id          Client index
+ * @param amount      New ammo pack amount
+ * @param old_amount  Previous ammo pack amount
+ * @param delta       Difference between new and old amount
+ * @param reason      Change reason, from eAmmoPackChangeReasons
+ *
+ * @noreturn
+ */
+forward zpn_ammo_pack_user_ap_changed(const id, const amount, const old_amount, const delta, eAmmoPackChangeReasons:reason);
+
+/**
  * Changes an integer parameter value for supported pre-forwards.
  *
  * @note This is intended for mutable ZPN forwards, such as
@@ -412,6 +425,61 @@ native zpn_item_find(const item_find_name[]);
  * @return          Number of extra items registered in the item storage
  */
 native zpn_item_array_size();
+
+/**
+ * Returns a client's current ammo pack balance.
+ *
+ * @param id        Client index
+ *
+ * @return          Current ammo pack amount, or 0 if the client is not valid
+ */
+native zpn_ammo_pack_get_user_ap(const id);
+
+/**
+ * Sets a client's ammo pack balance.
+ *
+ * @note The amount is clamped by the ammo pack core.
+ *
+ * @param id        Client index
+ * @param amount    New amount
+ * @param reason    Change reason, from eAmmoPackChangeReasons
+ *
+ * @return          true on success, false otherwise
+ */
+native bool:zpn_ammo_pack_set_user_ap(const id, const amount, eAmmoPackChangeReasons:reason);
+
+/**
+ * Adds ammo packs to a client.
+ *
+ * @param id        Client index
+ * @param amount    Amount to add
+ * @param reason    Change reason, from eAmmoPackChangeReasons
+ *
+ * @return          true on success, false otherwise
+ */
+native bool:zpn_ammo_pack_add_user_ap(const id, const amount, eAmmoPackChangeReasons:reason);
+
+/**
+ * Takes ammo packs from a client when enough balance is available.
+ *
+ * @param id        Client index
+ * @param amount    Amount to take
+ * @param reason    Change reason, from eAmmoPackChangeReasons
+ *
+ * @return          true if the amount was taken, false if balance is
+ *                  insufficient or parameters are invalid
+ */
+native bool:zpn_ammo_pack_take_user_ap(const id, const amount, eAmmoPackChangeReasons:reason);
+
+/**
+ * Returns whether a client has at least the requested ammo pack amount.
+ *
+ * @param id        Client index
+ * @param amount    Required amount
+ *
+ * @return          true if the client can afford it, false otherwise
+ */
+native bool:zpn_ammo_pack_can_user_afford_ap(const id, const amount);
 
 /**
  * Retrieves a client data property.

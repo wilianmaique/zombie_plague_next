@@ -34,8 +34,6 @@ enum _:eCvars
 	CVAR_DEFAULT_NV_Z[12],
 	P_CVAR_DEFAULT_NV_H,
 	P_CVAR_DEFAULT_NV_Z,
-	Float:CVAR_DMG_DEALT_REACHED,
-	CVAR_DMG_DEALT_REWARD,
 }
 
 enum _:eForwards
@@ -227,18 +225,6 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 	if(victim == attacker || !zpn_is_valid_player_alive(attacker) || !zpn_is_valid_player_alive(victim) || !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		return HC_CONTINUE
 
-	// is human
-	if(!zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_IS_ZOMBIE) && zpn_player_data_get_prop(victim, PROP_PD_REGISTER_IS_ZOMBIE))
-	{
-		zpn_player_data_set_prop(attacker, PROP_PD_REGISTER_DMG_DEALT, zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_DMG_DEALT) + flDamage)
-
-		while(zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_DMG_DEALT) >= xCvars[CVAR_DMG_DEALT_REACHED])
-		{
-			zpn_player_data_set_prop(attacker, PROP_PD_REGISTER_DMG_DEALT, 0.0)
-			zpn_player_data_set_prop(attacker, PROP_PD_REGISTER_AMMO_PACKS, zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_AMMO_PACKS) + xCvars[CVAR_DMG_DEALT_REWARD])
-		}
-	}
-
 	// is zombie
 	if(zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_IS_ZOMBIE) && !zpn_player_data_get_prop(victim, PROP_PD_REGISTER_IS_ZOMBIE))
 	{
@@ -357,7 +343,7 @@ public xHudPlayerInfo(id)
 	if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 		add(txt, charsmax(txt), fmt("» Colete: %d^n", get_entvar(id, var_armorvalue)))
 
-	add(txt, charsmax(txt), fmt("» Ammo Packs: %s^n", format_number_point(zpn_player_data_get_prop(id, PROP_PD_REGISTER_AMMO_PACKS))))
+	add(txt, charsmax(txt), fmt("» Ammo Packs: %s^n", format_number_point(zpn_ammo_pack_get_user_ap(id))))
 	add(txt, charsmax(txt), fmt("» Velocidade: %d", get_user_speed(id)))
 
 	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], txt)
@@ -460,10 +446,18 @@ public _buy_items(id, menu, item)
 
 	new item_index = str_to_num(info)
 
-	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_TEAM) == ITEM_TEAM_HUMAN)
+	if(!(0 <= item_index < zpn_item_array_size()))
+		return
+
+	new eItemTeams:item_team = zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_TEAM)
+
+	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && item_team == ITEM_TEAM_HUMAN)
+		return
+
+	if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && item_team == ITEM_TEAM_ZOMBIE)
 		return
 	
-	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_AMMO_PACKS) < zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_COST))
+	if(!zpn_ammo_pack_take_user_ap(id, zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_COST), ZPN_AMMO_PACK_CHANGE_ITEM_BUY))
 	{
 		buy_items(id)
 		client_print_color(id, print_team_red, "%s ^3Você não tem ^4Ammo Packs ^3suficiente.", xSettingsVars[CONFIG_PREFIX_CHAT])
@@ -622,7 +616,6 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 
 		zpn_player_data_set_prop(i, PROP_PD_REGISTER_CLASS_TIMEOUT, get_gametime())
 		zpn_player_data_set_prop(i, PROP_PD_REGISTER_LAST_LEAP_TIMEOUT, get_gametime())
-		zpn_player_data_set_prop(i, PROP_PD_REGISTER_DMG_DEALT, 0.0)
 
 		remove_user_frozen(i + TASK_FROZEN)
 	}
@@ -937,9 +930,6 @@ public plugin_precache()
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 	bind_pcvar_num(create_cvar("zpn_weapon_weight_discount_speed", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
 	//bind_pcvar_num(create_cvar("zpn_respawn_in_last_human", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_RESPAWN_IN_LAST_H])
-	bind_pcvar_float(create_cvar("zpn_ap_dmg_reached", "1000", .has_min = true, .min_val = 50.0, .has_max = true, .max_val = 5000.0), xCvars[CVAR_DMG_DEALT_REACHED])
-	bind_pcvar_num(create_cvar("zpn_ap_dmg_reward", "1", .has_min = true, .min_val = 1.0, .has_max = true, .max_val = 1000.0), xCvars[CVAR_DMG_DEALT_REWARD])
-
 	bind_pcvar_string(xCvars[P_CVAR_DEFAULT_NV_H] = create_cvar("zpn_default_nv_h", "#00bbff", .flags = FCVAR_NOEXTRAWHITEPACE), xCvars[CVAR_DEFAULT_NV_H], charsmax(xCvars[CVAR_DEFAULT_NV_H]))
 	bind_pcvar_string(xCvars[P_CVAR_DEFAULT_NV_Z] = create_cvar("zpn_default_nv_z", "#27e30e", .flags = FCVAR_NOEXTRAWHITEPACE), xCvars[CVAR_DEFAULT_NV_Z], charsmax(xCvars[CVAR_DEFAULT_NV_Z]))
 	hook_cvar_change(xCvars[P_CVAR_DEFAULT_NV_H], "cvar_nightvision_changed"); hook_cvar_change(xCvars[P_CVAR_DEFAULT_NV_Z], "cvar_nightvision_changed")
