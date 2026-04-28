@@ -9,7 +9,7 @@ enum _:ePropItems
 	ITEM_PROP_FIND_NAME[32],
 	ITEM_PROP_CMD_BUY[32],
 	ITEM_PROP_COST,
-	eItemTeams:ITEM_PROP_TEAM,
+	eClassTypes:ITEM_PROP_TEAM,
 	ITEM_PROP_LIMIT_PLAYER_PER_ROUND,
 	ITEM_PROP_LIMIT_MAX_PER_ROUND,
 	ITEM_PROP_LIMIT_PER_MAP,
@@ -76,7 +76,7 @@ public _zpn_item_init(plugin_id, param_nums)
 	xDataGetItem[ITEM_PROP_FIND_NAME] = EOS
 	xDataGetItem[ITEM_PROP_CMD_BUY] = EOS
 	xDataGetItem[ITEM_PROP_COST] = 0
-	xDataGetItem[ITEM_PROP_TEAM] = ITEM_TEAM_HUMAN
+	xDataGetItem[ITEM_PROP_TEAM] = CLASS_TEAM_TYPE_HUMAN
 	xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = 0
 	xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND] = 0
 	xDataGetItem[ITEM_PROP_LIMIT_PER_MAP] = 0
@@ -137,7 +137,7 @@ public any:_zpn_item_set_prop(plugin_id, param_nums)
 		case PROP_ITEM_REGISTER_FIND_NAME: get_string(arg_value, xDataGetItem[ITEM_PROP_FIND_NAME], charsmax(xDataGetItem[ITEM_PROP_FIND_NAME]))
 		case PROP_ITEM_REGISTER_CMD_BUY: get_string(arg_value, xDataGetItem[ITEM_PROP_CMD_BUY], charsmax(xDataGetItem[ITEM_PROP_CMD_BUY]))
 		case PROP_ITEM_REGISTER_COST: xDataGetItem[ITEM_PROP_COST] = get_param_byref(arg_value)
-		case PROP_ITEM_REGISTER_TEAM: xDataGetItem[ITEM_PROP_TEAM] = eItemTeams:get_param_byref(arg_value)
+		case PROP_ITEM_REGISTER_TEAM: xDataGetItem[ITEM_PROP_TEAM] = eClassTypes:get_param_byref(arg_value)
 		case PROP_ITEM_REGISTER_LIMIT_PLAYER_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_PLAYER_PER_ROUND] = get_param_byref(arg_value)
 		case PROP_ITEM_REGISTER_LIMIT_MAX_PER_ROUND: xDataGetItem[ITEM_PROP_LIMIT_MAX_PER_ROUND] = get_param_byref(arg_value)
 		case PROP_ITEM_REGISTER_LIMIT_PER_MAP: xDataGetItem[ITEM_PROP_LIMIT_PER_MAP] = get_param_byref(arg_value)

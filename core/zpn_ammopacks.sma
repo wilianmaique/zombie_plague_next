@@ -125,7 +125,7 @@ reward_damage(const id, const Float:damage)
 	if(xCvars[CVAR_DAMAGE_REQUIRED] <= 0.0 || xCvars[CVAR_DAMAGE_REWARD] <= 0)
 		return
 
-	new Float:damageProgress = zpn_player_data_get_prop(id, PROP_PD_REGISTER_DMG_DEALT) + damage
+	new Float:damageProgress = Float:zpn_player_data_get_prop(id, PROP_PD_REGISTER_DMG_DEALT) + damage
 	new rewards = floatround(damageProgress / xCvars[CVAR_DAMAGE_REQUIRED], floatround_floor)
 
 	if(rewards > 0)

@@ -80,7 +80,7 @@ enum _:eSyncHuds
 
 new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "player/bhit_helmet-1.wav" };
 
-new xFirstClass[2], xClassCount[2], xItemCount[2]
+new xFirstClass[2], xClassCount[2]
 new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
 
 new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
@@ -145,9 +145,6 @@ public plugin_init()
 
 	xClassCount[0] = count_class(CLASS_TEAM_TYPE_ZOMBIE)
 	xClassCount[1] = count_class(CLASS_TEAM_TYPE_HUMAN)
-
-	xItemCount[0] = count_item(ITEM_TEAM_ZOMBIE)
-	xItemCount[1] = count_item(ITEM_TEAM_HUMAN)
 
 	register_clcmd("chooseteam", "clcmd_changeteam")
 	register_clcmd("jointeam", "clcmd_changeteam")
@@ -403,8 +400,8 @@ public _show_menu_game(id, menu, item)
 
 public buy_items(id)
 {
-	new eItemTeams:itemTeam = zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? ITEM_TEAM_ZOMBIE : ITEM_TEAM_HUMAN
-	new countCheck = itemTeam == ITEM_TEAM_ZOMBIE ? xItemCount[0] : xItemCount[1]
+	new eClassTypes:itemTeam = get_user_current_class_type(id)
+	new countCheck = count_item(itemTeam)
 
 	new xMenu = menu_create(fmt("%s \yLoja de Itens", xSettingsVars[CONFIG_PREFIX_MENUS]), "_buy_items")
 	
@@ -420,7 +417,7 @@ public buy_items(id)
 	{
 		zpn_item_get_prop(i, PROP_ITEM_REGISTER_NAME, item_name, charsmax(item_name))
 
-		if(zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) == itemTeam)
+		if(eClassTypes:zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) == itemTeam)
 			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)", item_name, format_number_point(zpn_item_get_prop(i, PROP_ITEM_REGISTER_COST))), fmt("%d", i))
 	}
 
@@ -449,12 +446,10 @@ public _buy_items(id, menu, item)
 	if(!(0 <= item_index < zpn_item_array_size()))
 		return
 
-	new eItemTeams:item_team = zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_TEAM)
+	new eClassTypes:item_team = eClassTypes:zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_TEAM)
+	new eClassTypes:class_type = get_user_current_class_type(id)
 
-	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && item_team == ITEM_TEAM_HUMAN)
-		return
-
-	if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && item_team == ITEM_TEAM_ZOMBIE)
+	if(item_team != class_type)
 		return
 	
 	if(!zpn_ammo_pack_take_user_ap(id, zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_COST), ZPN_AMMO_PACK_CHANGE_ITEM_BUY))
@@ -1667,13 +1662,13 @@ check_game()
 		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
 }
 
-count_item(eItemTeams:item_team)
+count_item(eClassTypes:item_team)
 {
 	new count = 0
 
 	for(new i = 0; i < zpn_item_array_size(); i++)
 	{
-		if(zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) == item_team) count ++;
+		if(eClassTypes:zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) == item_team) count ++;
 	}
 
 	return count
@@ -1700,6 +1695,16 @@ get_user_selected_class_index(id, eClassTypes:type)
 	}
 
 	return -1
+}
+
+eClassTypes:get_user_current_class_type(id)
+{
+	new class_id = get_user_current_class_index(id)
+
+	if(class_id != -1)
+		return eClassTypes:zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+
+	return zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? CLASS_TEAM_TYPE_ZOMBIE : CLASS_TEAM_TYPE_HUMAN
 }
 
 get_user_next_class_index(id, eClassTypes:type)
