@@ -499,17 +499,31 @@ public _select_class_type(id, menu, item)
 	new xMenu = menu_create(fmt("%s \ySelecionar classe: %s", xSettingsVars[CONFIG_PREFIX_MENUS], class_type == CLASS_TEAM_TYPE_ZOMBIE ? "\rZombie" : "\yHumano"), "_select_class")
 	
 	new eClassTypes:type, name[32], class_info[32]
-	new bool:hide_menu = false
+	new item_text[128], level_text[32], selected_text[8], required_level, user_level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
+	new bool:hide_menu = false, locked = false
 
 	for(new i = 0; i < zpn_class_array_size(); i++)
 	{
 		type = zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE)
 		hide_menu = zpn_class_get_prop(i, PROP_CLASS_REGISTER_HIDE_MENU)
+		required_level = zpn_class_get_prop(i, PROP_CLASS_REGISTER_LEVEL)
+		locked = user_level < required_level
 		zpn_class_get_prop(i, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
 		zpn_class_get_prop(i, PROP_CLASS_REGISTER_INFO, class_info, charsmax(class_info))
 
 		if(type == class_type && !hide_menu)
-			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)%s", name, class_info, i == get_user_selected_class_index(id, class_type) ? " \r*" : ""), fmt("%d", i))
+		{
+			if(required_level > 0)
+				formatex(level_text, charsmax(level_text), " - Level %d", required_level)
+			else level_text[0] = EOS
+
+			if(i == get_user_selected_class_index(id, class_type))
+				copy(selected_text, charsmax(selected_text), " \r*")
+			else selected_text[0] = EOS
+
+			formatex(item_text, charsmax(item_text), "%s%s \y(\d%s%s\y)%s", locked ? "\d" : "\w", name, class_info, level_text, selected_text)
+			menu_additem(xMenu, item_text, fmt("%d", i))
+		}
 	}
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
@@ -535,14 +549,23 @@ public _select_class(id, menu, item)
 	new class_id = str_to_num(info)
 
 	new eClassTypes:type, name[32], class_info[32]
+	new required_level, user_level
 	new Float:speed, Float:gravity, Float:health
 
 	type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
 	speed = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED)
 	gravity = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY)
 	health = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
+	required_level = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LEVEL)
+	user_level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
 	zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
 	zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_INFO, class_info, charsmax(class_info))
+
+	if(user_level < required_level)
+	{
+		client_print_color(id, print_team_red, "%s ^3Voce precisa estar no ^4Level %d ^3para usar esta classe. Seu level: ^4%d^1.", xSettingsVars[CONFIG_PREFIX_CHAT], required_level, user_level)
+		return
+	}
 
 	if(xCvars[CVAR_CLASS_SELECT_INSTANT] && zpn_player_data_get_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT) > get_gametime())
 	{

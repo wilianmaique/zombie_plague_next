@@ -139,6 +139,30 @@ forward zpn_round_started_post(const gamemode_id);
 forward zpn_ammo_pack_user_ap_changed(const id, const amount, const old_amount, const delta, eAmmoPackChangeReasons:reason);
 
 /**
+ * Called after a client's XP progress changes.
+ *
+ * @param id          Client index
+ * @param xp          Current XP progress toward the next level
+ * @param old_xp      Previous XP progress
+ * @param delta       XP amount applied by this change
+ * @param reason      Change reason, from eLevelXpChangeReasons
+ *
+ * @noreturn
+ */
+forward zpn_level_user_xp_changed(const id, const xp, const old_xp, const delta, eLevelXpChangeReasons:reason);
+
+/**
+ * Called after a client's level changes.
+ *
+ * @param id          Client index
+ * @param level       New level
+ * @param old_level   Previous level
+ *
+ * @noreturn
+ */
+forward zpn_level_user_level_changed(const id, const level, const old_level);
+
+/**
  * Changes an integer parameter value for supported pre-forwards.
  *
  * @note This is intended for mutable ZPN forwards, such as
@@ -480,6 +504,105 @@ native bool:zpn_ammo_pack_take_user_ap(const id, const amount, eAmmoPackChangeRe
  * @return          true if the client can afford it, false otherwise
  */
 native bool:zpn_ammo_pack_can_user_afford_ap(const id, const amount);
+
+/**
+ * Returns a client's current level.
+ *
+ * @param id        Client index
+ *
+ * @return          Current level, or 0 if the client is invalid
+ */
+native zpn_level_get_user_level(const id);
+
+/**
+ * Sets a client's level.
+ *
+ * @param id        Client index
+ * @param level     New level, clamped between 1 and MAX_LEVEL
+ *
+ * @return          true on success, false otherwise
+ */
+native bool:zpn_level_set_user_level(const id, const level);
+
+/**
+ * Returns a client's current XP progress toward the next level.
+ *
+ * @param id        Client index
+ *
+ * @return          Current XP progress, or 0 if the client is invalid
+ */
+native zpn_level_get_user_xp(const id);
+
+/**
+ * Sets a client's current XP progress and normalizes level-ups if needed.
+ *
+ * @param id        Client index
+ * @param amount    New XP amount
+ * @param reason    Change reason, from eLevelXpChangeReasons
+ *
+ * @return          true on success, false otherwise
+ */
+native bool:zpn_level_set_user_xp(const id, const amount, eLevelXpChangeReasons:reason);
+
+/**
+ * Adds XP to a client and applies the configured XP multiplier.
+ *
+ * @param id        Client index
+ * @param amount    Base XP amount
+ * @param reason    Change reason, from eLevelXpChangeReasons
+ *
+ * @return          true on success, false otherwise
+ */
+native bool:zpn_level_add_user_xp(const id, const amount, eLevelXpChangeReasons:reason);
+
+/**
+ * Returns required XP for the provided level.
+ *
+ * @param level     Level to inspect
+ *
+ * @return          Required XP, or 0 when level is MAX_LEVEL
+ */
+native zpn_level_get_required_xp(const level);
+
+/**
+ * Returns required XP for a client's current level.
+ *
+ * @param id        Client index
+ *
+ * @return          Required XP, or 0 when the client is invalid or maxed
+ */
+native zpn_level_get_user_required_xp(const id);
+
+/**
+ * Returns the rank index for a level.
+ *
+ * @param level     Level to inspect
+ *
+ * @return          Rank index in the internal rank table
+ */
+native zpn_level_get_rank_index(const level);
+
+/**
+ * Copies a client's rank name.
+ *
+ * @param id        Client index
+ * @param rank      Output buffer
+ * @param len       Output buffer length
+ *
+ * @return          true on success, false otherwise
+ */
+native bool:zpn_level_get_user_rank_name(const id, rank[], len);
+
+/**
+ * Copies the rank name for a level.
+ *
+ * @param level     Level to inspect
+ * @param rank      Output buffer
+ * @param len       Output buffer length
+ *
+ * @return          true on success, false otherwise
+ */
+native bool:zpn_level_get_rank_name(const level, rank[], len);
 
 /**
  * Retrieves a client data property.

@@ -334,7 +334,7 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 		}
 		case PROP_CLASS_REGISTER_LIMIT:
 		{
-			xDataGetClass[CLASS_PROP_LIMIT] = clamp(get_param_byref(arg_value), 0, MAX_LEVEL)
+			xDataGetClass[CLASS_PROP_LIMIT] = clamp(get_param_byref(arg_value), 0, 32)
 
 			if(!json_setting_get_int(PATH_SETTINGS_CLASSES, class_section_final, "limit", xDataGetClass[CLASS_PROP_LIMIT], false))
 				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "limit", xDataGetClass[CLASS_PROP_LIMIT], false)
@@ -365,7 +365,7 @@ public _zpn_class_random_class_id(plugin_id, param_nums)
 	{
 		case CLASS_TEAM_TYPE_ZOMBIE: random_index = ArrayGetCell(aIndexClassesZombies, random_num(0, ArraySize(aIndexClassesZombies) -1))
 		case CLASS_TEAM_TYPE_HUMAN: random_index = ArrayGetCell(aIndexClassesHumans, random_num(0, ArraySize(aIndexClassesHumans) -1))
-		default: random_index =  ArrayGetCell(aIndexClassesZombies, 0)
+		default: random_index = ArrayGetCell(aIndexClassesZombies, 0)
 	}
 
 	return random_index

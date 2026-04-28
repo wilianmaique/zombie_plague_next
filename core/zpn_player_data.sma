@@ -128,6 +128,7 @@ public reset_user_vars(id)
 	xPlayerData[id][PD_PROP_NEXT_HUMAN_CLASS] = -1
 	xPlayerData[id][PD_PROP_CLASS_TIMEOUT] = get_gametime()
 	xPlayerData[id][PD_PROP_LAST_LEAP_TIMEOUT] = get_gametime()
+	xPlayerData[id][PD_PROP_LEVEL] = 1
 	xPlayerData[id][PD_PROP_IS_FREEZED] = false
 }
 
