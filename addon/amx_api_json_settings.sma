@@ -44,6 +44,15 @@ JSON:_load_settings_object(const file_name_path[], file_path_output[], len, bool
 {
 	formatex(file_path_output, len, "%s/%s", dir, file_name_path)
 
+	if(!file_exists(file_path_output))
+	{
+		if(!create_if_missing)
+			return Invalid_JSON
+
+		_create_dirs(file_name_path)
+		return json_init_object()
+	}
+
 	new JSON:object = json_parse(file_path_output, true)
 
 	if(object == Invalid_JSON && create_if_missing)
@@ -352,6 +361,10 @@ public bool:_setting_get_int_arr(plugin_id, param_nums)
 {
 	enum { arg_file_name_path = 1, arg_section, arg_key, arg_value, arg_check_type }
 
+	new Array:array_handle = Array:get_param(arg_value)
+	if(array_handle == Invalid_Array)
+		return false
+
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
 	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path))
@@ -374,16 +387,6 @@ public bool:_setting_get_int_arr(plugin_id, param_nums)
 	new countObjArray = json_array_get_count(objArray)
 
 	if(countObjArray <= 0)
-	{
-		json_free(objArray)
-		json_free(object)
-
-		return false
-	}
-
-	new Array:array_handle = Array:get_param(arg_value)
-
-	if(array_handle == Invalid_Array)
 	{
 		json_free(objArray)
 		json_free(object)
@@ -404,6 +407,10 @@ public bool:_setting_set_int_arr(plugin_id, param_nums)
 {
 	enum { arg_file_name_path = 1, arg_section, arg_key, arg_value, arg_replace, arg_check_type }
 
+	new Array:value = Array:get_param(arg_value)
+	if(value == Invalid_Array)
+		return false
+
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
 	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
@@ -412,15 +419,8 @@ public bool:_setting_set_int_arr(plugin_id, param_nums)
 
 	get_string(arg_section, section, charsmax(section))
 	get_string(arg_key, key, charsmax(key))
-	new Array:value = Array:get_param(arg_value)
 	new bool:replace = bool:get_param(arg_replace)
 	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
-
-	if(value == Invalid_Array)
-	{
-		json_free(object)
-		return false
-	}
 
 	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
 	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
@@ -433,6 +433,11 @@ public bool:_setting_set_int_arr(plugin_id, param_nums)
 
 	new countArr = ArraySize(value)
 	new JSON:newArray = json_init_array()
+	if(newArray == Invalid_JSON)
+	{
+		json_free(object)
+		return false
+	}
 
 	for(new i = 0; i < countArr; i++)
 		json_array_append_number(newArray, ArrayGetCell(value, i))
@@ -449,6 +454,10 @@ public bool:_setting_set_int_arr(plugin_id, param_nums)
 public bool:_setting_get_string_arr(plugin_id, param_nums)
 {
 	enum { arg_file_name_path = 1, arg_section, arg_key, arg_value, arg_check_type }
+
+	new Array:array_handle = Array:get_param(arg_value)
+	if(array_handle == Invalid_Array)
+		return false
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
@@ -472,16 +481,6 @@ public bool:_setting_get_string_arr(plugin_id, param_nums)
 	new countObjArray = json_array_get_count(objArray)
 
 	if(countObjArray <= 0)
-	{
-		json_free(objArray)
-		json_free(object)
-
-		return false
-	}
-
-	new Array:array_handle = Array:get_param(arg_value)
-
-	if(array_handle == Invalid_Array)
 	{
 		json_free(objArray)
 		json_free(object)
@@ -507,6 +506,10 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 {
 	enum { arg_file_name_path = 1, arg_section, arg_key, arg_value, arg_replace, arg_check_type }
 
+	new Array:value = Array:get_param(arg_value)
+	if(value == Invalid_Array)
+		return false
+
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
 	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
@@ -515,15 +518,8 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 
 	get_string(arg_section, section, charsmax(section))
 	get_string(arg_key, key, charsmax(key))
-	new Array:value = Array:get_param(arg_value)
 	new bool:replace = bool:get_param(arg_replace)
 	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
-
-	if(value == Invalid_Array)
-	{
-		json_free(object)
-		return false
-	}
 
 	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
 	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
@@ -536,6 +532,11 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 
 	new countArr = ArraySize(value)
 	new JSON:newArray = json_init_array()
+	if(newArray == Invalid_JSON)
+	{
+		json_free(object)
+		return false
+	}
 
 	static str_value[128]
 
@@ -557,6 +558,10 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 public bool:_setting_get_float_arr(plugin_id, param_nums)
 {
 	enum { arg_file_name_path = 1, arg_section, arg_key, arg_value, arg_check_type }
+
+	new Array:array_handle = Array:get_param(arg_value)
+	if(array_handle == Invalid_Array)
+		return false
 
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
@@ -587,16 +592,6 @@ public bool:_setting_get_float_arr(plugin_id, param_nums)
 		return false
 	}
 
-	new Array:array_handle = Array:get_param(arg_value)
-
-	if(array_handle == Invalid_Array)
-	{
-		json_free(objArray)
-		json_free(object)
-
-		return false
-	}
-
 	for(new i = 0; i < countObjArray; i++)
 		ArrayPushCell(array_handle, json_array_get_real(objArray, i))
 
@@ -610,6 +605,10 @@ public bool:_setting_set_float_arr(plugin_id, param_nums)
 {
 	enum { arg_file_name_path = 1, arg_section, arg_key, arg_value, arg_replace, arg_check_type }
 
+	new Array:value = Array:get_param(arg_value)
+	if(value == Invalid_Array)
+		return false
+
 	get_string(arg_file_name_path, path_file_name, charsmax(path_file_name))
 
 	new JSON:object = _load_settings_object(path_file_name, file_path, charsmax(file_path), true)
@@ -618,15 +617,8 @@ public bool:_setting_set_float_arr(plugin_id, param_nums)
 
 	get_string(arg_section, section, charsmax(section))
 	get_string(arg_key, key, charsmax(key))
-	new Array:value = Array:get_param(arg_value)
 	new bool:replace = bool:get_param(arg_replace)
 	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
-
-	if(value == Invalid_Array)
-	{
-		json_free(object)
-		return false
-	}
 
 	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
 	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
@@ -639,6 +631,11 @@ public bool:_setting_set_float_arr(plugin_id, param_nums)
 
 	new countArr = ArraySize(value)
 	new JSON:newArray = json_init_array()
+	if(newArray == Invalid_JSON)
+	{
+		json_free(object)
+		return false
+	}
 
 	for(new i = 0; i < countArr; i++)
 		json_array_append_real(newArray, ArrayGetCell(value, i))
