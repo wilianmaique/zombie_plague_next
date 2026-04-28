@@ -16,10 +16,11 @@
 enum
 {
 	TASK_COUNTDOWN = 1515,
-	TASK_HUD_PLAYER_INFO,
-	TASK_RESPAWN,
-	TASK_NV,
-	TASK_FROZEN,
+	TASK_HUD_PLAYER_INFO = 1600,
+	TASK_RESPAWN = 1700,
+	TASK_NV = 1800,
+	TASK_FROZEN = 1900,
+	TASK_SCORE_ATTRIB = 2000,
 }
 
 enum _:eCvars
@@ -706,6 +707,8 @@ public CBasePlayer_Spawn_Post(id)
 		if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON) != -1)
 			get_selected_weapon(id, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], zpn_player_data_get_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON), PISTOL_SLOT)
 	}
+
+	queue_score_attrib_sync(id)
 }
 
 public RCBasePlayer_HasRestrictItem_Pre(const this, ItemID:item, ItemRestType:typ)
@@ -1368,7 +1371,7 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	deploy_weapon(this)
 
 	make_deathmsg(infector, this, 0, "teammate")
-	rg_set_score_attrib(this, false)
+	queue_score_attrib_sync(this)
 
 	ExecuteForward(xForwards[FW_INFECTED_POST], xForwardReturn, this, infector, class_id)
 
@@ -1427,7 +1430,7 @@ public set_user_human(this)
 	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_ARMOR)), 0, 1000))
 	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED))
 	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SILENT_FOOTSTEPS))
-	rg_set_score_attrib(this, false)
+	queue_score_attrib_sync(this)
 
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
 }
@@ -1807,4 +1810,26 @@ rg_set_score_attrib(this, bool:dead = false)
 	write_byte(this)
 	write_byte(dead ? 1 : 0)
 	message_end()
+}
+
+queue_score_attrib_sync(id)
+{
+	remove_task(id + TASK_SCORE_ATTRIB)
+	sync_user_score_attrib(id)
+	set_task_ex(0.1, "sync_score_attrib_task", id + TASK_SCORE_ATTRIB)
+}
+
+public sync_score_attrib_task(taskid)
+{
+	new id = taskid - TASK_SCORE_ATTRIB
+
+	if(!is_user_connected(id))
+		return
+
+	sync_user_score_attrib(id)
+}
+
+sync_user_score_attrib(id)
+{
+	rg_set_score_attrib(id, is_user_alive(id) ? false : true)
 }
