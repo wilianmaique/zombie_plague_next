@@ -1804,11 +1804,11 @@ update_users_next_class()
 	}
 }
 
-rg_set_score_attrib(this, bool:dead = false)
+send_score_attrib(this, bool:dead = false)
 {
 	message_begin(MSG_BROADCAST, xMsgScoreAttrib)
 	write_byte(this)
-	write_byte(dead ? 1 : 0)
+	write_byte(dead ? SCORE_STATUS_DEAD : SCORE_STATUS_NONE)
 	message_end()
 }
 
@@ -1831,5 +1831,5 @@ public sync_score_attrib_task(taskid)
 
 sync_user_score_attrib(id)
 {
-	rg_set_score_attrib(id, is_user_alive(id) ? false : true)
+	send_score_attrib(id, is_user_alive(id) ? false : true)
 }
