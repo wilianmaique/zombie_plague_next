@@ -18,8 +18,7 @@
 - When there is any doubt, verify native and forward signatures, parameters, and return values before using them.
 
 ## Reference Research
-- If AMXX API research is needed, check this source first:
-  - https://amxx-api.csrevo.com , endpoints: /search.json, /api.json, /llms.txt
+- If AMXX API research is needed, check this source first: https://amxx-api.csrevo.com/search.json?q=`name func etc...`
 - For historical context, examples, plugin behavior, or troubleshooting, search Google with `alliedmodders` included in the query.
 - Prefer official documentation and well-established examples over assumptions about native behavior.
 

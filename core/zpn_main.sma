@@ -1361,7 +1361,7 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	new bool:class_update_hitbox = false, class_blood_color, class_body, class_skin, class_model_index
 
 	class_update_hitbox = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_UPDATE_HITBOX)
-	class_blood_color = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
+	class_blood_color = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_BLOOD_COLOR)
 	class_model_index = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL_INDEX)
 	class_body = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_BODY)
 	class_skin = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SKIN)
@@ -1422,7 +1422,7 @@ public set_user_human(this)
 	new bool:class_update_hitbox = false, class_blood_color, class_body, class_skin, class_model_index
 
 	class_update_hitbox = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_UPDATE_HITBOX)
-	class_blood_color = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
+	class_blood_color = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_BLOOD_COLOR)
 	class_model_index = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL_INDEX)
 	class_body = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_BODY)
 	class_skin = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SKIN)
