@@ -1779,19 +1779,39 @@ get_user_current_class_index_by_type(id, eClassTypes:type)
 random_gamemode()
 {
 	new gm = -1, i
-	new totalChance = 0
+	new totalChance = 0, chance
+	new alivePlayers = get_num_alive()
 
 	for(i = 0; i < zpn_gamemode_array_size(); i++)
 	{
-		totalChance += zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_CHANCE)
+		if(alivePlayers < zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_MIN_PLAYERS))
+			continue
+
+		chance = zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_CHANCE)
+
+		if(chance <= 0)
+			continue
+
+		totalChance += chance
 	}
+
+	if(totalChance <= 0)
+		return -1
 
 	new randomNumber = random_num(1, totalChance)
 	new accumulatedChance = 0
 
 	for(i = 0; i < zpn_gamemode_array_size(); i++)
 	{
-		accumulatedChance += zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_CHANCE)
+		if(alivePlayers < zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_MIN_PLAYERS))
+			continue
+
+		chance = zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_CHANCE)
+
+		if(chance <= 0)
+			continue
+
+		accumulatedChance += chance
 
 		if(randomNumber <= accumulatedChance)
 			gm = i
