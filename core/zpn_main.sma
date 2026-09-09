@@ -326,13 +326,22 @@ public xHudPlayerInfo(id)
 	if(!is_user_alive(id))
 		return
 
-	static txt[256]; txt[0] = EOS
+	static txt[384]; txt[0] = EOS
+	new level = zpn_level_get_user_level(id), rankName[32]
+	zpn_level_get_user_rank_name(id, rankName, charsmax(rankName))
 
 	set_hudmessage(0, 255, 255, 0.03, 0.2, 0, 0.0, 0.0, 0.1, 0.1)
 
 	add(txt, charsmax(txt), fmt("» Modo: %s^n", get_gamemode_name()))
 	add(txt, charsmax(txt), fmt("» Classe: %s^n", get_class_name(id)))
-	add(txt, charsmax(txt), fmt("» Level: %s^n", format_number_point(zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL))))
+
+	if(level >= MAX_LEVEL)
+		add(txt, charsmax(txt), fmt("» LVL: %s, XP: MAX, %s^n", format_number_point(level), rankName))
+	else
+	{
+		add(txt, charsmax(txt), fmt("» LVL: %s, XP: %s/%s, %s^n", format_number_point(level), format_number_point(zpn_level_get_user_xp(id)), format_number_point(zpn_level_get_user_required_xp(id)), rankName))
+	}
+
 	add(txt, charsmax(txt), fmt("» Vida: %s^n", format_number_point(floatround(get_entvar(id, var_health)))))
 
 	if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
