@@ -38,11 +38,23 @@ public plugin_natives()
 
 	register_native("zpn_player_data_get_prop", "_zpn_player_data_get_prop")
 	register_native("zpn_player_data_set_prop", "_zpn_player_data_set_prop")
+	register_native("zpn_class_get_user_count", "_zpn_class_get_user_count")
+	register_native("zpn_class_has_free_slot", "_zpn_class_has_free_slot")
 }
 
 public client_putinserver(id)
 {
 	reset_user_vars(id)
+}
+
+public client_disconnected(id)
+{
+	xPlayerData[id][PD_PROP_CURRENT_SELECTED_ZOMBIE_CLASS] = -1
+	xPlayerData[id][PD_PROP_CURRENT_SELECTED_HUMAN_CLASS] = -1
+	xPlayerData[id][PD_PROP_NEXT_ZOMBIE_CLASS] = -1
+	xPlayerData[id][PD_PROP_NEXT_HUMAN_CLASS] = -1
+	xPlayerData[id][PD_PROP_CURRENT_TEMP_ZOMBIE_CLASS] = -1
+	xPlayerData[id][PD_PROP_CURRENT_TEMP_HUMAN_CLASS] = -1
 }
 
 public any:_zpn_player_data_get_prop(plugin_id, param_nums)
@@ -85,6 +97,36 @@ public any:_zpn_player_data_set_prop(plugin_id, param_nums)
 	new player = get_param(arg_player)
 	new prop = get_param(arg_prop)
 
+	// Check reservations at the storage boundary, including writes from addons.
+	new class_id, eClassTypes:class_type
+	switch(ePropPlayerDataRegisters:prop)
+	{
+		case PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS,
+			PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS, PROP_PD_REGISTER_NEXT_HUMAN_CLASS,
+			PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS:
+		{
+			class_id = get_param_byref(arg_value)
+			class_type = (prop == _:PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS || prop == _:PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS || prop == _:PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS) ? CLASS_TEAM_TYPE_ZOMBIE : CLASS_TEAM_TYPE_HUMAN
+
+			// Cancelling a pending choice restores the previous reservation.
+			if(class_id == -1 && prop == _:PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS)
+				class_id = xPlayerData[player][PD_PROP_CURRENT_SELECTED_ZOMBIE_CLASS]
+			else if(class_id == -1 && prop == _:PROP_PD_REGISTER_NEXT_HUMAN_CLASS)
+				class_id = xPlayerData[player][PD_PROP_CURRENT_SELECTED_HUMAN_CLASS]
+
+			if(class_id != -1)
+			{
+				if(!class_has_free_slot(class_id, player))
+					return false
+
+				new eClassTypes:type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+				new bool:temporary = (prop == _:PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS || prop == _:PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS)
+				if(type != class_type && !(temporary && type == (class_type == CLASS_TEAM_TYPE_ZOMBIE ? CLASS_TEAM_TYPE_ZOMBIE_SPECIAL : CLASS_TEAM_TYPE_HUMAN_SPECIAL)))
+					return false
+			}
+		}
+	}
+
 	switch(ePropPlayerDataRegisters:prop)
 	{
 		case PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS: xPlayerData[player][PD_PROP_CURRENT_SELECTED_ZOMBIE_CLASS] = get_param_byref(arg_value)
@@ -113,11 +155,11 @@ public any:_zpn_player_data_set_prop(plugin_id, param_nums)
 
 public reset_user_vars(id)
 {
-	new zombie_class = get_first_class(CLASS_TEAM_TYPE_ZOMBIE)
-	new human_class = get_first_class(CLASS_TEAM_TYPE_HUMAN)
+	new zombie_class = get_first_class(CLASS_TEAM_TYPE_ZOMBIE, id)
+	new human_class = get_first_class(CLASS_TEAM_TYPE_HUMAN, id)
 
-	xPlayerData[id][PD_PROP_CURRENT_SELECTED_ZOMBIE_CLASS] = zombie_class != -1 ? zombie_class : 0
-	xPlayerData[id][PD_PROP_CURRENT_SELECTED_HUMAN_CLASS] = human_class != -1 ? human_class : 0
+	xPlayerData[id][PD_PROP_CURRENT_SELECTED_ZOMBIE_CLASS] = zombie_class
+	xPlayerData[id][PD_PROP_CURRENT_SELECTED_HUMAN_CLASS] = human_class
 	xPlayerData[id][PD_PROP_IS_ZOMBIE] = false
 	xPlayerData[id][PD_PROP_IS_FIRST_ZOMBIE] = false
 	xPlayerData[id][PD_PROP_CURRENT_TEMP_ZOMBIE_CLASS] = -1
@@ -132,13 +174,79 @@ public reset_user_vars(id)
 	xPlayerData[id][PD_PROP_IS_FREEZED] = false
 }
 
-get_first_class(eClassTypes:class_type)
+get_first_class(eClassTypes:class_type, id)
 {
 	for(new i = 0; i < zpn_class_array_size(); i++)
 	{
-		if(zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE) == class_type)
+		if(zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE) == class_type
+			&& !zpn_class_get_prop(i, PROP_CLASS_REGISTER_HIDE_MENU)
+			&& zpn_class_get_prop(i, PROP_CLASS_REGISTER_LEVEL) <= 1
+			&& class_has_free_slot(i, id))
 			return i
 	}
 
 	return -1
+}
+
+public _zpn_class_get_user_count(plugin_id, param_nums)
+{
+	if(param_nums < 1 || param_nums > 2)
+		return 0
+
+	return get_class_user_count(get_param(1), param_nums >= 2 ? get_param(2) : 0)
+}
+
+public bool:_zpn_class_has_free_slot(plugin_id, param_nums)
+{
+	if(param_nums < 1 || param_nums > 2)
+		return false
+
+	return class_has_free_slot(get_param(1), param_nums >= 2 ? get_param(2) : 0)
+}
+
+get_class_user_count(class_id, ignore_player = 0)
+{
+	if(class_id < 0 || class_id >= zpn_class_array_size())
+		return 0
+
+	new count, reserved, current, eClassTypes:type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+	for(new id = 1; id <= MaxClients; id++)
+	{
+		if(id == ignore_player || !is_user_connected(id) || is_user_hltv(id))
+			continue
+
+		reserved = -1
+		switch(type)
+		{
+			case CLASS_TEAM_TYPE_ZOMBIE:
+			{
+				reserved = xPlayerData[id][PD_PROP_NEXT_ZOMBIE_CLASS]
+				if(reserved == -1) reserved = xPlayerData[id][PD_PROP_CURRENT_SELECTED_ZOMBIE_CLASS]
+			}
+			case CLASS_TEAM_TYPE_HUMAN:
+			{
+				reserved = xPlayerData[id][PD_PROP_NEXT_HUMAN_CLASS]
+				if(reserved == -1) reserved = xPlayerData[id][PD_PROP_CURRENT_SELECTED_HUMAN_CLASS]
+			}
+		}
+
+		// Keep the old class occupied until the player stops using it.
+		current = -1
+		if(is_user_alive(id))
+			current = xPlayerData[id][PD_PROP_IS_ZOMBIE] ? xPlayerData[id][PD_PROP_CURRENT_TEMP_ZOMBIE_CLASS] : xPlayerData[id][PD_PROP_CURRENT_TEMP_HUMAN_CLASS]
+
+		if(reserved == class_id || current == class_id)
+			count++
+	}
+
+	return count
+}
+
+bool:class_has_free_slot(class_id, ignore_player = 0)
+{
+	if(class_id < 0 || class_id >= zpn_class_array_size())
+		return false
+
+	new limit = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LIMIT)
+	return (limit <= 0 || get_class_user_count(class_id, ignore_player) < limit)
 }

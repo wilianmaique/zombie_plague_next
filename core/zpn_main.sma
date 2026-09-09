@@ -244,12 +244,6 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 			return HC_SUPERCEDE
 		}
 		
-		if(zpn_player_data_get_prop(victim, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS) != -1)
-		{
-			zpn_player_data_set_prop(victim, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS, zpn_player_data_get_prop(victim, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS))
-			zpn_player_data_set_prop(victim, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, -1)
-		}
-
 		set_user_zombie(victim, attacker, false)
 
 		if(get_num_alive() == 0 && xCvars[CVAR_LAST_HUMAN_INFECT])
@@ -280,6 +274,8 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 		return HC_CONTINUE
 
 	new classTeam = get_user_current_class_index(this)
+	if(classTeam < 0 || classTeam >= zpn_class_array_size())
+		return HC_CONTINUE
 	
 	new Float:speed = zpn_class_get_prop(classTeam, PROP_CLASS_REGISTER_SPEED)
 	new activeItem = get_member(this, m_pActiveItem)
@@ -499,7 +495,7 @@ public _select_class_type(id, menu, item)
 	new xMenu = menu_create(fmt("%s \ySelecionar classe: %s", xSettingsVars[CONFIG_PREFIX_MENUS], class_type == CLASS_TEAM_TYPE_ZOMBIE ? "\rZombie" : "\yHumano"), "_select_class")
 	
 	new eClassTypes:type, name[32], class_info[32]
-	new item_text[128], level_text[32], selected_text[8], required_level, user_level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
+	new item_text[160], level_text[32], limit_text[32], selected_text[8], required_level, limit, occupied, user_level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
 	new bool:hide_menu = false, locked = false
 
 	for(new i = 0; i < zpn_class_array_size(); i++)
@@ -507,7 +503,9 @@ public _select_class_type(id, menu, item)
 		type = zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE)
 		hide_menu = zpn_class_get_prop(i, PROP_CLASS_REGISTER_HIDE_MENU)
 		required_level = zpn_class_get_prop(i, PROP_CLASS_REGISTER_LEVEL)
-		locked = user_level < required_level
+		limit = zpn_class_get_prop(i, PROP_CLASS_REGISTER_LIMIT)
+		occupied = limit > 0 ? zpn_class_get_user_count(i) : 0
+		locked = user_level < required_level || !zpn_class_has_free_slot(i, id)
 		zpn_class_get_prop(i, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
 		zpn_class_get_prop(i, PROP_CLASS_REGISTER_INFO, class_info, charsmax(class_info))
 
@@ -517,11 +515,17 @@ public _select_class_type(id, menu, item)
 				formatex(level_text, charsmax(level_text), " - Level %d", required_level)
 			else level_text[0] = EOS
 
-			if(i == get_user_selected_class_index(id, class_type))
+			if(limit > 0)
+				formatex(limit_text, charsmax(limit_text), " - Vagas %d/%d", occupied, limit)
+			else limit_text[0] = EOS
+
+			new selected = get_user_next_class_index(id, class_type)
+			if(selected == -1) selected = get_user_selected_class_index(id, class_type)
+			if(i == selected)
 				copy(selected_text, charsmax(selected_text), " \r*")
 			else selected_text[0] = EOS
 
-			formatex(item_text, charsmax(item_text), "%s%s \y(\d%s%s\y)%s", locked ? "\d" : "\w", name, class_info, level_text, selected_text)
+			formatex(item_text, charsmax(item_text), "%s%s \y(\d%s%s%s\y)%s", locked ? "\d" : "\w", name, class_info, level_text, limit_text, selected_text)
 			menu_additem(xMenu, item_text, fmt("%d", i))
 		}
 	}
@@ -535,7 +539,10 @@ public _select_class_type(id, menu, item)
 public _select_class(id, menu, item)
 {
 	if(!is_user_connected(id))
+	{
+		menu_destroy(menu)
 		return
+	}
 
 	if(item == MENU_EXIT)
 	{
@@ -543,16 +550,21 @@ public _select_class(id, menu, item)
 		return
 	}
 
-	new info[4]
+	new info[12]
 	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
+	menu_destroy(menu)
 
 	new class_id = str_to_num(info)
+	if(class_id < 0 || class_id >= zpn_class_array_size())
+		return
 
 	new eClassTypes:type, name[32], class_info[32]
 	new required_level, user_level
 	new Float:speed, Float:gravity, Float:health
 
 	type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+	if((type != CLASS_TEAM_TYPE_ZOMBIE && type != CLASS_TEAM_TYPE_HUMAN) || zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HIDE_MENU))
+		return
 	speed = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED)
 	gravity = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY)
 	health = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
@@ -567,61 +579,49 @@ public _select_class(id, menu, item)
 		return
 	}
 
+	// The menu may have been opened before another client reserved the last slot.
+	if(!zpn_class_has_free_slot(class_id, id))
+	{
+		client_print_color(id, print_team_red, "%s ^3A classe ^4%s ^3esta lotada (^4%d/%d^3).", xSettingsVars[CONFIG_PREFIX_CHAT], name, zpn_class_get_user_count(class_id), zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LIMIT))
+		return
+	}
+
 	if(xCvars[CVAR_CLASS_SELECT_INSTANT] && zpn_player_data_get_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT) > get_gametime())
 	{
 		client_print_color(id, print_team_default, "%s ^3Espere: ^4%.0f ^3segundos para alterar de classe novamente.", xSettingsVars[CONFIG_PREFIX_CHAT], zpn_player_data_get_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT) - get_gametime())
 		return
 	}
 	
-	if(!xCvars[CVAR_CLASS_SELECT_INSTANT])
+	new ePropPlayerDataRegisters:next_prop = type == CLASS_TEAM_TYPE_ZOMBIE ? PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS : PROP_PD_REGISTER_NEXT_HUMAN_CLASS
+	if(!zpn_player_data_set_prop(id, next_prop, class_id))
+		return
+
+	new bool:applied = false
+	if(xCvars[CVAR_CLASS_SELECT_INSTANT])
 	{
-		client_print_color(id, print_team_default, "%s ^3Sua nova classe ao reaparecer será: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], name)
-	}
-	else
-	{
-		client_print_color(id, print_team_default, "%s ^3Agora sua classe é: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], name)
+		new bool:same_team = (bool:zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) == (type == CLASS_TEAM_TYPE_ZOMBIE))
+		if(is_user_alive(id) && same_team)
+			applied = type == CLASS_TEAM_TYPE_ZOMBIE ? set_user_zombie(id, 0, false) : set_user_human(id)
+		else
+		{
+			new ePropPlayerDataRegisters:selected_prop = type == CLASS_TEAM_TYPE_ZOMBIE ? PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS : PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS
+			if(zpn_player_data_set_prop(id, selected_prop, class_id))
+				zpn_player_data_set_prop(id, next_prop, -1)
+		}
+
 		zpn_player_data_set_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT, get_gametime() + xCvars[CVAR_CLASS_SELECT_INSTANT_TIMEOUT])
 	}
 
-	switch(type)
+	if(applied)
 	{
-		// case CLASS_TEAM_TYPE_ZOMBIE_SPECIAL:
-		// {
-		// 	xUserData[id][UD_CURRENT_SELECTED_ZOMBIE_CLASS] = class_id
-		// }
-
-		case CLASS_TEAM_TYPE_ZOMBIE:
-		{
-			if(xCvars[CVAR_CLASS_SELECT_INSTANT])
-			{
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, -1)
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS, class_id)
-
-				if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-					set_user_zombie(id, 0, false)
-			}
-			else
-			{
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, class_id)
-			}
-		}
-
-		case CLASS_TEAM_TYPE_HUMAN:
-		{
-			if(xCvars[CVAR_CLASS_SELECT_INSTANT])
-			{
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_HUMAN_CLASS, -1)
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS, class_id)
-
-				if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-					set_user_human(id)
-			}
-			else
-			{
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_HUMAN_CLASS, class_id)
-			}
-		}
+		class_id = get_user_current_class_index(id)
+		zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
+		speed = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED)
+		gravity = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY)
+		health = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
+		client_print_color(id, print_team_default, "%s ^3Agora sua classe e: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], name)
 	}
+	else client_print_color(id, print_team_default, "%s ^3Classe reservada para a proxima aplicacao: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], name)
 
 	client_print_color(id, print_team_default, "%s ^3Vida: ^1%s ^4- ^3Gravidade: ^1%d ^4- ^3Velocidade: ^1%0.0f", xSettingsVars[CONFIG_PREFIX_CHAT], format_number_point(floatround(health)), floatround(gravity * 800.0), speed)
 }
@@ -659,6 +659,8 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && get_member(ent, m_iId) == WEAPON_KNIFE)
 	{
 		new class_id = get_user_current_class_index(id)
+		if(class_id < 0 || class_id >= zpn_class_array_size())
+			return
 
 		new view[64]
 		zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL_VIEW, view, charsmax(view))
@@ -691,35 +693,28 @@ public CBasePlayer_Spawn_Post(id)
 
 	if(team != TEAM_TERRORIST && team != TEAM_CT)
 		return
-	
-	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
-	{
-		set_user_human(id)
-		deploy_weapon(id)
-	}
+
+	// A new life no longer occupies either temporary class from the previous one.
+	zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, -1)
+	zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, -1)
+
+	new bool:applied
+	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+		applied = set_user_zombie(id, 0, false)
 	else
+		applied = set_user_human(id)
+
+	if(!applied)
 	{
-		if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-		{
-			if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS) != -1)
-			{
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS, zpn_player_data_get_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS))
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, -1)
-				set_user_zombie(id, 0, false)
-			}
-			else set_user_zombie(id, 0, false)
-		}
-		else
-		{
-			if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_NEXT_HUMAN_CLASS) != -1)
-			{
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS, zpn_player_data_get_prop(id, PROP_PD_REGISTER_NEXT_HUMAN_CLASS))
-				zpn_player_data_set_prop(id, PROP_PD_REGISTER_NEXT_HUMAN_CLASS, -1)
-				set_user_human(id)
-			}
-			else set_user_human(id)
-		}
+		// All classes can be limited: do not spawn with an invalid or full class.
+		rg_join_team(id, TEAM_SPECTATOR)
+		remove_task(id + TASK_RESPAWN)
+		client_print_color(id, print_team_red, "%s ^3Nao foi possivel aplicar uma classe. Entre novamente quando houver uma vaga disponivel.", xSettingsVars[CONFIG_PREFIX_CHAT])
+		return
 	}
+
+	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+		deploy_weapon(id)
 
 	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON) == -1 && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 		select_primary_weapon(id)
@@ -863,6 +858,16 @@ public CSGameRules_RestartRound_Pre()
 	remove_task(TASK_COUNTDOWN)
 	
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
+
+	for(new id = 1; id <= MaxClients; id++)
+	{
+		if(!is_user_connected(id))
+			continue
+
+		zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, -1)
+		zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, -1)
+	}
+	update_users_next_class()
 }
 
 public CSGameRules_RestartRound_Post()
@@ -874,8 +879,6 @@ public CSGameRules_RestartRound_Post()
 
 		remove_user_frozen(i + TASK_FROZEN)
 	}
-
-	update_users_next_class()
 }
 
 public CSGameRules_OnRoundFreezeEnd_Pre()
@@ -1342,7 +1345,9 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	xFwIntParam[2] = -1
 	xFwIntParam[3] = -1
 
-	new class_id = zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS)
+	new class_id = get_user_next_class_index(this, CLASS_TEAM_TYPE_ZOMBIE)
+	if(class_id == -1) class_id = get_user_selected_class_index(this, CLASS_TEAM_TYPE_ZOMBIE)
+	if(class_id == -1) class_id = xFirstClass[_:CLASS_TEAM_TYPE_ZOMBIE]
 
 	ExecuteForward(xForwards[FW_INFECT_ATTEMPT], xForwardReturn, this, infector, class_id)
 
@@ -1355,7 +1360,18 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	if(xFwIntParam[2] != -1) infector = xFwIntParam[2]
 	if(xFwIntParam[3] != -1) class_id = xFwIntParam[3]
 
-	zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, class_id)
+	if(!zpn_is_valid_player_alive(this))
+		return false
+
+	class_id = resolve_user_class(this, class_id, CLASS_TEAM_TYPE_ZOMBIE)
+	if(class_id == -1 || !zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, class_id))
+		return false
+
+	if(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE)
+	{
+		zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS, class_id)
+		zpn_player_data_set_prop(this, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, -1)
+	}
 
 	new class_model[64]
 	new bool:class_update_hitbox = false, class_blood_color, class_body, class_skin, class_model_index
@@ -1401,22 +1417,35 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	return true
 }
 
-public set_user_human(this)
+public bool:set_user_human(this)
 {
 	if(!zpn_is_valid_player_alive(this))
-		return
+		return false
 
 	xFwIntParam[1] = -1
 	xFwIntParam[2] = -1
 
-	new class_id = zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS)
+	new class_id = get_user_next_class_index(this, CLASS_TEAM_TYPE_HUMAN)
+	if(class_id == -1) class_id = get_user_selected_class_index(this, CLASS_TEAM_TYPE_HUMAN)
+	if(class_id == -1) class_id = xFirstClass[_:CLASS_TEAM_TYPE_HUMAN]
 
 	ExecuteForward(xForwards[FW_HUMANIZED_PRE], xForwardReturn, this, class_id)
 
 	if(xFwIntParam[1] != -1) this = xFwIntParam[1]
 	if(xFwIntParam[2] != -1) class_id = xFwIntParam[2]
 
-	zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, class_id)
+	if(!zpn_is_valid_player_alive(this))
+		return false
+
+	class_id = resolve_user_class(this, class_id, CLASS_TEAM_TYPE_HUMAN)
+	if(class_id == -1 || !zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, class_id))
+		return false
+
+	if(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_HUMAN)
+	{
+		zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS, class_id)
+		zpn_player_data_set_prop(this, PROP_PD_REGISTER_NEXT_HUMAN_CLASS, -1)
+	}
 
 	new class_model[64]
 	new bool:class_update_hitbox = false, class_blood_color, class_body, class_skin, class_model_index
@@ -1456,6 +1485,8 @@ public set_user_human(this)
 	queue_score_attrib_sync(this)
 
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
+
+	return true
 }
 
 public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
@@ -1723,6 +1754,41 @@ get_user_selected_class_index(id, eClassTypes:type)
 	return -1
 }
 
+resolve_user_class(id, class_id, eClassTypes:normal_type)
+{
+	new level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
+	new eClassTypes:special_type = normal_type == CLASS_TEAM_TYPE_ZOMBIE ? CLASS_TEAM_TYPE_ZOMBIE_SPECIAL : CLASS_TEAM_TYPE_HUMAN_SPECIAL
+
+	// Validate the final request after addons and game modes have changed it.
+	if(class_id >= 0 && class_id < zpn_class_array_size())
+	{
+		new eClassTypes:type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+		if((type == special_type || (type == normal_type && level >= zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LEVEL)))
+			&& zpn_class_has_free_slot(class_id, id))
+			return class_id
+	}
+
+	// Prefer the client's reservation before looking for another normal class.
+	new selected = get_user_next_class_index(id, normal_type)
+	if(selected == -1) selected = get_user_selected_class_index(id, normal_type)
+	if(selected >= 0 && selected < zpn_class_array_size()
+		&& zpn_class_get_prop(selected, PROP_CLASS_REGISTER_TYPE) == normal_type
+		&& level >= zpn_class_get_prop(selected, PROP_CLASS_REGISTER_LEVEL)
+		&& zpn_class_has_free_slot(selected, id))
+		return selected
+
+	for(new i = 0; i < zpn_class_array_size(); i++)
+	{
+		if(zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE) == normal_type
+			&& !zpn_class_get_prop(i, PROP_CLASS_REGISTER_HIDE_MENU)
+			&& level >= zpn_class_get_prop(i, PROP_CLASS_REGISTER_LEVEL)
+			&& zpn_class_has_free_slot(i, id))
+			return i
+	}
+
+	return -1
+}
+
 eClassTypes:get_user_current_class_type(id)
 {
 	new class_id = get_user_current_class_index(id)
@@ -1829,9 +1895,6 @@ update_users_next_class()
 	{
 		if(!is_user_connected(id))
 			continue
-
-		zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, -1)
-		zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, -1)
 
 		if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS) != -1)
 		{

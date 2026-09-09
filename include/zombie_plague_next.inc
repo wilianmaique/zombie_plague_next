@@ -45,6 +45,10 @@ forward zpn_user_frozen_post(const this);
  *         1 - infected client index
  *         2 - infector client index
  *         3 - zombie class index
+ * @note The final class is checked for capacity after this forward. An
+ *       unavailable class falls back to an eligible normal zombie class;
+ *       infection fails if none is available. The post-forward reports the
+ *       class actually applied.
  *
  * @param this      Client index being infected
  * @param infector  Infector client index, or 0 if there is no direct infector
@@ -98,6 +102,8 @@ forward zpn_item_selected_post(const this, const item_id);
  * @note Parameter ids used by zpn_set_fw_param_int() in this forward:
  *         1 - humanized client index
  *         2 - human class index
+ * @note The final class is checked for capacity after this forward. An
+ *       unavailable class falls back to an eligible normal human class.
  *
  * @param this      Client index being humanized
  * @param class_id  Human class index that will be applied
@@ -303,6 +309,32 @@ native zpn_class_find(const class_find_name[]);
  * @return          Number of classes registered in the class storage
  */
 native zpn_class_array_size();
+
+/**
+ * Counts clients occupying or reserving a class slot.
+ *
+ * @note Connected clients, including dead clients and bots, reserve their next
+ *       choice (or selected class when no change is pending). A living client
+ *       also occupies the class currently applied to them, without counting
+ *       the same client twice for the same class. HLTV is excluded.
+ *
+ * @param class_id       Class index
+ * @param ignore_player  Client to exclude, or 0 to include everyone
+ * @return               Occupied slots, or 0 for an invalid class
+ */
+native zpn_class_get_user_count(const class_id, const ignore_player = 0);
+
+/**
+ * Checks class capacity without reserving a slot or checking the required level.
+ *
+ * @note A limit of 0 is unlimited. Pass the selecting client to exclude their
+ *       existing slot. Capacity is checked again when class data is changed.
+ *
+ * @param class_id       Class index
+ * @param ignore_player  Client to exclude, or 0 to include everyone
+ * @return               true if capacity is available, false otherwise
+ */
+native bool:zpn_class_has_free_slot(const class_id, const ignore_player = 0);
 
 /**
  * Returns whether a client is using a special zombie class.
@@ -632,12 +664,15 @@ native any:zpn_player_data_get_prop(const player, ePropPlayerDataRegisters:prop,
  *       one exists for the value you need.
  * @note The expected value type depends on the property. See
  *       ePropPlayerDataRegisters in zombie_plague_next_const.inc.
+ * @note Class assignments enforce class type and capacity. A class index of
+ *       -1 clears the assignment; cancelling a pending choice also checks
+ *       whether the previously selected class can be reserved again.
  *
  * @param player    Client index
  * @param prop      Property to set, from ePropPlayerDataRegisters
  * @param ...       New property value
  *
- * @return          1 on success
+ * @return          1 on success, 0 if a class assignment is invalid or full
  * @error           If player is not within the valid client range, an error can
  *                  be thrown by the underlying array access.
  */
@@ -654,7 +689,7 @@ native zpn_player_data_set_prop(const player, ePropPlayerDataRegisters:prop, any
  * @param set_first Whether the client should be marked as the first zombie
  *
  * @return          true on successful infection, false if the client is not
- *                  alive or the infection was blocked
+ *                  alive, the infection was blocked, or no class is available
  */
 native bool:zpn_set_user_zombie(const this, const attacker, bool:set_first = false);
 
