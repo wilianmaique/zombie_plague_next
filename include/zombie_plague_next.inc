@@ -189,6 +189,9 @@ native zpn_class_random_class_id(eClassTypes:type);
  * Registers a new class.
  *
  * @note This should be called from plugin_precache().
+ * @note Loads supported properties from classes.json immediately, including
+ *       keys without a corresponding zpn_class_set_prop() call. Missing keys
+ *       keep the core defaults and are not added to the file at this stage.
  *
  * @param name      Default display name
  * @param type      Class type
@@ -223,6 +226,8 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
  *       models can be precached safely.
  * @note The expected value type depends on the property. See
  *       ePropClassRegisters in zombie_plague_next_const.inc.
+ * @note The supplied value is a default: a valid value in classes.json takes
+ *       priority. Missing settings are saved using the supplied default.
  *
  * @param class_id  Class index
  * @param prop      Property to set, from ePropClassRegisters
