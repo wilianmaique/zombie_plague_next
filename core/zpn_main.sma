@@ -332,6 +332,7 @@ public xHudPlayerInfo(id)
 
 	add(txt, charsmax(txt), fmt("» Modo: %s^n", get_gamemode_name()))
 	add(txt, charsmax(txt), fmt("» Classe: %s^n", get_class_name(id)))
+	add(txt, charsmax(txt), fmt("» Level: %s^n", format_number_point(zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL))))
 	add(txt, charsmax(txt), fmt("» Vida: %s^n", format_number_point(floatround(get_entvar(id, var_health)))))
 
 	if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
@@ -512,20 +513,21 @@ public _select_class_type(id, menu, item)
 		if(type == class_type && !hide_menu)
 		{
 			if(required_level > 0)
-				formatex(level_text, charsmax(level_text), " - Level %d", required_level)
+				formatex(level_text, charsmax(level_text), " \d(Lvl: %d)", required_level)
 			else level_text[0] = EOS
 
 			if(limit > 0)
-				formatex(limit_text, charsmax(limit_text), " - Vagas %d/%d", occupied, limit)
+				formatex(limit_text, charsmax(limit_text), " \d(Lmt: %d/%d)", occupied, limit)
 			else limit_text[0] = EOS
 
 			new selected = get_user_next_class_index(id, class_type)
 			if(selected == -1) selected = get_user_selected_class_index(id, class_type)
+
 			if(i == selected)
-				copy(selected_text, charsmax(selected_text), " \r*")
+				copy(selected_text, charsmax(selected_text), " \r●")
 			else selected_text[0] = EOS
 
-			formatex(item_text, charsmax(item_text), "%s%s \y(\d%s%s%s\y)%s", locked ? "\d" : "\w", name, class_info, level_text, limit_text, selected_text)
+			formatex(item_text, charsmax(item_text), "%s%s \y(\d%s\y)%s%s%s", locked ? "\d" : "\w", name, class_info, level_text, limit_text, selected_text)
 			menu_additem(xMenu, item_text, fmt("%d", i))
 		}
 	}
