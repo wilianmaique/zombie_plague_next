@@ -1,0 +1,218 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+Copia as includes, compila os plugins e move os novos .amxx para o destino.
+.EXAMPLE
+.\compile_all.ps1 -WhatIf
+.EXAMPLE
+.\compile_all.ps1 -CompilerPath 'D:\AMXX\scripting\amxxpc.exe' -PluginDestinationDirectory 'D:\Servidor\cstrike\addons\amxmodx\plugins\zpn'
+#>
+[CmdletBinding(SupportsShouldProcess = $true)]
+param (
+  # CONFIGURACAO: edite os valores abaixo ou informe parametros ao executar.
+  [ValidateNotNullOrEmpty()]
+  [string]$CompilerPath = '', # ex: D:\compiler\amxxpc.exe
+
+  [ValidateNotNullOrEmpty()]
+  [string]$SourceDirectory = $PSScriptRoot,
+
+  # Vazio = pasta include dentro de SourceDirectory.
+  [string]$IncludeSourceDirectory = '',
+
+  # Vazio = pasta include ao lado do amxxpc.exe configurado acima.
+  [string]$IncludeDestinationDirectory = '', # ex: 'D:\compiler\include'
+
+  # Vazio = pasta compiled dentro de SourceDirectory.
+  [string]$OutputDirectory = '',
+
+  [ValidateNotNullOrEmpty()]
+  [string]$PluginDestinationDirectory = (Join-Path $env:USERPROFILE ''), # ex: Desktop\rehlds_zombie_next\cstrike\addons\amxmodx\plugins\zpn
+
+  # Pastas opcionais de includes de outras dependencias.
+  [string[]]$AdditionalIncludeDirectories = @(),
+
+  # 0: sem verificacoes; 1: padrao AMXX; 2: debug completo; 3: sem otimizacao.
+  [ValidateRange(0, 3)]
+  [int]$DebugLevel = 2
+)
+
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = 'Stop'
+# No PowerShell 7, os erros nativos tambem sao tratados pelo codigo de saida.
+$PSNativeCommandUseErrorActionPreference = $false
+
+function Resolve-ConfiguredPath {
+  param ([Parameter(Mandatory = $true)][string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    throw 'Um dos caminhos configurados esta vazio.'
+  }
+
+  $expandedPath = [Environment]::ExpandEnvironmentVariables($Path)
+  if (-not [IO.Path]::IsPathRooted($expandedPath)) {
+    $expandedPath = Join-Path $PSScriptRoot $expandedPath
+  }
+
+  $fullPath = [IO.Path]::GetFullPath($expandedPath)
+  if ($fullPath.Length -gt [IO.Path]::GetPathRoot($fullPath).Length) {
+    $fullPath = $fullPath.TrimEnd([IO.Path]::DirectorySeparatorChar)
+  }
+  return $fullPath
+}
+
+$runDirectory = $null
+$movedCount = 0
+
+try {
+  $CompilerPath = Resolve-ConfiguredPath $CompilerPath
+  $SourceDirectory = Resolve-ConfiguredPath $SourceDirectory
+  $compilerDirectory = Split-Path -Parent $CompilerPath
+
+  if ([string]::IsNullOrWhiteSpace($IncludeSourceDirectory)) {
+    $IncludeSourceDirectory = Join-Path $SourceDirectory 'include'
+  }
+  if ([string]::IsNullOrWhiteSpace($IncludeDestinationDirectory)) {
+    $IncludeDestinationDirectory = Join-Path $compilerDirectory 'include'
+  }
+  if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $OutputDirectory = Join-Path $SourceDirectory 'compiled'
+  }
+
+  $IncludeSourceDirectory = Resolve-ConfiguredPath $IncludeSourceDirectory
+  $IncludeDestinationDirectory = Resolve-ConfiguredPath $IncludeDestinationDirectory
+  $OutputDirectory = Resolve-ConfiguredPath $OutputDirectory
+  $PluginDestinationDirectory = Resolve-ConfiguredPath $PluginDestinationDirectory
+  $AdditionalIncludeDirectories = @($AdditionalIncludeDirectories | ForEach-Object {
+      Resolve-ConfiguredPath $_
+    })
+
+  if (-not (Test-Path -LiteralPath $CompilerPath -PathType Leaf)) {
+    throw "Compilador nao encontrado: $CompilerPath"
+  }
+  foreach ($directory in (@($SourceDirectory, $IncludeSourceDirectory) + $AdditionalIncludeDirectories)) {
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+      throw "Pasta de origem/includes nao encontrada: $directory"
+    }
+  }
+  foreach ($directory in @($IncludeDestinationDirectory, $OutputDirectory, $PluginDestinationDirectory)) {
+    if ((Test-Path -LiteralPath $directory) -and -not (Test-Path -LiteralPath $directory -PathType Container)) {
+      throw "O caminho deve ser uma pasta, mas ja existe como arquivo: $directory"
+    }
+  }
+
+  # Evita copiar a arvore de includes para dentro dela mesma (ou o inverso).
+  $sameIncludeDirectory = $IncludeSourceDirectory -eq $IncludeDestinationDirectory
+  $sourcePrefix = $IncludeSourceDirectory.TrimEnd('\') + '\'
+  $destinationPrefix = $IncludeDestinationDirectory.TrimEnd('\') + '\'
+  if (-not $sameIncludeDirectory -and (
+      $IncludeDestinationDirectory.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCase) -or
+      $IncludeSourceDirectory.StartsWith($destinationPrefix, [StringComparison]::OrdinalIgnoreCase)
+    )) {
+    throw 'As pastas de includes nao podem estar uma dentro da outra. Use pastas separadas ou a mesma pasta.'
+  }
+
+  $includeFiles = @(Get-ChildItem -LiteralPath $IncludeSourceDirectory -Filter '*.inc' -File -Recurse | Sort-Object FullName)
+  $plugins = @(Get-ChildItem -LiteralPath $SourceDirectory -Filter '*.sma' -File -Recurse | Sort-Object FullName)
+  if ($includeFiles.Count -eq 0) {
+    throw "Nenhuma include .inc encontrada em: $IncludeSourceDirectory"
+  }
+  if ($plugins.Count -eq 0) {
+    throw "Nenhum plugin .sma encontrado em: $SourceDirectory"
+  }
+
+  # A pasta final e plana: fontes de pastas diferentes nao podem ter o mesmo nome.
+  $duplicates = @($plugins | Group-Object BaseName | Where-Object Count -gt 1)
+  if ($duplicates.Count -gt 0) {
+    $duplicatePaths = @($duplicates | ForEach-Object { $_.Group.FullName })
+    throw ("Plugins com nomes de saida repetidos:`n" + ($duplicatePaths -join "`n"))
+  }
+  foreach ($plugin in $plugins) {
+    $destinationFile = Join-Path $PluginDestinationDirectory ($plugin.BaseName + '.amxx')
+    if (Test-Path -LiteralPath $destinationFile -PathType Container) {
+      throw "O destino de um plugin ja existe como pasta: $destinationFile"
+    }
+  }
+
+  Write-Host "Compilador: $CompilerPath"
+  Write-Host "1. Includes ($($includeFiles.Count)): $IncludeSourceDirectory -> $IncludeDestinationDirectory"
+  Write-Host "2. Plugins ($($plugins.Count)): $SourceDirectory -> $OutputDirectory\run-<id>"
+  Write-Host "3. Mover .amxx para: $PluginDestinationDirectory"
+  if (-not $PSCmdlet.ShouldProcess($PluginDestinationDirectory, 'Copiar includes, compilar todos os plugins e mover os novos .amxx (substituindo os existentes)')) {
+    exit 0
+  }
+
+  # Copia somente as includes do projeto, preservando subpastas e outras includes.
+  if (-not $sameIncludeDirectory) {
+    foreach ($includeFile in $includeFiles) {
+      $relativePath = $includeFile.FullName.Substring($sourcePrefix.Length)
+      $destinationFile = Join-Path $IncludeDestinationDirectory $relativePath
+      [void][IO.Directory]::CreateDirectory((Split-Path -Parent $destinationFile))
+      Copy-Item -LiteralPath $includeFile.FullName -Destination $destinationFile -Force
+    }
+    Write-Host 'Includes copiadas.'
+  }
+  else {
+    Write-Host 'Includes ja estao na pasta configurada; copia dispensada.'
+  }
+
+  # Cada execucao usa uma pasta exclusiva: .amxx antigos nunca entram no envio.
+  $runDirectory = Join-Path $OutputDirectory ('run-' + [Guid]::NewGuid().ToString('N'))
+  [void][IO.Directory]::CreateDirectory($runDirectory)
+  $compiledFiles = [Collections.Generic.List[string]]::new()
+  $failedPlugins = [Collections.Generic.List[string]]::new()
+  $includeArguments = @(@($IncludeDestinationDirectory) + $AdditionalIncludeDirectories |
+    Select-Object -Unique | ForEach-Object { '-i' + $_ })
+
+  Push-Location -LiteralPath $compilerDirectory
+  try {
+    foreach ($plugin in $plugins) {
+      Write-Host "`nCompilando: $($plugin.FullName)"
+      $compiledFile = Join-Path $runDirectory ($plugin.BaseName + '.amxx')
+      $compilerArguments = @($plugin.FullName, "-o$compiledFile", "-d$DebugLevel") + $includeArguments
+      & $CompilerPath @compilerArguments
+      $compilerExitCode = $LASTEXITCODE
+
+      $validOutput = (Test-Path -LiteralPath $compiledFile -PathType Leaf) -and
+      ((Get-Item -LiteralPath $compiledFile).Length -gt 0)
+      if ($compilerExitCode -ne 0 -or -not $validOutput) {
+        $failedPlugins.Add($plugin.FullName)
+        Write-Warning "Falha em $($plugin.Name) (codigo: $compilerExitCode; .amxx valido: $validOutput)."
+      }
+      else {
+        $compiledFiles.Add($compiledFile)
+      }
+    }
+  }
+  finally {
+    Pop-Location
+  }
+
+  if ($failedPlugins.Count -gt 0) {
+    throw ("Falha em $($failedPlugins.Count) plugin(s). Nenhum .amxx foi movido.`n" + ($failedPlugins -join "`n"))
+  }
+
+  [void][IO.Directory]::CreateDirectory($PluginDestinationDirectory)
+  foreach ($compiledFile in $compiledFiles) {
+    $destinationFile = Join-Path $PluginDestinationDirectory ([IO.Path]::GetFileName($compiledFile))
+    Move-Item -LiteralPath $compiledFile -Destination $destinationFile -Force
+    $movedCount++
+  }
+
+  # Remove apenas a pasta vazia desta execucao; nunca limpa compiled recursivamente.
+  if (@(Get-ChildItem -LiteralPath $runDirectory -Force).Count -eq 0) {
+    Remove-Item -LiteralPath $runDirectory -ErrorAction SilentlyContinue
+  }
+  Write-Host "`nPronto. $movedCount plugin(s) movido(s) para: $PluginDestinationDirectory"
+}
+catch {
+  Write-Error $_ -ErrorAction Continue
+  if ($runDirectory -and (Test-Path -LiteralPath $runDirectory -PathType Container)) {
+    Write-Host "Arquivos restantes desta execucao preservados em: $runDirectory"
+  }
+  if ($movedCount -gt 0) {
+    Write-Warning "$movedCount plugin(s) ja foram movidos antes da falha no envio. O destino foi atualizado parcialmente."
+  }
+  exit 1
+}
+
+exit 0
