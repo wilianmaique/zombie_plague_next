@@ -724,6 +724,15 @@ public CBasePlayer_Spawn_Post(id)
 		return
 	}
 
+	// A pending weapon selection must not leave the player empty-handed.
+	new knife = rg_find_weapon_bpack_by_name(id, "weapon_knife")
+	
+	if(!knife)
+		knife = rg_give_item(id, "weapon_knife")
+
+	if(!is_nullent(knife) && is_nullent(get_member(id, m_pActiveItem)))
+		rg_switch_weapon(id, knife)
+
 	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		deploy_weapon(id)
 
@@ -745,7 +754,8 @@ public RCBasePlayer_HasRestrictItem_Pre(const this, ItemID:item, ItemRestType:ty
 	if(!zpn_is_valid_player_alive(this))
 		return HC_CONTINUE
 
-	if(zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE))
+	// The previous round's zombie flag is still set during default spawn equipment.
+	if(item != ITEM_KNIFE && zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE))
 	{
 		SetHookChainReturn(ATYPE_BOOL, true)
 
