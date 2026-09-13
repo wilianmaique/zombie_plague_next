@@ -6,7 +6,7 @@
 #define INVALID_FORWARD -1
 
 new const camera_model[] = "models/rpgrocket.mdl"
-new const camera_classname[] = "zpn_camera"
+new const camera_classname[] = "the_camera"
 
 new const Float:camera_distance = 128.0
 new const Float:camera_side_distance = 32.0
