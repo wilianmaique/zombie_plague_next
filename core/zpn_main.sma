@@ -199,23 +199,6 @@ public CBasePlayer_PreThink(const this)
 		set_user_nv(this)
 	
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_NV_SPAM, get_gametime() + 0.001)
-
-	if(zpn_player_data_get_prop(this, PROP_PD_REGISTER_LAST_LEAP_TIMEOUT) > get_gametime())
-		return
-
-	if(!(get_entvar(this, var_button) & (IN_JUMP | IN_DUCK) == (IN_JUMP | IN_DUCK)))
-		return
-
-	if(!(get_entvar(this, var_flags) & FL_ONGROUND) || get_user_speed(this) < 80)
-		return
-
-	static Float:velocity[3]
-
-	velocity_by_aim(this, 500, velocity) // force
-	velocity[2] = 300.0 // height
-
-	set_entvar(this, var_velocity, velocity)
-	zpn_player_data_set_prop(this, PROP_PD_REGISTER_LAST_LEAP_TIMEOUT, get_gametime() + 5.0)
 }
 
 public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:flDamage, bitsDamageType)
@@ -645,7 +628,6 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 			continue
 
 		zpn_player_data_set_prop(i, PROP_PD_REGISTER_CLASS_TIMEOUT, get_gametime())
-		zpn_player_data_set_prop(i, PROP_PD_REGISTER_LAST_LEAP_TIMEOUT, get_gametime())
 
 		remove_user_frozen(i + TASK_FROZEN)
 	}
@@ -1428,6 +1410,7 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_ARMOR)), 0, 1000))
 	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED))
 	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SILENT_FOOTSTEPS))
+	zpn_reset_user_leap(this)
 	deploy_weapon(this)
 
 	make_deathmsg(infector, this, 0, "teammate")
@@ -1503,6 +1486,7 @@ public bool:set_user_human(this)
 	set_entvar(this, var_armorvalue, clamp(floatround(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_ARMOR)), 0, 1000))
 	set_entvar(this, var_maxspeed, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED))
 	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SILENT_FOOTSTEPS))
+	zpn_reset_user_leap(this)
 	queue_score_attrib_sync(this)
 
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)

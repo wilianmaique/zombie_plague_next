@@ -94,6 +94,11 @@ enum ePropClassRegisters
 	PROP_CLASS_REGISTER_SILENT_FOOTSTEPS, // bool
 	PROP_CLASS_REGISTER_LIMIT, // int
 	PROP_CLASS_REGISTER_LEVEL, // int
+	PROP_CLASS_REGISTER_LEAP_ENABLED, // bool, default: false
+	PROP_CLASS_REGISTER_LEAP_FORCE, // float, default: 500.0
+	PROP_CLASS_REGISTER_LEAP_HEIGHT, // float, default: 300.0
+	PROP_CLASS_REGISTER_LEAP_COOLDOWN, // float, seconds, default: 5.0
+	PROP_CLASS_REGISTER_LEAP_MIN_SPEED, // float, default: 80.0
 }
 
 enum eGameModeDeathMatchTypes
@@ -129,7 +134,7 @@ enum ePropPlayerDataRegisters
 	PROP_PD_REGISTER_PRIMARY_WEAPON, // int
 	PROP_PD_REGISTER_SECONDARY_WEAPON, // int
 	PROP_PD_REGISTER_CLASS_TIMEOUT, // float
-	PROP_PD_REGISTER_LAST_LEAP_TIMEOUT, // float
+	PROP_PD_REGISTER_LAST_LEAP_TIMEOUT, // float, next allowed leap time (get_gametime), managed by zpn_leap
 	PROP_PD_REGISTER_IS_LAST_HUMAN,
 	PROP_PD_REGISTER_NV_ON, // bool
 	PROP_PD_REGISTER_NV_SPAM, // float

@@ -28,7 +28,12 @@ enum _:ePropClasses
 	bool:CLASS_PROP_SILENT_FOOTSTEPS,
 	CLASS_PROP_MODEL_INDEX,
 	CLASS_PROP_LIMIT,
-	CLASS_PROP_LEVEL
+	CLASS_PROP_LEVEL,
+	bool:CLASS_PROP_LEAP_ENABLED,
+	Float:CLASS_PROP_LEAP_FORCE,
+	Float:CLASS_PROP_LEAP_HEIGHT,
+	Float:CLASS_PROP_LEAP_COOLDOWN,
+	Float:CLASS_PROP_LEAP_MIN_SPEED
 }
 
 new Array:aDataClass, Array:aIndexClassesZombies, Array:aIndexClassesHumans
@@ -125,6 +130,11 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_LIMIT] = 0
 	xDataGetClass[CLASS_PROP_LEVEL] = 0
 	xDataGetClass[CLASS_PROP_MODEL_INDEX] = -1
+	xDataGetClass[CLASS_PROP_LEAP_ENABLED] = false
+	xDataGetClass[CLASS_PROP_LEAP_FORCE] = 500.0
+	xDataGetClass[CLASS_PROP_LEAP_HEIGHT] = 300.0
+	xDataGetClass[CLASS_PROP_LEAP_COOLDOWN] = 5.0
+	xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = 80.0
 
 	new class_section[128]
 	get_class_settings_section(xDataGetClass, class_section, charsmax(class_section))
@@ -173,6 +183,11 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_MODEL_INDEX: return xDataGetClass[CLASS_PROP_MODEL_INDEX]
 		case PROP_CLASS_REGISTER_LIMIT: return xDataGetClass[CLASS_PROP_LIMIT]
 		case PROP_CLASS_REGISTER_LEVEL: return xDataGetClass[CLASS_PROP_LEVEL]
+		case PROP_CLASS_REGISTER_LEAP_ENABLED: return xDataGetClass[CLASS_PROP_LEAP_ENABLED]
+		case PROP_CLASS_REGISTER_LEAP_FORCE: return xDataGetClass[CLASS_PROP_LEAP_FORCE]
+		case PROP_CLASS_REGISTER_LEAP_HEIGHT: return xDataGetClass[CLASS_PROP_LEAP_HEIGHT]
+		case PROP_CLASS_REGISTER_LEAP_COOLDOWN: return xDataGetClass[CLASS_PROP_LEAP_COOLDOWN]
+		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED: return xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED]
 	}
 
 	return true
@@ -212,6 +227,11 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_SILENT_FOOTSTEPS: xDataGetClass[CLASS_PROP_SILENT_FOOTSTEPS] = bool:get_param_byref(arg_value)
 		case PROP_CLASS_REGISTER_LIMIT: xDataGetClass[CLASS_PROP_LIMIT] = clamp(get_param_byref(arg_value), 0, 32)
 		case PROP_CLASS_REGISTER_LEVEL: xDataGetClass[CLASS_PROP_LEVEL] = clamp(get_param_byref(arg_value), 0, MAX_LEVEL)
+		case PROP_CLASS_REGISTER_LEAP_ENABLED: xDataGetClass[CLASS_PROP_LEAP_ENABLED] = bool:get_param_byref(arg_value)
+		case PROP_CLASS_REGISTER_LEAP_FORCE: xDataGetClass[CLASS_PROP_LEAP_FORCE] = floatmax(0.0, get_float_byref(arg_value))
+		case PROP_CLASS_REGISTER_LEAP_HEIGHT: xDataGetClass[CLASS_PROP_LEAP_HEIGHT] = floatmax(0.0, get_float_byref(arg_value))
+		case PROP_CLASS_REGISTER_LEAP_COOLDOWN: xDataGetClass[CLASS_PROP_LEAP_COOLDOWN] = floatmax(0.0, get_float_byref(arg_value))
+		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED: xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = floatmax(0.0, get_float_byref(arg_value))
 	}
 
 	new class_section[128]
@@ -355,6 +375,39 @@ load_class_setting(xDataGetClass[ePropClasses], ePropClassRegisters:prop, const 
 				json_setting_set_int(PATH_SETTINGS_CLASSES, class_section_final, "level", xDataGetClass[CLASS_PROP_LEVEL], false)
 
 			xDataGetClass[CLASS_PROP_LEVEL] = clamp(xDataGetClass[CLASS_PROP_LEVEL], 0, MAX_LEVEL)
+		}
+		case PROP_CLASS_REGISTER_LEAP_ENABLED:
+		{
+			if(!json_setting_get_bool(PATH_SETTINGS_CLASSES, class_section_final, "leap_enabled", xDataGetClass[CLASS_PROP_LEAP_ENABLED]) && save_default)
+				json_setting_set_bool(PATH_SETTINGS_CLASSES, class_section_final, "leap_enabled", xDataGetClass[CLASS_PROP_LEAP_ENABLED])
+		}
+		case PROP_CLASS_REGISTER_LEAP_FORCE:
+		{
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_force", xDataGetClass[CLASS_PROP_LEAP_FORCE]) && save_default)
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_force", xDataGetClass[CLASS_PROP_LEAP_FORCE])
+
+			xDataGetClass[CLASS_PROP_LEAP_FORCE] = floatmax(0.0, xDataGetClass[CLASS_PROP_LEAP_FORCE])
+		}
+		case PROP_CLASS_REGISTER_LEAP_HEIGHT:
+		{
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_height", xDataGetClass[CLASS_PROP_LEAP_HEIGHT]) && save_default)
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_height", xDataGetClass[CLASS_PROP_LEAP_HEIGHT])
+
+			xDataGetClass[CLASS_PROP_LEAP_HEIGHT] = floatmax(0.0, xDataGetClass[CLASS_PROP_LEAP_HEIGHT])
+		}
+		case PROP_CLASS_REGISTER_LEAP_COOLDOWN:
+		{
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_cooldown", xDataGetClass[CLASS_PROP_LEAP_COOLDOWN]) && save_default)
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_cooldown", xDataGetClass[CLASS_PROP_LEAP_COOLDOWN])
+
+			xDataGetClass[CLASS_PROP_LEAP_COOLDOWN] = floatmax(0.0, xDataGetClass[CLASS_PROP_LEAP_COOLDOWN])
+		}
+		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED:
+		{
+			if(!json_setting_get_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_min_speed", xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED]) && save_default)
+				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_min_speed", xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED])
+
+			xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = floatmax(0.0, xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED])
 		}
 	}
 }

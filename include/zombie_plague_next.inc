@@ -37,6 +37,25 @@ forward zpn_user_frozen_pre(const this);
 forward zpn_user_frozen_post(const this);
 
 /**
+ * Called before an eligible leap attempt, from input or zpn_do_user_leap().
+ *
+ * @param id        Client index
+ *
+ * @return          ZPN_RETURN_CONTINUE to allow the leap
+ *                  ZPN_RETURN_HANDLED or higher to block it without cooldown
+ */
+forward zpn_user_leap_pre(const id);
+
+/**
+ * Called after leap velocity and cooldown have been applied.
+ *
+ * @param id        Client index
+ *
+ * @noreturn
+ */
+forward zpn_user_leap_post(const id);
+
+/**
  * Called before a client is infected and receives the zombie class.
  *
  * @note The forwarded integer parameters can be changed with
@@ -234,6 +253,9 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
  *       ePropClassRegisters in zombie_plague_next_const.inc.
  * @note The supplied value is a default: a valid value in classes.json takes
  *       priority. Missing settings are saved using the supplied default.
+ * @note Leap properties are applied when the client receives the class, before
+ *       the infected/humanized post-forward. To update an existing client after
+ *       changing class properties, call zpn_reset_user_leap().
  *
  * @param class_id  Class index
  * @param prop      Property to set, from ePropClassRegisters
@@ -761,3 +783,98 @@ native bool:zpn_remove_user_frozen(const this);
  * @return          true if the client is frozen, false otherwise
  */
 native bool:zpn_is_user_freezed(const this);
+
+/**
+ * Configures leap for one client. Requires the zpn_leap core plugin.
+ *
+ * @note Leap is disabled by default. Enabled clients can leap with jump + duck.
+ * @note Runtime settings last until death, spawn, round restart or a successful
+ *       class application. Class defaults are applied before infected/humanized
+ *       post-forwards, where addons can override them with this native.
+ * @note Does not reset an existing cooldown, including when disabling leap.
+ *       Numeric arguments must be nonnegative. Disabling with only id and false
+ *       also restores the optional configuration arguments to their defaults.
+ *
+ * @param id        Client index
+ * @param enabled   Whether the client may leap
+ * @param force     Forward velocity magnitude (view pitch affects X/Y)
+ * @param height    Vertical velocity
+ * @param cooldown  Seconds between successful leaps; 0.0 disables the wait
+ * @param min_speed Minimum current speed required; 0.0 allows standing still
+ *
+ * @return          true on success, false for an invalid client or parameters
+ */
+native bool:zpn_set_user_leap(const id, const bool:enabled, const Float:force = 500.0, const Float:height = 300.0, const Float:cooldown = 5.0, const Float:min_speed = 80.0);
+
+/**
+ * Copies a client's current leap settings.
+ *
+ * @param id        Client index
+ * @param enabled   Output: whether leap is enabled
+ * @param force     Output: forward velocity magnitude
+ * @param height    Output: vertical velocity
+ * @param cooldown  Output: configured interval, not the remaining cooldown
+ * @param min_speed Output: minimum speed required
+ *
+ * @return          true on success; false for an invalid client, leaving outputs
+ *                  unchanged
+ */
+native bool:zpn_get_user_leap(const id, &bool:enabled, &Float:force, &Float:height, &Float:cooldown, &Float:min_speed);
+
+/**
+ * Returns whether leap is enabled for a connected client.
+ *
+ * @note This does not check cooldown or movement restrictions.
+ *
+ * @param id        Client index
+ *
+ * @return          true if enabled, false if disabled or the client is invalid
+ */
+native bool:zpn_is_user_leap_enabled(const id);
+
+/**
+ * Restores the active class's leap settings and clears the remaining cooldown.
+ *
+ * @note The main core calls this when applying a human or zombie class,
+ *       including special classes, before its corresponding post-forward.
+ *
+ * @param id        Client index
+ *
+ * @return          true on success, false if the client or class is invalid.
+ *                  An invalid class leaves leap disabled for a valid client.
+ */
+native bool:zpn_reset_user_leap(const id);
+
+/**
+ * Returns the remaining leap cooldown in seconds.
+ *
+ * @param id        Client index
+ *
+ * @return          Remaining seconds, or 0.0 if ready or the client is invalid
+ */
+native Float:zpn_get_user_leap_cooldown(const id);
+
+/**
+ * Changes the remaining cooldown without changing the interval between leaps.
+ *
+ * @param id        Client index
+ * @param seconds   Seconds from now until the next leap; 0.0 clears the wait
+ *
+ * @return          true on success, false for an invalid client or negative time
+ */
+native bool:zpn_set_user_leap_cooldown(const id, const Float:seconds);
+
+/**
+ * Attempts a leap without requiring jump + duck input, e.g. for a bot or skill.
+ *
+ * @note Requires leap enabled, an alive grounded client, normal walking movement,
+ *       minimum speed and an expired cooldown. Respects freeze time, frozen and
+ *       jump-blocking states, defusing and water level. Calls zpn_user_leap_pre()
+ *       and zpn_user_leap_post(); failed attempts do not consume cooldown.
+ * @note Recursive calls from leap forwards return false.
+ *
+ * @param id        Client index
+ *
+ * @return          true if the leap was applied, false if unavailable or blocked
+ */
+native bool:zpn_do_user_leap(const id);
