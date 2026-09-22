@@ -505,7 +505,7 @@ public _select_class_type(id, menu, item)
 	new xMenu = menu_create(fmt("%s \ySelecionar classe: %s", xSettingsVars[CONFIG_PREFIX_MENUS], class_type == CLASS_TEAM_TYPE_ZOMBIE ? "\rZombie" : "\yHumano"), "_select_class")
 	
 	new eClassTypes:type, name[32], class_info[32]
-	new item_text[160], level_text[32], limit_text[32], selected_text[8], required_level, limit, occupied, user_level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
+	new item_text[160], level_text[32], limit_text[32], selected_text[12], required_level, limit, occupied, user_level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
 	new bool:hide_menu = false, locked = false
 
 	for(new i = 0; i < zpn_class_array_size(); i++)
@@ -533,7 +533,7 @@ public _select_class_type(id, menu, item)
 			if(selected == -1) selected = get_user_selected_class_index(id, class_type)
 
 			if(i == selected)
-				copy(selected_text, charsmax(selected_text), " \r●")
+				copy(selected_text, charsmax(selected_text), " \r•")
 			else selected_text[0] = EOS
 
 			formatex(item_text, charsmax(item_text), "%s%s \y(\d%s\y)%s%s%s", locked ? "\d" : "\w", name, class_info, level_text, limit_text, selected_text)
