@@ -12,14 +12,13 @@
 
 enum
 {
-	TASK_ESCAPE_HUD = 3400,
-	TASK_ESCAPE_TIMEOUT,
+	TASK_ESCAPE_TIMEOUT = 3400,
 	TASK_ESCAPE_FINISH,
 	TASK_ESCAPE_CHECK_TEAMS,
 	TASK_ESCAPE_MAP_NUKE
 }
 
-new gGameMode, gHudSync
+new gGameMode
 new bool:gReady, bool:gActive, bool:gFinishPending, bool:gRoundClosing
 new Array:gHumanSpawns, Array:gZombieSpawns
 new gLastHumanSpawn = -1, gLastZombieSpawn = -1
@@ -28,7 +27,6 @@ new gFinishClass[32], gFinishTarget[32], gFinishEvent[8]
 new gFinishEntity
 new bool:gFinishHuman[33]
 new Float:gRoundMinutes, Float:gFirstRatio, Float:gRespawnDelay, Float:gFinishDelay, gMinFirst
-new Float:gEndTime
 
 public plugin_precache()
 {
@@ -69,7 +67,6 @@ public plugin_init()
 	detect_finish_entity()
 
 	gReady = true
-	gHudSync = CreateHudSyncObj()
 	RegisterHookChain(RG_CSGameRules_GetPlayerSpawnSpot, "GetPlayerSpawnSpot_Pre", false)
 	RegisterHookChain(RG_CSGameRules_RestartRound, "RestartRound_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
@@ -376,23 +373,13 @@ public zpn_round_started_post(const gamemode_id)
 		return
 	}
 
-	gEndTime = get_gametime() + gRoundMinutes * 60.0
-	set_task_ex(gRoundMinutes * 60.0, "EscapeTimeout", TASK_ESCAPE_TIMEOUT)
-	set_task_ex(1.0, "EscapeHud", TASK_ESCAPE_HUD, .flags = SetTask_Repeat)
-	EscapeHud()
-}
-
-public EscapeHud()
-{
-	if(!gActive)
-		return
-
-	new seconds = floatround(gEndTime - get_gametime(), floatround_ceil)
-	if(seconds <= 0)
-		return
-
-	set_hudmessage(255, 200, 80, -1.0, 0.05, 0, 0.0, 1.1, 0.0, 0.0)
-	ShowSyncHudMsg(0, gHudSync, "Fuga: %d:%02d", seconds / 60, seconds % 60)
+	new Float:duration = gRoundMinutes * 60.0
+	// Keep ReGameDLL's timer in sync for players who join during the escape.
+	set_member_game(m_iRoundTimeSecs, floatround(get_gametime() + duration - Float:get_member_game(m_fRoundStartTimeReal), floatround_ceil))
+	message_begin(MSG_ALL, get_user_msgid("RoundTime"))
+	write_short(floatround(duration, floatround_ceil))
+	message_end()
+	set_task_ex(duration, "EscapeTimeout", TASK_ESCAPE_TIMEOUT)
 }
 
 public EscapeTimeout()
@@ -571,7 +558,6 @@ end_escape_round(bool:humans_won)
 
 	gActive = false
 	gFinishPending = false
-	remove_task(TASK_ESCAPE_HUD)
 	remove_task(TASK_ESCAPE_TIMEOUT)
 	remove_task(TASK_ESCAPE_FINISH)
 	remove_task(TASK_ESCAPE_CHECK_TEAMS)
@@ -594,7 +580,6 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 	gActive = false
 	gFinishPending = false
 	gRoundClosing = true
-	remove_task(TASK_ESCAPE_HUD)
 	remove_task(TASK_ESCAPE_TIMEOUT)
 	remove_task(TASK_ESCAPE_FINISH)
 	remove_task(TASK_ESCAPE_CHECK_TEAMS)
@@ -606,7 +591,6 @@ public RestartRound_Pre()
 	gActive = false
 	gFinishPending = false
 	gRoundClosing = false
-	remove_task(TASK_ESCAPE_HUD)
 	remove_task(TASK_ESCAPE_TIMEOUT)
 	remove_task(TASK_ESCAPE_FINISH)
 	remove_task(TASK_ESCAPE_CHECK_TEAMS)
