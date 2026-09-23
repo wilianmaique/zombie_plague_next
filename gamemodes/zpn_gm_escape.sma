@@ -26,7 +26,7 @@ new gMapName[32], gHumanSpawnClass[32], gZombieSpawnClass[32]
 new gFinishClass[32], gFinishTarget[32], gFinishEvent[8]
 new gFinishEntity
 new bool:gFinishHuman[33]
-new Float:gRoundMinutes, Float:gFirstRatio, Float:gRespawnDelay, Float:gFinishDelay, gMinFirst
+new Float:gRoundMinutes, Float:gFirstRatio, Float:gRespawnDelay, Float:gFinishDelay, Float:gRoundRestartDelay, gMinFirst
 
 public plugin_precache()
 {
@@ -113,6 +113,7 @@ load_escape_profile()
 	gMinFirst = 1
 	gRespawnDelay = 5.0
 	gFinishDelay = 5.0
+	gRoundRestartDelay = 6.0
 	copy(gHumanSpawnClass, charsmax(gHumanSpawnClass), "both")
 	copy(gZombieSpawnClass, charsmax(gZombieSpawnClass), "both")
 	copy(gFinishEvent, charsmax(gFinishEvent), "auto")
@@ -151,6 +152,9 @@ load_escape_profile()
 	if(!json_setting_get_float(PATH_SETTINGS_ESCAPE, "Defaults", "finish_resolve_delay", gFinishDelay))
 		json_setting_set_float(PATH_SETTINGS_ESCAPE, "Defaults", "finish_resolve_delay", gFinishDelay)
 
+	if(!json_setting_get_float(PATH_SETTINGS_ESCAPE, "Defaults", "round_restart_delay", gRoundRestartDelay))
+		json_setting_set_float(PATH_SETTINGS_ESCAPE, "Defaults", "round_restart_delay", gRoundRestartDelay)
+
 	json_setting_get_string(PATH_SETTINGS_ESCAPE, gMapName, "human_spawn_class", gHumanSpawnClass, charsmax(gHumanSpawnClass))
 	json_setting_get_string(PATH_SETTINGS_ESCAPE, gMapName, "zombie_spawn_class", gZombieSpawnClass, charsmax(gZombieSpawnClass))
 	json_setting_get_string(PATH_SETTINGS_ESCAPE, gMapName, "finish_class", gFinishClass, charsmax(gFinishClass))
@@ -161,6 +165,7 @@ load_escape_profile()
 	json_setting_get_int(PATH_SETTINGS_ESCAPE, gMapName, "first_zombie_min", gMinFirst)
 	json_setting_get_float(PATH_SETTINGS_ESCAPE, gMapName, "zombie_respawn_delay", gRespawnDelay)
 	json_setting_get_float(PATH_SETTINGS_ESCAPE, gMapName, "finish_resolve_delay", gFinishDelay)
+	json_setting_get_float(PATH_SETTINGS_ESCAPE, gMapName, "round_restart_delay", gRoundRestartDelay)
 
 	if(gRoundMinutes < 1.0) gRoundMinutes = 1.0
 	if(gFirstRatio < 0.01) gFirstRatio = 0.01
@@ -168,6 +173,7 @@ load_escape_profile()
 	if(gMinFirst < 1) gMinFirst = 1
 	if(gRespawnDelay < 0.5) gRespawnDelay = 0.5
 	if(gFinishDelay < 0.1) gFinishDelay = 0.1
+	if(gRoundRestartDelay < 0.1) gRoundRestartDelay = 0.1
 
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_ROUND_TIME, gRoundMinutes)
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_RESPAWN_TIME, gRespawnDelay)
@@ -340,7 +346,7 @@ public zpn_round_started_post(const gamemode_id)
 	if(count < 2)
 	{
 		gActive = false
-		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
+		rg_round_end(gRoundRestartDelay, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
 		return
 	}
 
@@ -369,7 +375,7 @@ public zpn_round_started_post(const gamemode_id)
 	if(!chosen)
 	{
 		gActive = false
-		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
+		rg_round_end(gRoundRestartDelay, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
 		return
 	}
 
@@ -543,7 +549,7 @@ public CheckEscapeTeams()
 	if(!humans && !zombies)
 	{
 		gActive = false
-		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
+		rg_round_end(gRoundRestartDelay, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
 	}
 	else if(!humans)
 		end_escape_round(false)
@@ -566,12 +572,12 @@ end_escape_round(bool:humans_won)
 	if(humans_won)
 	{
 		zpn_print_color(0, print_team_blue, "^3Os humanos escaparam!")
-		rg_round_end(2.0, WINSTATUS_CTS, ROUND_CTS_WIN, .trigger = true)
+		rg_round_end(gRoundRestartDelay, WINSTATUS_CTS, ROUND_CTS_WIN, .trigger = true)
 	}
 	else
 	{
 		zpn_print_color(0, print_team_red, "^3Os zombies impediram a fuga!")
-		rg_round_end(2.0, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN, .trigger = true)
+		rg_round_end(gRoundRestartDelay, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN, .trigger = true)
 	}
 }
 
