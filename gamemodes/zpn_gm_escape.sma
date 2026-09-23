@@ -19,7 +19,8 @@ enum
 }
 
 new gGameMode
-new bool:gReady, bool:gActive, bool:gFinishPending, bool:gRoundClosing
+new bool:gReady, bool:gActive, bool:gFinishPending, bool:gRoundClosing, bool:gEscapeRoundStarted
+new gRoundEndedForward, gForwardReturn
 new Array:gHumanSpawns, Array:gZombieSpawns
 new gLastHumanSpawn = -1, gLastZombieSpawn = -1
 new gMapName[32], gHumanSpawnClass[32], gZombieSpawnClass[32]
@@ -71,7 +72,10 @@ public plugin_init()
 	RegisterHookChain(RG_CSGameRules_RestartRound, "RestartRound_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false)
+	RegisterHookChain(RG_RoundEnd, "RoundEnd_Post", true)
 	RegisterHam(Ham_TakeDamage, "player", "PlayerTakeDamage_Pre", false)
+
+	gRoundEndedForward = CreateMultiForward("zpn_escape_round_ended", ET_IGNORE, FP_CELL)
 
 	if(rg_find_ent_by_class(NULLENT, "func_button", true))
 		RegisterHam(Ham_Use, "func_button", "ButtonUse_Pre", false)
@@ -106,6 +110,17 @@ public plugin_end()
 	ArrayDestroy(gZombieSpawns)
 }
 
+public plugin_natives()
+{
+	register_library("zombie_plague_next_escape")
+	register_native("zpn_is_escape_round_active", "_zpn_is_escape_round_active")
+}
+
+public bool:_zpn_is_escape_round_active(plugin_id, param_nums)
+{
+	return gActive
+}
+
 load_escape_profile()
 {
 	gRoundMinutes = 15.0
@@ -120,8 +135,6 @@ load_escape_profile()
 	gFinishClass[0] = EOS
 	gFinishTarget[0] = EOS
 
-	// A ze_ map runs with the common CT/T spawns. The optional map section
-	// only overrides maps whose objective needs a different interpretation.
 	if(!json_setting_get_string(PATH_SETTINGS_ESCAPE, "Defaults", "human_spawn_class", gHumanSpawnClass, charsmax(gHumanSpawnClass)))
 		json_setting_set_string(PATH_SETTINGS_ESCAPE, "Defaults", "human_spawn_class", gHumanSpawnClass)
 
@@ -167,13 +180,12 @@ load_escape_profile()
 	json_setting_get_float(PATH_SETTINGS_ESCAPE, gMapName, "finish_resolve_delay", gFinishDelay)
 	json_setting_get_float(PATH_SETTINGS_ESCAPE, gMapName, "round_restart_delay", gRoundRestartDelay)
 
-	if(gRoundMinutes < 1.0) gRoundMinutes = 1.0
-	if(gFirstRatio < 0.01) gFirstRatio = 0.01
-	if(gFirstRatio > 0.49) gFirstRatio = 0.49
-	if(gMinFirst < 1) gMinFirst = 1
-	if(gRespawnDelay < 0.5) gRespawnDelay = 0.5
-	if(gFinishDelay < 0.1) gFinishDelay = 0.1
-	if(gRoundRestartDelay < 0.1) gRoundRestartDelay = 0.1
+	gRoundMinutes = floatmax(gRoundMinutes, 1.0)
+	gFirstRatio = floatclamp(gFirstRatio, 0.01, 0.49)
+	gMinFirst = max(gMinFirst, 1)
+	gRespawnDelay = floatmax(gRespawnDelay, 0.5)
+	gFinishDelay = floatmax(gFinishDelay, 0.1)
+	gRoundRestartDelay = floatmax(gRoundRestartDelay, 0.1)
 
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_ROUND_TIME, gRoundMinutes)
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_RESPAWN_TIME, gRespawnDelay)
@@ -337,6 +349,7 @@ public zpn_round_started_post(const gamemode_id)
 	if(!gReady || gamemode_id != gGameMode)
 		return
 
+	gEscapeRoundStarted = true
 	gActive = true
 	gFinishPending = false
 	gRoundClosing = false
@@ -380,7 +393,7 @@ public zpn_round_started_post(const gamemode_id)
 	}
 
 	new Float:duration = gRoundMinutes * 60.0
-	// Keep ReGameDLL's timer in sync for players who join during the escape.
+
 	set_member_game(m_iRoundTimeSecs, floatround(get_gametime() + duration - Float:get_member_game(m_fRoundStartTimeReal), floatround_ceil))
 	message_begin(MSG_ALL, get_user_msgid("RoundTime"))
 	write_short(floatround(duration, floatround_ceil))
@@ -399,8 +412,6 @@ public FinishUse_Post(const this, const caller, const activator, const use_type,
 	if(!gActive || gFinishPending || !is_finish_entity(this))
 		return
 
-	// A finale trigger can be used again to turn it off. Only activation
-	// starts the result check, after its lethal touch has had time to run.
 	if(equal(gFinishClass, "trigger_hurt") && get_entvar(this, var_solid) != SOLID_TRIGGER)
 		return
 
@@ -592,8 +603,25 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 	remove_task(TASK_ESCAPE_MAP_NUKE)
 }
 
+public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
+{
+	if(!gEscapeRoundStarted || !GetHookChainReturn(ATYPE_BOOL))
+		return
+
+	gEscapeRoundStarted = false
+
+	new TeamName:winner = TEAM_UNASSIGNED
+	switch(status)
+	{
+		case WINSTATUS_CTS: winner = TEAM_CT
+		case WINSTATUS_TERRORISTS: winner = TEAM_TERRORIST
+	}
+	ExecuteForward(gRoundEndedForward, gForwardReturn, winner)
+}
+
 public RestartRound_Pre()
 {
+	gEscapeRoundStarted = false
 	gActive = false
 	gFinishPending = false
 	gRoundClosing = false

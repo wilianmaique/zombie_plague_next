@@ -151,6 +151,20 @@ forward zpn_user_humanized_post(const this, const class_id);
 forward zpn_round_started_post(const gamemode_id);
 
 /**
+ * Called after a Zombie Escape round ends.
+ *
+ * @note Called once for each Escape round ending reported by RG_RoundEnd,
+ *       including draws. The escape round is no longer active when this runs.
+ * @note Include <reapi> to use TeamName and the TEAM_* constants.
+ *
+ * @param winner  TEAM_CT for humans, TEAM_TERRORIST for zombies, or
+ *                TEAM_UNASSIGNED for a draw or no winner (ReAPI TeamName)
+ *
+ * @noreturn
+ */
+forward zpn_escape_round_ended(TeamName:winner);
+
+/**
  * Called after a client's ammo pack balance changes.
  *
  * @param id          Client index
@@ -746,6 +760,16 @@ native bool:zpn_is_round_started();
  * @return true on an enabled escape map, false otherwise
  */
 native bool:zpn_is_escape_map();
+
+/**
+ * Returns whether a Zombie Escape round is actively being played.
+ *
+ * @note Requires the zpn_gm_escape plugin. The round remains active while a
+ *       finish trigger's result is being resolved, until its end is requested.
+ *
+ * @return true while the escape is active, false otherwise
+ */
+native bool:zpn_is_escape_round_active();
 
 /**
  * Sends the current weapon deploy animation to a client.
