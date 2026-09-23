@@ -1,6 +1,7 @@
 #include <amxmodx>
 #include <fakemeta>
 #include <reapi>
+#include <zombie_plague_next>
 
 new Array:xSpawnPoints, xLastSpawnId
 
@@ -15,7 +16,10 @@ public plugin_precache()
 public plugin_init()
 {
     RegisterHookChain(RG_CSGameRules_RestartRound, "@CSGameRules_RestartRound_Post", true)
-    RegisterHookChain(RG_CSGameRules_GetPlayerSpawnSpot, "@CSGameRules_GetPlayerSpawnSpot_Pre", false)
+    // Escape keeps the combined spawn capacity; its mode selects the positions.
+    if(!zpn_is_escape_map())
+        RegisterHookChain(RG_CSGameRules_GetPlayerSpawnSpot, "@CSGameRules_GetPlayerSpawnSpot_Pre", false)
+
     ForceLevelInitialize()
 }
 

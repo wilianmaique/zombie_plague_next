@@ -9,8 +9,8 @@
 - Avoid compiling the project. The user compiles it manually.
 - Do not run build scripts, compilers, or packaging commands unless explicitly requested.
 - When editing Pawn code, follow the existing project style whenever possible.
-- Preserve compatibility with AMXX and Counter-Strike 1.6.
-- Prefer small, focused changes that are easy to review.
+- Target the project's configured Counter-Strike 1.6, AMXX, and ReAPI runtime.
+- Prefer focused changes that are easy to review; refactor affected code when that produces a cleaner structure.
 
 ## APIs and Includes
 - Use ReAPI whenever appropriate. It is newer, safer, and preferred for supported features.
@@ -22,9 +22,13 @@
 - For historical context, examples, plugin behavior, or troubleshooting, search Google with `alliedmodders` included in the query.
 - Prefer official documentation and well-established examples over assumptions about native behavior.
 
+## Project Evolution
+- This project is under active development. Do not add migrations, aliases, fallback paths, or compatibility layers for earlier project versions or old configuration formats unless the user explicitly requests them.
+- When changing an API or configuration, update its callers, includes, configuration files, and documentation together, and remove superseded code.
+- Preserve compatibility with the target CS 1.6 / AMXX / ReAPI runtime, but do not preserve obsolete project behavior solely for backward compatibility.
+
 ## Code Safety
 - Avoid introducing new dependencies unless there is a clear need.
 - Avoid large refactors when the request is narrow.
-- Do not remove existing functionality unless it is confirmed to be obsolete or incorrect.
-- When editing includes, natives, or forwards, consider compatibility differences between standard AMXX, ReAPI, and older builds.
-- If a change may affect compatibility, explain the tradeoff and why the change was made.
+- Remove obsolete code when replacing it with the intended structure.
+- When editing includes, natives, or forwards, verify they work with the project's target AMXX and ReAPI versions.

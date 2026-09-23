@@ -15,7 +15,8 @@ enum _:ePropGameModes
 	bool:GAMEMODE_PROP_CHANGE_CLASS,
 	eGameModeDeathMatchTypes:GAMEMODE_PROP_DEATHMATCH,
 	Float:GAMEMODE_PROP_RESPAWN_TIME,
-	GAMEMODE_PROP_FIND_NAME[32]
+	GAMEMODE_PROP_FIND_NAME[32],
+	GAMEMODE_PROP_MAP_TYPES
 }
 
 new Array:aDataGameMode
@@ -23,6 +24,7 @@ new Array:aDataGameMode
 public plugin_init()
 {
 	register_plugin("[ZPN] Core: GameModes", "1.0", "Wilian M.")
+	load_gamemode_settings()
 
 	// LOG
 	new i, text[256]
@@ -84,6 +86,7 @@ public _zpn_gamemode_init(plugin_id, param_nums)
 	xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = GAMEMODE_DEATHMATCH_DISABLED
 	xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = -1.0
 	xDataGetGameMode[GAMEMODE_PROP_FIND_NAME] = EOS
+	xDataGetGameMode[GAMEMODE_PROP_MAP_TYPES] = 0
 
 	return ArrayPushArray(aDataGameMode, xDataGetGameMode)
 }
@@ -114,6 +117,7 @@ public any:_zpn_gamemode_get_prop(plugin_id, param_nums)
 		case PROP_GAMEMODE_REGISTER_DEATHMATCH: return xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH]
 		case PROP_GAMEMODE_REGISTER_RESPAWN_TIME: return xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME]
 		case PROP_GAMEMODE_REGISTER_FIND_NAME: set_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_FIND_NAME], get_param_byref(arg_len))
+		case PROP_GAMEMODE_REGISTER_MAP_TYPES: return xDataGetGameMode[GAMEMODE_PROP_MAP_TYPES]
 	}
 
 	return true
@@ -150,6 +154,7 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 		case PROP_GAMEMODE_REGISTER_DEATHMATCH: xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = eGameModeDeathMatchTypes:get_param_byref(arg_value)
 		case PROP_GAMEMODE_REGISTER_RESPAWN_TIME: xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = get_float_byref(arg_value)
 		case PROP_GAMEMODE_REGISTER_FIND_NAME: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_FIND_NAME], charsmax(xDataGetGameMode[GAMEMODE_PROP_FIND_NAME]))
+		case PROP_GAMEMODE_REGISTER_MAP_TYPES: xDataGetGameMode[GAMEMODE_PROP_MAP_TYPES] = get_param_byref(arg_value) & GAMEMODE_MAP_ALL
 	}
 
 	ArraySetArray(aDataGameMode, gamemode_id, xDataGetGameMode)
@@ -188,4 +193,31 @@ public _zpn_gamemode_find(plugin_id, param_nums)
 public _zpn_gamemode_array_size(plugin_id, param_nums)
 {
 	return ArraySize(aDataGameMode)
+}
+
+load_gamemode_settings()
+{
+	new data[ePropGameModes], section[32]
+
+	for(new i = 0; i < ArraySize(aDataGameMode); i++)
+	{
+		ArrayGetArray(aDataGameMode, i, data)
+		copy(section, charsmax(section), data[GAMEMODE_PROP_FIND_NAME])
+
+		if(zpn_is_null_string(section))
+			continue
+
+		if(!json_setting_get_int(PATH_SETTINGS_GAMEMODES, section, "chance", data[GAMEMODE_PROP_CHANCE]))
+			json_setting_set_int(PATH_SETTINGS_GAMEMODES, section, "chance", data[GAMEMODE_PROP_CHANCE])
+
+		if(!json_setting_get_int(PATH_SETTINGS_GAMEMODES, section, "min_players", data[GAMEMODE_PROP_MIN_PLAYERS]))
+			json_setting_set_int(PATH_SETTINGS_GAMEMODES, section, "min_players", data[GAMEMODE_PROP_MIN_PLAYERS])
+
+		if(!json_setting_get_int(PATH_SETTINGS_GAMEMODES, section, "map_types", data[GAMEMODE_PROP_MAP_TYPES]))
+			json_setting_set_int(PATH_SETTINGS_GAMEMODES, section, "map_types", data[GAMEMODE_PROP_MAP_TYPES])
+
+		data[GAMEMODE_PROP_MAP_TYPES] &= GAMEMODE_MAP_ALL
+		data[GAMEMODE_PROP_MIN_PLAYERS] = max(1, data[GAMEMODE_PROP_MIN_PLAYERS])
+		ArraySetArray(aDataGameMode, i, data)
+	}
 }

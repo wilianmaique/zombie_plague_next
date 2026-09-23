@@ -15,6 +15,7 @@ stock const PATH_SETTINGS_CONFIG[] = "zombie_plague_next/configs.json";
 stock const PATH_SETTINGS_CLASSES[] = "zombie_plague_next/classes.json";
 stock const PATH_SETTINGS_ITEMS[] = "zombie_plague_next/items.json";
 stock const PATH_SETTINGS_GAMEMODES[] = "zombie_plague_next/gamemodes.json";
+stock const PATH_SETTINGS_ESCAPE[] = "zombie_plague_next/escape.json";
 stock const SETTINGS_SECTION_CONFIG[] = "Main Config";
 stock const SETTINGS_SECTION_CLASSES_ZOMBIE[] = "Zombies";
 stock const SETTINGS_SECTION_CLASSES_ZOMBIE_SP[] = "Zombies Special";
@@ -110,6 +111,13 @@ enum eGameModeDeathMatchTypes
 	GAMEMODE_DEATHMATCH_BALANCE,
 }
 
+enum eGameModeMapTypes
+{
+	GAMEMODE_MAP_NORMAL = 1,
+	GAMEMODE_MAP_ESCAPE = 2,
+	GAMEMODE_MAP_ALL = 3,
+}
+
 enum ePropGameModeRegisters
 {
 	PROP_GAMEMODE_REGISTER_NAME = 0, // string
@@ -123,6 +131,7 @@ enum ePropGameModeRegisters
 	PROP_GAMEMODE_REGISTER_DEATHMATCH, // eGameModeDeathMatchTypes
 	PROP_GAMEMODE_REGISTER_RESPAWN_TIME, // float
 	PROP_GAMEMODE_REGISTER_FIND_NAME, // string
+	PROP_GAMEMODE_REGISTER_MAP_TYPES, // required eGameModeMapTypes bit mask
 }
 
 enum ePropPlayerDataRegisters

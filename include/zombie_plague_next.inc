@@ -741,6 +741,13 @@ native zpn_print_color(const id, const sender, const msg[], any:...);
 native bool:zpn_is_round_started();
 
 /**
+ * Returns whether the current map is configured as Zombie Escape.
+ *
+ * @return true on an enabled escape map, false otherwise
+ */
+native bool:zpn_is_escape_map();
+
+/**
  * Sends the current weapon deploy animation to a client.
  *
  * @param this      Client index

@@ -23,6 +23,7 @@ public plugin_precache()
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_CHANCE, 20)
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_MIN_PLAYERS, 7)
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_ROUND_TIME, 5.0)
+	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_MAP_TYPES, GAMEMODE_MAP_NORMAL)
 }
 
 public zpn_user_frozen_pre(const this)

@@ -53,7 +53,6 @@ enum _:eForwards
 enum _:eSettingsConfigs
 {
 	CONFIG_DEBUG_ON,
-	CONFIG_ZOMBIE_ESCAPE_ON,
 	CONFIG_DEFAULT_HUMAN_MODEL[32],
 	CONFIG_PREFIX_MENUS[32],
 	CONFIG_PREFIX_CHAT[32],
@@ -70,7 +69,8 @@ enum _:eGameRules
 	GAME_RULE_LAST_GAMEMODE,
 	GAME_RULE_DEFAULT_NV_H[3],
 	GAME_RULE_DEFAULT_NV_Z[3],
-	Array:GAME_RULE_FROZEN_HIT_SOUNDS
+	Array:GAME_RULE_FROZEN_HIT_SOUNDS,
+	Array:GAME_RULE_ESCAPE_KEEP_ENTITIES
 }
 
 enum _:eSyncHuds
@@ -87,6 +87,7 @@ new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
 new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
 new xCvars[eCvars], xSettingsVars[eSettingsConfigs], xMsgSync[eSyncHuds]
 new xDataGetGameRule[eGameRules]
+new bool:gEscapeMap
 
 public plugin_init()
 {
@@ -173,10 +174,14 @@ public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
 	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
 
-	if(zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE) && zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_DEATHMATCH) == GAMEMODE_DEATHMATCH_ONLY_TR && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && 0 <= gamemode_id < zpn_gamemode_array_size()
+	&& zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE)
+	&& zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_DEATHMATCH) == GAMEMODE_DEATHMATCH_ONLY_TR)
 	{
 		remove_task(this + TASK_RESPAWN)
-		set_task_ex(zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_RESPAWN_TIME), "respawn_user", this + TASK_RESPAWN)
+		new Float:delay = zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_RESPAWN_TIME)
+		if(delay > 0.0)
+			set_task_ex(delay, "respawn_user", this + TASK_RESPAWN)
 	}
 }
 
@@ -184,7 +189,9 @@ public respawn_user(this)
 {
 	this -= TASK_RESPAWN
 
-	if(!is_user_connected(this)) { remove_task(this + TASK_RESPAWN); return; }
+	if(!is_user_connected(this) || !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
+	|| !zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE))
+		return
 
 	if(!is_user_alive(this))
 		rg_round_respawn(this)
@@ -622,8 +629,12 @@ public _select_class(id, menu, item)
 
 public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 {
+	remove_task(TASK_COUNTDOWN)
+
 	for(new i = 1; i <= MaxClients; i++)
 	{
+		remove_task(i + TASK_RESPAWN)
+
 		if(!is_user_connected(i))
 			continue
 
@@ -673,7 +684,8 @@ public CBasePlayer_Spawn_Pre(id)
 	if(team != TEAM_TERRORIST && team != TEAM_CT)
 		return
 
-	if(team != TEAM_CT && !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
+	if(team != TEAM_CT && (!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
+	|| (gEscapeMap && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))))
 		rg_set_user_team(id, TEAM_CT)
 }
 
@@ -864,6 +876,8 @@ public CSGameRules_RestartRound_Pre()
 
 	for(new id = 1; id <= MaxClients; id++)
 	{
+		remove_task(id + TASK_RESPAWN)
+
 		if(!is_user_connected(id))
 			continue
 
@@ -901,8 +915,8 @@ public xStartCountDown()
 {
 	if(xDataGetGameRule[GAME_RULE_COUNTDOWN] <= 0)
 	{
-		xInitRound()
 		remove_task(TASK_COUNTDOWN)
+		xInitRound()
 		return
 	}
 
@@ -926,10 +940,12 @@ public xInitRound()
 
 	new gamemode_id = random_gamemode()
 
-	if(gamemode_id == -1) gamemode_id = 0
-
-	if(zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_MIN_PLAYERS) < get_num_alive())
-		gamemode_id = zpn_gamemode_find("gm_infection")
+	if(gamemode_id == -1)
+	{
+		xDataGetGameRule[GAME_RULE_COUNTDOWN] = 5
+		set_task_ex(1.0, "xStartCountDown", TASK_COUNTDOWN)
+		return
+	}
 
 	xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] = gamemode_id
 	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gamemode_id
@@ -946,7 +962,7 @@ public xInitRound()
 
 public plugin_precache()
 {
-	new i
+	new i, mapName[32]
 	for(i = 0; i < sizeof(CS_SOUNDS); i++) precache_sound(CS_SOUNDS[i])
 
 	defaultIndexPlayer = precache_model("models/player.mdl")
@@ -984,11 +1000,29 @@ public plugin_precache()
 		json_setting_set_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", 0)
 	}
 
-	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Zombie Escape", xSettingsVars[CONFIG_ZOMBIE_ESCAPE_ON]))
+	get_mapname(mapName, charsmax(mapName))
+	gEscapeMap = bool:equali(mapName, "ze_", 3)
+
+	new bool:mapEnabled
+	if(json_setting_get_bool(PATH_SETTINGS_ESCAPE, mapName, "enabled", mapEnabled))
+		gEscapeMap = mapEnabled
+
+	xDataGetGameRule[GAME_RULE_ESCAPE_KEEP_ENTITIES] = ArrayCreate(32, 0)
+	if(gEscapeMap && !json_setting_get_string_arr(PATH_SETTINGS_ESCAPE, "Defaults", "preserve_entities", xDataGetGameRule[GAME_RULE_ESCAPE_KEEP_ENTITIES]))
 	{
-		xSettingsVars[CONFIG_ZOMBIE_ESCAPE_ON] = 0
-		json_setting_set_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Zombie Escape", 0)
+		new const keepEntities[][] =
+		{
+			"func_escapezone", "game_text", "game_player_equip", "player_weaponstrip",
+			"env_fog", "env_rain", "env_snow"
+		}
+
+		for(new k = 0; k < sizeof(keepEntities); k++)
+			ArrayPushString(xDataGetGameRule[GAME_RULE_ESCAPE_KEEP_ENTITIES], keepEntities[k])
+
+		json_setting_set_string_arr(PATH_SETTINGS_ESCAPE, "Defaults", "preserve_entities", xDataGetGameRule[GAME_RULE_ESCAPE_KEEP_ENTITIES])
 	}
+	if(gEscapeMap)
+		json_setting_get_string_arr(PATH_SETTINGS_ESCAPE, mapName, "preserve_entities", xDataGetGameRule[GAME_RULE_ESCAPE_KEEP_ENTITIES])
 
 	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Chat", xSettingsVars[CONFIG_PREFIX_CHAT], charsmax(xSettingsVars[CONFIG_PREFIX_CHAT])))
 	{
@@ -1126,6 +1160,8 @@ public cvar_nightvision_changed(pcvar, const old_value[], const new_value[])
 public Spawn_Pre(this)
 {
 	new classname[32]; get_entvar(this, var_classname, classname, charsmax(classname))
+	if(gEscapeMap && ArrayFindString(xDataGetGameRule[GAME_RULE_ESCAPE_KEEP_ENTITIES], classname) != -1)
+		return FMRES_IGNORED
 
 	if(ArrayFindString(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES], classname) != -1)
 	{
@@ -1139,6 +1175,7 @@ public Spawn_Pre(this)
 public plugin_end()
 {
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES])
+	ArrayDestroy(xDataGetGameRule[GAME_RULE_ESCAPE_KEEP_ENTITIES])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS])
@@ -1155,6 +1192,7 @@ public plugin_natives()
 	register_native("zpn_print_color", "_zpn_print_color")
 	register_native("zpn_set_fw_param_int", "_zpn_set_fw_param_int")
 	register_native("zpn_is_round_started", "_zpn_is_round_started")
+	register_native("zpn_is_escape_map", "_zpn_is_escape_map")
 	register_native("zpn_get_user_selected_class", "_zpn_get_user_selected_class")
 	register_native("zpn_get_user_next_class", "_zpn_get_user_next_class")
 	register_native("zpn_get_user_current_class", "_zpn_get_user_current_class")
@@ -1215,6 +1253,11 @@ public _zpn_get_current_gamemode(plugin_id, param_nums)
 public bool:_zpn_is_round_started(plugin_id, param_nums)
 {
 	return xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
+}
+
+public bool:_zpn_is_escape_map(plugin_id, param_nums)
+{
+	return gEscapeMap
 }
 
 public _zpn_set_fw_param_int(plugin_id, param_nums)
@@ -1673,6 +1716,17 @@ get_num_alive(bool:zombies = false)
 	return c
 }
 
+get_num_playing_alive()
+{
+	new count
+	for(new id = 1; id <= MaxClients; id++)
+	{
+		if(is_user_alive(id))
+			count++
+	}
+	return count
+}
+
 deploy_weapon(const this)
 {
 	new activeItem = get_member(this, m_pActiveItem)
@@ -1720,6 +1774,9 @@ format_number_point(const number)
 
 check_game()
 {
+	if(gEscapeMap)
+		return
+
 	if(get_num_alive(true) <= 0 && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
 }
@@ -1851,10 +1908,14 @@ random_gamemode()
 {
 	new gm = -1, i
 	new totalChance = 0, chance
-	new alivePlayers = get_num_alive()
+	new alivePlayers = get_num_playing_alive()
+	new mapType = gEscapeMap ? GAMEMODE_MAP_ESCAPE : GAMEMODE_MAP_NORMAL
 
 	for(i = 0; i < zpn_gamemode_array_size(); i++)
 	{
+		if(!(zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_MAP_TYPES) & mapType))
+			continue
+
 		if(alivePlayers < zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_MIN_PLAYERS))
 			continue
 
@@ -1874,6 +1935,9 @@ random_gamemode()
 
 	for(i = 0; i < zpn_gamemode_array_size(); i++)
 	{
+		if(!(zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_MAP_TYPES) & mapType))
+			continue
+
 		if(alivePlayers < zpn_gamemode_get_prop(i, PROP_GAMEMODE_REGISTER_MIN_PLAYERS))
 			continue
 
