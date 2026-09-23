@@ -23,6 +23,11 @@ public plugin_precache()
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_KNOCKBACK, 1.0)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_UPDATE_HITBOX, true)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_SILENT_FOOTSTEPS, true)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_LEAP_ENABLED, true)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_LEAP_FORCE, 750.0)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_LEAP_HEIGHT, 350.0)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_LEAP_COOLDOWN, 0.0)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_LEAP_MIN_SPEED, 10.0)
 }
 
 public zpn_user_infect_attempt(const this, const infector, const class_id)
