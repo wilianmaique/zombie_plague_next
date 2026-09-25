@@ -18,6 +18,28 @@
 #endif
 
 /**
+ * Called before the main game menu is displayed.
+ *
+ * @note A plugin can display its own menu and return ZPN_RETURN_HANDLED or
+ *       higher to suppress the default menu.
+ *
+ * @param id        Client index
+ * @return          ZPN_RETURN_CONTINUE to display the default menu
+ *                  ZPN_RETURN_HANDLED or higher to suppress it
+ */
+forward zpn_show_menu_game_pre(const id);
+
+/**
+ * Called after the default main game menu is displayed.
+ *
+ * @note This is not called when zpn_show_menu_game_pre() suppresses the menu.
+ *
+ * @param id        Client index
+ * @noreturn
+ */
+forward zpn_show_menu_game_post(const id);
+
+/**
  * Called before a client is frozen.
  *
  * @param this      Client index

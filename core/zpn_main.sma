@@ -40,6 +40,8 @@ enum _:eCvars
 enum _:eForwards
 {
 	FW_ROUND_STARTED_POST,
+	FW_SHOW_MENU_GAME_PRE,
+	FW_SHOW_MENU_GAME_POST,
 	FW_HUMANIZED_PRE,
 	FW_HUMANIZED_POST,
 	FW_INFECTED_PRE,
@@ -117,6 +119,8 @@ public plugin_init()
 
 	// FWS
 	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_SHOW_MENU_GAME_PRE] = CreateMultiForward("zpn_show_menu_game_pre", ET_CONTINUE, FP_CELL)
+	xForwards[FW_SHOW_MENU_GAME_POST] = CreateMultiForward("zpn_show_menu_game_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_INFECTED_PRE] = CreateMultiForward("zpn_user_infected_pre", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_INFECTED_POST] = CreateMultiForward("zpn_user_infected_post", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_INFECT_ATTEMPT] = CreateMultiForward("zpn_user_infect_attempt", ET_CONTINUE, FP_CELL, FP_CELL, FP_CELL)
@@ -345,6 +349,14 @@ public xHudPlayerInfo(id)
 
 public show_menu_game(id)
 {
+	if(!is_user_connected(id))
+		return
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_PRE], xForwardReturn, id)
+
+	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
+		return
+
 	new xMenu = menu_create(fmt("%s \yZombie Plague Next", xSettingsVars[CONFIG_PREFIX_MENUS]), "_show_menu_game")
 
 	menu_additem(xMenu, "Selecionar Armas")
@@ -356,6 +368,8 @@ public show_menu_game(id)
 	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
 	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
 	menu_display(id, xMenu)
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_POST], xForwardReturn, id)
 }
 
 public _show_menu_game(id, menu, item)
