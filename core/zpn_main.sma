@@ -42,6 +42,16 @@ enum _:eForwards
 	FW_ROUND_STARTED_POST,
 	FW_SHOW_MENU_GAME_PRE,
 	FW_SHOW_MENU_GAME_POST,
+	FW_SHOW_MENU_ITEMS_PRE,
+	FW_SHOW_MENU_ITEMS_POST,
+	FW_SHOW_MENU_CLASS_TYPE_PRE,
+	FW_SHOW_MENU_CLASS_TYPE_POST,
+	FW_SHOW_MENU_CLASS_PRE,
+	FW_SHOW_MENU_CLASS_POST,
+	FW_SHOW_MENU_PRIMARY_WEAPON_PRE,
+	FW_SHOW_MENU_PRIMARY_WEAPON_POST,
+	FW_SHOW_MENU_SECONDARY_WEAPON_PRE,
+	FW_SHOW_MENU_SECONDARY_WEAPON_POST,
 	FW_HUMANIZED_PRE,
 	FW_HUMANIZED_POST,
 	FW_INFECTED_PRE,
@@ -121,6 +131,16 @@ public plugin_init()
 	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_SHOW_MENU_GAME_PRE] = CreateMultiForward("zpn_show_menu_game_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_SHOW_MENU_GAME_POST] = CreateMultiForward("zpn_show_menu_game_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_SHOW_MENU_ITEMS_PRE] = CreateMultiForward("zpn_show_menu_items_pre", ET_CONTINUE, FP_CELL, FP_CELL)
+	xForwards[FW_SHOW_MENU_ITEMS_POST] = CreateMultiForward("zpn_show_menu_items_post", ET_IGNORE, FP_CELL, FP_CELL)
+	xForwards[FW_SHOW_MENU_CLASS_TYPE_PRE] = CreateMultiForward("zpn_show_menu_class_type_pre", ET_CONTINUE, FP_CELL)
+	xForwards[FW_SHOW_MENU_CLASS_TYPE_POST] = CreateMultiForward("zpn_show_menu_class_type_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_SHOW_MENU_CLASS_PRE] = CreateMultiForward("zpn_show_menu_class_pre", ET_CONTINUE, FP_CELL, FP_CELL)
+	xForwards[FW_SHOW_MENU_CLASS_POST] = CreateMultiForward("zpn_show_menu_class_post", ET_IGNORE, FP_CELL, FP_CELL)
+	xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_PRE] = CreateMultiForward("zpn_show_menu_primary_weapon_pre", ET_CONTINUE, FP_CELL)
+	xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_POST] = CreateMultiForward("zpn_show_menu_primary_weapon_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_PRE] = CreateMultiForward("zpn_show_menu_secondary_weapon_pre", ET_CONTINUE, FP_CELL)
+	xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_POST] = CreateMultiForward("zpn_show_menu_secondary_weapon_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_INFECTED_PRE] = CreateMultiForward("zpn_user_infected_pre", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_INFECTED_POST] = CreateMultiForward("zpn_user_infected_post", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_INFECT_ATTEMPT] = CreateMultiForward("zpn_user_infect_attempt", ET_CONTINUE, FP_CELL, FP_CELL, FP_CELL)
@@ -352,9 +372,10 @@ public show_menu_game(id)
 	if(!is_user_connected(id))
 		return
 
-	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_PRE], xForwardReturn, id)
+	new forward_return
+	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_PRE], forward_return, id)
 
-	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
+	if(forward_return >= ZPN_RETURN_HANDLED || !is_user_connected(id))
 		return
 
 	new xMenu = menu_create(fmt("%s \yZombie Plague Next", xSettingsVars[CONFIG_PREFIX_MENUS]), "_show_menu_game")
@@ -369,26 +390,23 @@ public show_menu_game(id)
 	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
 	menu_display(id, xMenu)
 
-	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_POST], xForwardReturn, id)
+	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_POST], forward_return, id)
 }
 
 public _show_menu_game(id, menu, item)
 {
-	if(!is_user_connected(id))
-		return
-
-	if(item == MENU_EXIT)
+	if(!is_user_connected(id) || item < 0)
 	{
 		menu_destroy(menu)
 		return
 	}
-	
+
+	menu_destroy(menu)
+
 	switch(item)
 	{
 		case 0:
 		{
-			zpn_player_data_set_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON, -1)
-			zpn_player_data_set_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON, -1)
 			select_primary_weapon(id)
 		}
 
@@ -411,17 +429,25 @@ public _show_menu_game(id, menu, item)
 
 public buy_items(id)
 {
-	new eClassTypes:itemTeam = get_user_current_class_type(id)
-	new countCheck = count_item(itemTeam)
+	if(!is_user_connected(id))
+		return
 
-	new xMenu = menu_create(fmt("%s \yLoja de Itens", xSettingsVars[CONFIG_PREFIX_MENUS]), "_buy_items")
-	
-	if(countCheck <= 0)
+	new eClassTypes:itemTeam = get_user_current_class_type(id)
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_ITEMS_PRE], xForwardReturn, id, itemTeam)
+
+	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
+		return
+
+	itemTeam = get_user_current_class_type(id)
+
+	if(count_item(itemTeam) <= 0)
 	{
 		client_print_color(id, print_team_red, "%s ^3Nenhum item encontrado.", xSettingsVars[CONFIG_PREFIX_CHAT])
 		return
 	}
 
+	new xMenu = menu_create(fmt("%s \yLoja de Itens", xSettingsVars[CONFIG_PREFIX_MENUS]), "_buy_items")
 	new item_name[32]
 
 	for(new i = 0; i < zpn_item_array_size(); i++)
@@ -436,14 +462,13 @@ public buy_items(id)
 	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
 	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
 	menu_display(id, xMenu)
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_ITEMS_POST], xForwardReturn, id, itemTeam)
 }
 
 public _buy_items(id, menu, item)
 {
-	if(!is_user_connected(id))
-		return
-
-	if(item == MENU_EXIT)
+	if(!is_user_connected(id) || item < 0)
 	{
 		menu_destroy(menu)
 		return
@@ -451,6 +476,7 @@ public _buy_items(id, menu, item)
 
 	new info[4]
 	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
+	menu_destroy(menu)
 
 	new item_index = str_to_num(info)
 
@@ -475,6 +501,14 @@ public _buy_items(id, menu, item)
 
 public select_class_type(id)
 {
+	if(!is_user_connected(id))
+		return
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_TYPE_PRE], xForwardReturn, id)
+
+	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
+		return
+
 	new xMenu = menu_create(fmt("%s \yEscolha a raça", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_class_type")
 
 	menu_additem(xMenu, fmt("Zombie \y(\d%d classes\y)", xClassCount[0]), fmt("%d", CLASS_TEAM_TYPE_ZOMBIE))
@@ -482,14 +516,13 @@ public select_class_type(id)
 
 	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
 	menu_display(id, xMenu)
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_TYPE_POST], xForwardReturn, id)
 }
 
 public _select_class_type(id, menu, item)
 {
-	if(!is_user_connected(id))
-		return
-
-	if(item == MENU_EXIT)
+	if(!is_user_connected(id) || item < 0)
 	{
 		menu_destroy(menu)
 		return
@@ -497,6 +530,8 @@ public _select_class_type(id, menu, item)
 
 	new info[4]
 	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
+	menu_destroy(menu)
+
 	new eClassTypes:class_type = eClassTypes:str_to_num(info)
 
 	if(xClassCount[_:class_type]<= 0)
@@ -505,6 +540,11 @@ public _select_class_type(id, menu, item)
 		select_class_type(id)
 		return
 	}
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_PRE], xForwardReturn, id, class_type)
+
+	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
+		return
 
 	new xMenu = menu_create(fmt("%s \ySelecionar classe: %s", xSettingsVars[CONFIG_PREFIX_MENUS], class_type == CLASS_TEAM_TYPE_ZOMBIE ? "\rZombie" : "\yHumano"), "_select_class")
 	
@@ -549,6 +589,8 @@ public _select_class_type(id, menu, item)
 	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
 	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
 	menu_display(id, xMenu)
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_POST], xForwardReturn, id, class_type)
 }
 
 public _select_class(id, menu, item)
@@ -559,7 +601,7 @@ public _select_class(id, menu, item)
 		return
 	}
 
-	if(item == MENU_EXIT)
+	if(item < 0)
 	{
 		menu_destroy(menu)
 		return
@@ -570,6 +612,7 @@ public _select_class(id, menu, item)
 	menu_destroy(menu)
 
 	new class_id = str_to_num(info)
+
 	if(class_id < 0 || class_id >= zpn_class_array_size())
 		return
 
@@ -578,8 +621,10 @@ public _select_class(id, menu, item)
 	new Float:speed, Float:gravity, Float:health
 
 	type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+
 	if((type != CLASS_TEAM_TYPE_ZOMBIE && type != CLASS_TEAM_TYPE_HUMAN) || zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HIDE_MENU))
 		return
+
 	speed = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED)
 	gravity = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY)
 	health = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
@@ -594,7 +639,6 @@ public _select_class(id, menu, item)
 		return
 	}
 
-	// The menu may have been opened before another client reserved the last slot.
 	if(!zpn_class_has_free_slot(class_id, id))
 	{
 		client_print_color(id, print_team_red, "%s ^3A classe ^4%s ^3esta lotada (^4%d/%d^3).", xSettingsVars[CONFIG_PREFIX_CHAT], name, zpn_class_get_user_count(class_id), zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LIMIT))
@@ -612,6 +656,7 @@ public _select_class(id, menu, item)
 		return
 
 	new bool:applied = false
+
 	if(xCvars[CVAR_CLASS_SELECT_INSTANT])
 	{
 		new bool:same_team = (bool:zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) == (type == CLASS_TEAM_TYPE_ZOMBIE))
@@ -775,14 +820,22 @@ public RCBasePlayer_HasRestrictItem_Pre(const this, ItemID:item, ItemRestType:ty
 
 public select_primary_weapon(id)
 {
+	if(!is_user_connected(id))
+		return
+
 	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 	{
 		client_print_color(id, print_team_red, "%s ^3Seleção de armas resetadas! ^1Espere o fim da rodada.", xSettingsVars[CONFIG_PREFIX_CHAT])
 		return
 	}
 
+	ExecuteForward(xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_PRE], xForwardReturn, id)
+
+	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
+		return
+
 	new xMenu = menu_create(fmt("%s \ySelecionar arma primária", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_primary_weapon")
-	static xWpn[32]
+	new xWpn[32]
 
 	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS]); i++)
 	{
@@ -795,17 +848,19 @@ public select_primary_weapon(id)
 	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
 	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
 	menu_display(id, xMenu)
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_POST], xForwardReturn, id)
 }
 
 public _select_primary_weapon(id, menu, item)
 {
-	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-		return
-
 	if(!is_user_connected(id))
+	{
+		menu_destroy(menu)
 		return
+	}
 
-	if(item == MENU_EXIT)
+	if(item < 0 || zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 	{
 		menu_destroy(menu)
 		return
@@ -813,6 +868,8 @@ public _select_primary_weapon(id, menu, item)
 	
 	new xInfo[11], xWpnArrayIndex
 	menu_item_getinfo(menu, item, _, xInfo, charsmax(xInfo))
+	menu_destroy(menu)
+
 	xWpnArrayIndex = str_to_num(xInfo)
 	zpn_player_data_set_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON, xWpnArrayIndex)
 	
@@ -822,6 +879,14 @@ public _select_primary_weapon(id, menu, item)
 
 public select_secondary_weapon(id)
 {
+	if(!is_user_connected(id))
+		return
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_PRE], xForwardReturn, id)
+
+	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
+		return
+
 	new xMenu = menu_create(fmt("%s \ySelecionar arma secundária", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_secondary_weapon")
 	static xWpn[32]
 
@@ -836,17 +901,19 @@ public select_secondary_weapon(id)
 	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
 	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
 	menu_display(id, xMenu)
+
+	ExecuteForward(xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_POST], xForwardReturn, id)
 }
 
 public _select_secondary_weapon(id, menu, item)
 {
-	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-		return
-
 	if(!is_user_connected(id))
+	{
+		menu_destroy(menu)
 		return
+	}
 
-	if(item == MENU_EXIT)
+	if(item < 0 || zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 	{
 		menu_destroy(menu)
 		return
@@ -854,6 +921,8 @@ public _select_secondary_weapon(id, menu, item)
 	
 	new xInfo[11], xWpnArrayIndex
 	menu_item_getinfo(menu, item, _, xInfo, charsmax(xInfo))
+	menu_destroy(menu)
+	
 	xWpnArrayIndex = str_to_num(xInfo)
 	zpn_player_data_set_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON, xWpnArrayIndex)
 

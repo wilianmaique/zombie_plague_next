@@ -40,6 +40,116 @@ forward zpn_show_menu_game_pre(const id);
 forward zpn_show_menu_game_post(const id);
 
 /**
+ * Called before the default extra-item shop menu is built.
+ *
+ * @note Called even when the default shop has no items. An addon can show
+ *       its own menu and return ZPN_RETURN_HANDLED or higher to suppress it.
+ *
+ * @param id        Client index
+ * @param item_team Client's current class team (eClassTypes)
+ * @return          ZPN_RETURN_CONTINUE to display the default menu
+ *                  ZPN_RETURN_HANDLED or higher to suppress it
+ */
+forward zpn_show_menu_items_pre(const id, const eClassTypes:item_team);
+
+/**
+ * Called after the default extra-item shop menu is displayed.
+ *
+ * @note Not called when the pre-forward suppresses the menu or there are
+ *       no default items for the client's team.
+ *
+ * @param id        Client index
+ * @param item_team Class team used to build the menu (eClassTypes)
+ * @noreturn
+ */
+forward zpn_show_menu_items_post(const id, const eClassTypes:item_team);
+
+/**
+ * Called before the class type menu is displayed.
+ *
+ * @param id        Client index
+ * @return          ZPN_RETURN_CONTINUE to display the default menu
+ *                  ZPN_RETURN_HANDLED or higher to suppress it
+ */
+forward zpn_show_menu_class_type_pre(const id);
+
+/**
+ * Called after the default class type menu is displayed.
+ *
+ * @note Not called when the pre-forward suppresses the menu.
+ *
+ * @param id        Client index
+ * @noreturn
+ */
+forward zpn_show_menu_class_type_post(const id);
+
+/**
+ * Called before the class list for a selected type is built.
+ *
+ * @param id         Client index
+ * @param class_type Selected class type (eClassTypes)
+ * @return           ZPN_RETURN_CONTINUE to display the default menu
+ *                   ZPN_RETURN_HANDLED or higher to suppress it
+ */
+forward zpn_show_menu_class_pre(const id, const eClassTypes:class_type);
+
+/**
+ * Called after the default class list is displayed.
+ *
+ * @note Not called when the pre-forward suppresses the menu.
+ *
+ * @param id         Client index
+ * @param class_type Class type used to build the menu (eClassTypes)
+ * @noreturn
+ */
+forward zpn_show_menu_class_post(const id, const eClassTypes:class_type);
+
+/**
+ * Called before the primary weapon menu is built, if weapon selection is allowed.
+ *
+ * @note If suppressed, the addon owns primary weapon selection and the
+ *       transition to secondary weapon selection.
+ * @note Suppressing the menu does not clear the client's saved weapon choices.
+ *
+ * @param id        Client index
+ * @return          ZPN_RETURN_CONTINUE to display the default menu
+ *                  ZPN_RETURN_HANDLED or higher to suppress it
+ */
+forward zpn_show_menu_primary_weapon_pre(const id);
+
+/**
+ * Called after the default primary weapon menu is displayed.
+ *
+ * @note Not called when the pre-forward suppresses the menu.
+ *
+ * @param id        Client index
+ * @noreturn
+ */
+forward zpn_show_menu_primary_weapon_post(const id);
+
+/**
+ * Called before the secondary weapon menu is built.
+ *
+ * @note If suppressed, the addon owns secondary weapon selection. The client's
+ *       saved secondary weapon choice is unchanged.
+ *
+ * @param id        Client index
+ * @return          ZPN_RETURN_CONTINUE to display the default menu
+ *                  ZPN_RETURN_HANDLED or higher to suppress it
+ */
+forward zpn_show_menu_secondary_weapon_pre(const id);
+
+/**
+ * Called after the default secondary weapon menu is displayed.
+ *
+ * @note Not called when the pre-forward suppresses the menu.
+ *
+ * @param id        Client index
+ * @noreturn
+ */
+forward zpn_show_menu_secondary_weapon_post(const id);
+
+/**
  * Called before a client is frozen.
  *
  * @param this      Client index
