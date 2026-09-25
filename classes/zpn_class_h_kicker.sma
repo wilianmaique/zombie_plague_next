@@ -46,7 +46,7 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
 
-	bind_pcvar_num(create_cvar("zpn_class_kicker_block_move", "1", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), cvars[CVAR_BLOCK_MOVE])
+	bind_pcvar_num(create_cvar("zpn_class_kicker_block_move", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), cvars[CVAR_BLOCK_MOVE])
 }
 
 public plugin_cfg()

@@ -324,25 +324,25 @@ public xHudPlayerInfo(id)
 	new level = zpn_level_get_user_level(id), rankName[32]
 	zpn_level_get_user_rank_name(id, rankName, charsmax(rankName))
 
-	set_hudmessage(0, 255, 255, 0.03, 0.2, 0, 0.0, 0.0, 0.1, 0.1)
+	set_hudmessage(0, 255, 255, 0.025, 0.06, 0, 0.0, 0.0, 0.1, 0.1)
 
-	add(txt, charsmax(txt), fmt("» Modo: %s^n", get_gamemode_name()))
-	add(txt, charsmax(txt), fmt("» Classe: %s^n", get_class_name(id)))
+	add(txt, charsmax(txt), fmt("• Modo: %s^n", get_gamemode_name()))
+	add(txt, charsmax(txt), fmt("• Classe: %s^n", get_class_name(id)))
 
 	if(level >= MAX_LEVEL)
-		add(txt, charsmax(txt), fmt("» LVL: %s, XP: MAX, %s^n", format_number_point(level), rankName))
+		add(txt, charsmax(txt), fmt("• LVL: %s, XP: MAX, %s^n", format_number_point(level), rankName))
 	else
 	{
-		add(txt, charsmax(txt), fmt("» LVL: %s, XP: %s/%s, %s^n", format_number_point(level), format_number_point(zpn_level_get_user_xp(id)), format_number_point(zpn_level_get_user_required_xp(id)), rankName))
+		add(txt, charsmax(txt), fmt("• LVL: %s, XP: %s/%s, %s^n", format_number_point(level), format_number_point(zpn_level_get_user_xp(id)), format_number_point(zpn_level_get_user_required_xp(id)), rankName))
 	}
 
-	add(txt, charsmax(txt), fmt("» Vida: %s^n", format_number_point(floatround(get_entvar(id, var_health)))))
+	add(txt, charsmax(txt), fmt("• Vida: %s^n", format_number_point(floatround(get_entvar(id, var_health)))))
 
 	if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-		add(txt, charsmax(txt), fmt("» Colete: %d^n", get_entvar(id, var_armorvalue)))
+		add(txt, charsmax(txt), fmt("• Colete: %d^n", get_entvar(id, var_armorvalue)))
 
-	add(txt, charsmax(txt), fmt("» Ammo Packs: %s^n", format_number_point(zpn_ammo_pack_get_user_ap(id))))
-	add(txt, charsmax(txt), fmt("» Velocidade: %d", get_user_speed(id)))
+	add(txt, charsmax(txt), fmt("• Ammo Packs: %s^n", format_number_point(zpn_ammo_pack_get_user_ap(id))))
+	add(txt, charsmax(txt), fmt("• Velocidade: %d", get_user_speed(id)))
 
 	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], txt)
 }
