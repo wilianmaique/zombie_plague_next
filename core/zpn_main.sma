@@ -52,6 +52,12 @@ enum _:eForwards
 	FW_SHOW_MENU_PRIMARY_WEAPON_POST,
 	FW_SHOW_MENU_SECONDARY_WEAPON_PRE,
 	FW_SHOW_MENU_SECONDARY_WEAPON_POST,
+	FW_SHOW_HUD_PLAYER_INFO_PRE,
+	FW_SHOW_HUD_PLAYER_INFO_POST,
+	FW_SHOW_HUD_COUNTDOWN_PRE,
+	FW_SHOW_HUD_COUNTDOWN_POST,
+	FW_SHOW_HUD_GAMEMODE_NOTICE_PRE,
+	FW_SHOW_HUD_GAMEMODE_NOTICE_POST,
 	FW_HUMANIZED_PRE,
 	FW_HUMANIZED_POST,
 	FW_INFECTED_PRE,
@@ -141,6 +147,12 @@ public plugin_init()
 	xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_POST] = CreateMultiForward("zpn_show_menu_primary_weapon_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_PRE] = CreateMultiForward("zpn_show_menu_secondary_weapon_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_POST] = CreateMultiForward("zpn_show_menu_secondary_weapon_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_SHOW_HUD_PLAYER_INFO_PRE] = CreateMultiForward("zpn_show_hud_player_info_pre", ET_CONTINUE, FP_CELL)
+	xForwards[FW_SHOW_HUD_PLAYER_INFO_POST] = CreateMultiForward("zpn_show_hud_player_info_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_SHOW_HUD_COUNTDOWN_PRE] = CreateMultiForward("zpn_show_hud_countdown_pre", ET_CONTINUE, FP_CELL)
+	xForwards[FW_SHOW_HUD_COUNTDOWN_POST] = CreateMultiForward("zpn_show_hud_countdown_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_PRE] = CreateMultiForward("zpn_show_hud_gamemode_notice_pre", ET_CONTINUE, FP_CELL)
+	xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_POST] = CreateMultiForward("zpn_show_hud_gamemode_notice_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_INFECTED_PRE] = CreateMultiForward("zpn_user_infected_pre", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_INFECTED_POST] = CreateMultiForward("zpn_user_infected_post", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_INFECT_ATTEMPT] = CreateMultiForward("zpn_user_infect_attempt", ET_CONTINUE, FP_CELL, FP_CELL, FP_CELL)
@@ -340,6 +352,11 @@ public xHudPlayerInfo(id)
 	if(!is_user_alive(id))
 		return
 
+	ExecuteForward(xForwards[FW_SHOW_HUD_PLAYER_INFO_PRE], xForwardReturn, id)
+
+	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_alive(id))
+		return
+
 	static txt[384]; txt[0] = EOS
 	new level = zpn_level_get_user_level(id), rankName[32]
 	zpn_level_get_user_rank_name(id, rankName, charsmax(rankName))
@@ -365,6 +382,8 @@ public xHudPlayerInfo(id)
 	add(txt, charsmax(txt), fmt("• Velocidade: %d", get_user_speed(id)))
 
 	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], txt)
+
+	ExecuteForward(xForwards[FW_SHOW_HUD_PLAYER_INFO_POST], xForwardReturn, id)
 }
 
 public show_menu_game(id)
@@ -372,10 +391,9 @@ public show_menu_game(id)
 	if(!is_user_connected(id))
 		return
 
-	new forward_return
-	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_PRE], forward_return, id)
+	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_PRE], xForwardReturn, id)
 
-	if(forward_return >= ZPN_RETURN_HANDLED || !is_user_connected(id))
+	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
 		return
 
 	new xMenu = menu_create(fmt("%s \yZombie Plague Next", xSettingsVars[CONFIG_PREFIX_MENUS]), "_show_menu_game")
@@ -390,7 +408,7 @@ public show_menu_game(id)
 	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
 	menu_display(id, xMenu)
 
-	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_POST], forward_return, id)
+	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_POST], xForwardReturn, id)
 }
 
 public _show_menu_game(id, menu, item)
@@ -1003,13 +1021,21 @@ public xStartCountDown()
 		return
 	}
 
-	set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 1.0, 0.05, 0.05, -1, 0, { 100, 200, 50, 100 })
-	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "Rodada inicia em: %d", xDataGetGameRule[GAME_RULE_COUNTDOWN])
+	new countdown = xDataGetGameRule[GAME_RULE_COUNTDOWN]
 
-	if(xDataGetGameRule[GAME_RULE_COUNTDOWN] <= 10)
+	ExecuteForward(xForwards[FW_SHOW_HUD_COUNTDOWN_PRE], xForwardReturn, countdown)
+
+	if(xForwardReturn < ZPN_RETURN_HANDLED)
+	{
+		set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 1.0, 0.05, 0.05, -1, 0, { 100, 200, 50, 100 })
+		ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "Rodada inicia em: %d", countdown)
+		ExecuteForward(xForwards[FW_SHOW_HUD_COUNTDOWN_POST], xForwardReturn, countdown)
+	}
+
+	if(countdown <= 10)
 	{
 		static nword[20]
-		num_to_word(xDataGetGameRule[GAME_RULE_COUNTDOWN], nword, charsmax(nword))
+		num_to_word(countdown, nword, charsmax(nword))
 		client_cmd(0, "spk sound/vox/%s.wav", nword)
 	}
 
@@ -1034,11 +1060,17 @@ public xInitRound()
 	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gamemode_id
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
 
-	new gm_hud_color_converted[4]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_HUD_COLOR_CONVERTED, gm_hud_color_converted, charsmax(gm_hud_color_converted))
-	new gm_hud_notice[32]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_NOTICE, gm_hud_notice, charsmax(gm_hud_notice))
+	ExecuteForward(xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_PRE], xForwardReturn, gamemode_id)
 
-	set_hudmessage(gm_hud_color_converted[0], gm_hud_color_converted[1], gm_hud_color_converted[2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
-	ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", gm_hud_notice)
+	if(xForwardReturn < ZPN_RETURN_HANDLED)
+	{
+		new gm_hud_color_converted[4]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_HUD_COLOR_CONVERTED, gm_hud_color_converted, charsmax(gm_hud_color_converted))
+		new gm_hud_notice[32]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_NOTICE, gm_hud_notice, charsmax(gm_hud_notice))
+
+		set_hudmessage(gm_hud_color_converted[0], gm_hud_color_converted[1], gm_hud_color_converted[2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
+		ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", gm_hud_notice)
+		ExecuteForward(xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_POST], xForwardReturn, gamemode_id)
+	}
 
 	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gamemode_id)
 }

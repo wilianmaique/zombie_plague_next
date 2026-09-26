@@ -150,6 +150,74 @@ forward zpn_show_menu_secondary_weapon_pre(const id);
 forward zpn_show_menu_secondary_weapon_post(const id);
 
 /**
+ * Called before each draw of the default player information HUD.
+ *
+ * @note Called only for a connected, alive client. Suppressing a draw does
+ *       not stop the recurring task.
+ *
+ * @param id        Client index
+ * @return          ZPN_RETURN_CONTINUE to draw the default HUD
+ *                  ZPN_RETURN_HANDLED or higher to suppress this draw
+ */
+forward zpn_show_hud_player_info_pre(const id);
+
+/**
+ * Called after the default player information HUD is drawn.
+ *
+ * @note Not called when the pre-forward suppresses the draw.
+ *
+ * @param id        Client index
+ * @noreturn
+ */
+forward zpn_show_hud_player_info_post(const id);
+
+/**
+ * Called before each default round countdown HUD message.
+ *
+ * @note Suppression affects only the visual message. The countdown and
+ *       its audio continue normally.
+ * @note The default message is broadcast; suppression applies to all clients.
+ *
+ * @param seconds   Seconds shown in this countdown step
+ * @return          ZPN_RETURN_CONTINUE to draw the default HUD
+ *                  ZPN_RETURN_HANDLED or higher to suppress this draw
+ */
+forward zpn_show_hud_countdown_pre(const seconds);
+
+/**
+ * Called after the default round countdown HUD message is drawn.
+ *
+ * @note Not called when the pre-forward suppresses the draw.
+ *
+ * @param seconds   Seconds shown in this countdown step
+ * @noreturn
+ */
+forward zpn_show_hud_countdown_post(const seconds);
+
+/**
+ * Called before the default game mode notice HUD is drawn.
+ *
+ * @note Suppression affects only the visual notice. The round still starts
+ *       and zpn_round_started_post() still runs.
+ * @note The default notice is broadcast; suppression applies to all clients.
+ *
+ * @param gamemode_id Current game mode index
+ * @return            ZPN_RETURN_CONTINUE to draw the default HUD
+ *                    ZPN_RETURN_HANDLED or higher to suppress this draw
+ */
+forward zpn_show_hud_gamemode_notice_pre(const gamemode_id);
+
+/**
+ * Called after the default game mode notice HUD is drawn.
+ *
+ * @note Not called when the pre-forward suppresses the draw.
+ *
+ * @param gamemode_id Current game mode index
+ * @noreturn
+ */
+forward zpn_show_hud_gamemode_notice_post(const gamemode_id);
+
+/**
  * Called before a client is frozen.
  *
  * @param this      Client index

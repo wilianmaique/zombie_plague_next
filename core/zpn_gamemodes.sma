@@ -154,7 +154,7 @@ public any:_zpn_gamemode_set_prop(plugin_id, param_nums)
 		case PROP_GAMEMODE_REGISTER_DEATHMATCH: xDataGetGameMode[GAMEMODE_PROP_DEATHMATCH] = eGameModeDeathMatchTypes:get_param_byref(arg_value)
 		case PROP_GAMEMODE_REGISTER_RESPAWN_TIME: xDataGetGameMode[GAMEMODE_PROP_RESPAWN_TIME] = get_float_byref(arg_value)
 		case PROP_GAMEMODE_REGISTER_FIND_NAME: get_string(arg_value, xDataGetGameMode[GAMEMODE_PROP_FIND_NAME], charsmax(xDataGetGameMode[GAMEMODE_PROP_FIND_NAME]))
-		case PROP_GAMEMODE_REGISTER_MAP_TYPES: xDataGetGameMode[GAMEMODE_PROP_MAP_TYPES] = get_param_byref(arg_value) & GAMEMODE_MAP_ALL
+		case PROP_GAMEMODE_REGISTER_MAP_TYPES: xDataGetGameMode[GAMEMODE_PROP_MAP_TYPES] = get_param_byref(arg_value) & _:GAMEMODE_MAP_ALL
 	}
 
 	ArraySetArray(aDataGameMode, gamemode_id, xDataGetGameMode)
@@ -216,7 +216,7 @@ load_gamemode_settings()
 		if(!json_setting_get_int(PATH_SETTINGS_GAMEMODES, section, "map_types", data[GAMEMODE_PROP_MAP_TYPES]))
 			json_setting_set_int(PATH_SETTINGS_GAMEMODES, section, "map_types", data[GAMEMODE_PROP_MAP_TYPES])
 
-		data[GAMEMODE_PROP_MAP_TYPES] &= GAMEMODE_MAP_ALL
+		data[GAMEMODE_PROP_MAP_TYPES] &= _:GAMEMODE_MAP_ALL
 		data[GAMEMODE_PROP_MIN_PLAYERS] = max(1, data[GAMEMODE_PROP_MIN_PLAYERS])
 		ArraySetArray(aDataGameMode, i, data)
 	}
