@@ -304,14 +304,37 @@ forward zpn_user_infected_post(const this, const infector, const class_id);
 forward zpn_user_infect_attempt(const this, const infector, const class_id);
 
 /**
- * Called after a client selects an extra item from the buy menu.
+ * Called before an extra item is shown in the shop or purchased.
  *
- * @param this      Client index
- * @param item_id   Extra item index
+ * @note preview is true while building or refreshing the shop. The forward may
+ *       run more than once for the same item; avoid purchase side effects then.
+ * @note During preview, append text with add(extra_text, maxlen, "..."). The
+ *       shop places it immediately after the item name. Multiple plugins may
+ *       append to the same buffer.
+ * @note Return ZPN_RETURN_HANDLED or higher to disable the item in the shop
+ *       and block the purchase. The purchase call repeats this check, including
+ *       for menus that were already open. Text written during purchase is ignored.
+ *
+ * @param id          Client index
+ * @param item_id     Extra item index
+ * @param preview     true for shop display, false for a purchase attempt
+ * @param extra_text  Mutable extra text buffer
+ * @param maxlen      Maximum length of extra_text
+ *
+ * @return            ZPN_RETURN_CONTINUE to allow the item,
+ *                    ZPN_RETURN_HANDLED or higher to block it
+ */
+forward zpn_item_buy_pre(const id, const item_id, const bool:preview, extra_text[], const maxlen);
+
+/**
+ * Called after an extra item is paid for and its purchase counts are updated.
+ *
+ * @param id       Client index
+ * @param item_id  Extra item index
  *
  * @noreturn
  */
-forward zpn_item_selected_post(const this, const item_id);
+forward zpn_item_buy_post(const id, const item_id);
 
 /**
  * Called before a client is humanized and receives the human class.
@@ -722,6 +745,55 @@ native zpn_item_find(const item_find_name[]);
  * @return          Number of extra items registered in the item storage
  */
 native zpn_item_array_size();
+
+/**
+ * Retrieves the successful purchase counts for an extra item's limits.
+ *
+ * @note A positive limit caps purchases; zero or a negative value disables it.
+ * @note The counts are for this player in this round, all players in this
+ *       round, and all players on this map, respectively.
+ *
+ * @param id           Client index
+ * @param item_id      Extra item index
+ * @param player_round Output: purchases by this player in this round
+ * @param round        Output: purchases by all players in this round
+ * @param map          Output: purchases by all players on this map
+ *
+ * @return          true if the item is within all active limits, false if a
+ *                  limit has been reached or the player/item is invalid. Outputs
+ *                  are zero for invalid inputs.
+ */
+native bool:zpn_item_get_limit_state(const id, const item_id, &player_round, &round, &map);
+
+/**
+ * Checks an extra item's purchase requirements for display in the shop.
+ *
+ * @note Runs zpn_item_buy_pre() with preview=true. A successful preview does
+ *       not reserve an item or check the player's Ammo Pack balance.
+ *
+ * @param id          Client index
+ * @param item_id     Extra item index
+ * @param extra_text  Output buffer for text after the item name
+ * @param maxlen      Maximum length of extra_text
+ *
+ * @return            Availability result from eItemBuyResults
+ */
+native eItemBuyResults:zpn_item_preview_buy(const id, const item_id, extra_text[], const maxlen);
+
+/**
+ * Attempts to buy an extra item, enforcing its requirements, purchase limits,
+ * and charging Ammo Packs.
+ *
+ * @note The caller must validate the player's item team. A successful purchase
+ *       updates the counts and calls zpn_item_buy_post() for item delivery.
+ * @note zpn_item_buy_pre() runs again with preview=false before any charge.
+ *
+ * @param id           Client index
+ * @param item_id      Extra item index
+ *
+ * @return          Purchase result from eItemBuyResults
+ */
+native eItemBuyResults:zpn_item_buy(const id, const item_id);
 
 /**
  * Returns a client's current ammo pack balance.

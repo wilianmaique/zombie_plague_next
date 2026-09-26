@@ -27,7 +27,7 @@ public plugin_precache()
 	zpn_item_set_prop(item, PROP_ITEM_REGISTER_COST, 0)
 }
 
-public zpn_item_selected_post(const id, const item_id)
+public zpn_item_buy_post(const id, const item_id)
 {
 	if(item_id != item)
 		return

@@ -63,7 +63,6 @@ enum _:eForwards
 	FW_INFECTED_PRE,
 	FW_INFECTED_POST,
 	FW_INFECT_ATTEMPT,
-	FW_ITEM_SELECTED_POST,
 	FW_USER_FROZEN_PRE,
 	FW_USER_FROZEN_POST,
 }
@@ -106,6 +105,7 @@ new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
 new xCvars[eCvars], xSettingsVars[eSettingsConfigs], xMsgSync[eSyncHuds]
 new xDataGetGameRule[eGameRules]
 new bool:gEscapeMap
+new xBuyItemCallback
 
 public plugin_init()
 {
@@ -129,6 +129,7 @@ public plugin_init()
 	RegisterHookChain(RG_HandleMenu_ChooseAppearance, "HandleMenu_ChooseAppearance_Post", true)
 
 	register_clcmd("nightvision", "clcmd_nightvision")
+	xBuyItemCallback = menu_makecallback("_buy_items_callback")
 
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
@@ -158,7 +159,6 @@ public plugin_init()
 	xForwards[FW_INFECT_ATTEMPT] = CreateMultiForward("zpn_user_infect_attempt", ET_CONTINUE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_HUMANIZED_PRE] = CreateMultiForward("zpn_user_humanized_pre", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_HUMANIZED_POST] = CreateMultiForward("zpn_user_humanized_post", ET_IGNORE, FP_CELL, FP_CELL)
-	xForwards[FW_ITEM_SELECTED_POST] = CreateMultiForward("zpn_item_selected_post", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_USER_FROZEN_PRE] = CreateMultiForward("zpn_user_frozen_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_USER_FROZEN_POST] = CreateMultiForward("zpn_user_frozen_post", ET_IGNORE, FP_CELL)
 	
@@ -466,14 +466,49 @@ public buy_items(id)
 	}
 
 	new xMenu = menu_create(fmt("%s \yLoja de Itens", xSettingsVars[CONFIG_PREFIX_MENUS]), "_buy_items")
-	new item_name[32]
+	new item_name[32], item_text[256], extra_text[ZPN_ITEM_EXTRA_TEXT_SIZE]
+	new player_round, round, map
+	new player_limit, round_limit, map_limit, min_zombies
+	new alive_zombies = get_num_alive(true)
 
 	for(new i = 0; i < zpn_item_array_size(); i++)
 	{
-		zpn_item_get_prop(i, PROP_ITEM_REGISTER_NAME, item_name, charsmax(item_name))
+		if(eClassTypes:zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) != itemTeam)
+			continue
 
-		if(eClassTypes:zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) == itemTeam)
-			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)", item_name, format_number_point(zpn_item_get_prop(i, PROP_ITEM_REGISTER_COST))), fmt("%d", i))
+		zpn_item_get_prop(i, PROP_ITEM_REGISTER_NAME, item_name, charsmax(item_name))
+		new bool:can_buy = (zpn_item_preview_buy(id, i, extra_text, charsmax(extra_text)) == ITEM_BUY_SUCCESS)
+		zpn_item_get_limit_state(id, i, player_round, round, map)
+
+		player_limit = zpn_item_get_prop(i, PROP_ITEM_REGISTER_LIMIT_PLAYER_PER_ROUND)
+		round_limit = zpn_item_get_prop(i, PROP_ITEM_REGISTER_LIMIT_MAX_PER_ROUND)
+		map_limit = zpn_item_get_prop(i, PROP_ITEM_REGISTER_LIMIT_PER_MAP)
+		min_zombies = zpn_item_get_prop(i, PROP_ITEM_REGISTER_MIN_ZOMBIES)
+
+		if(can_buy)
+			formatex(item_text, charsmax(item_text), "\w%s", item_name)
+		else formatex(item_text, charsmax(item_text), "\d%s", item_name)
+
+		if(extra_text[0] != EOS)
+			add(item_text, charsmax(item_text), fmt(" %s", extra_text))
+
+		if(player_limit > 0)
+			add(item_text, charsmax(item_text), fmt(" \d[LP: %d/%d]", player_round, player_limit))
+
+		if(round_limit > 0)
+			add(item_text, charsmax(item_text), fmt(" \d[LR: %d/%d]", round, round_limit))
+
+		if(map_limit > 0)
+			add(item_text, charsmax(item_text), fmt(" \d[LM: %d/%d]", map, map_limit))
+
+		if(min_zombies > 0)
+			add(item_text, charsmax(item_text), fmt(" \d[Z: %d/%d]", alive_zombies, min_zombies))
+
+		if(can_buy)
+			add(item_text, charsmax(item_text), fmt(" \y(\d%s\y)", format_number_point(zpn_item_get_prop(i, PROP_ITEM_REGISTER_COST))))
+		else add(item_text, charsmax(item_text), fmt(" \d(%s)", format_number_point(zpn_item_get_prop(i, PROP_ITEM_REGISTER_COST))))
+
+		menu_additem(xMenu, item_text, fmt("%d", i), .callback = xBuyItemCallback)
 	}
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
@@ -484,6 +519,16 @@ public buy_items(id)
 	ExecuteForward(xForwards[FW_SHOW_MENU_ITEMS_POST], xForwardReturn, id, itemTeam)
 }
 
+public _buy_items_callback(id, menu, item)
+{
+	new info[12]
+	if(!menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info)))
+		return ITEM_DISABLED
+
+	new extra_text[ZPN_ITEM_EXTRA_TEXT_SIZE]
+	return zpn_item_preview_buy(id, str_to_num(info), extra_text, charsmax(extra_text)) == ITEM_BUY_SUCCESS ? ITEM_ENABLED : ITEM_DISABLED
+}
+
 public _buy_items(id, menu, item)
 {
 	if(!is_user_connected(id) || item < 0)
@@ -492,7 +537,7 @@ public _buy_items(id, menu, item)
 		return
 	}
 
-	new info[4]
+	new info[12]
 	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
 	menu_destroy(menu)
 
@@ -507,14 +552,39 @@ public _buy_items(id, menu, item)
 	if(item_team != class_type)
 		return
 	
-	if(!zpn_ammo_pack_take_user_ap(id, zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_COST), ZPN_AMMO_PACK_CHANGE_ITEM_BUY))
+	switch(zpn_item_buy(id, item_index))
 	{
-		buy_items(id)
-		client_print_color(id, print_team_red, "%s ^3Você não tem ^4Ammo Packs ^3suficiente.", xSettingsVars[CONFIG_PREFIX_CHAT])
-		return
-	}
+		case ITEM_BUY_INVALID:
+		{
+			client_print_color(id, print_team_red, "%s ^3Este item não está disponível.", xSettingsVars[CONFIG_PREFIX_CHAT])
+		}
 
-	ExecuteForward(xForwards[FW_ITEM_SELECTED_POST], xForwardReturn, id, item_index)
+		case ITEM_BUY_BLOCKED:
+		{
+			buy_items(id)
+			client_print_color(id, print_team_red, "%s ^3A compra deste item foi bloqueada.", xSettingsVars[CONFIG_PREFIX_CHAT])
+		}
+
+		case ITEM_BUY_NOT_ENOUGH_ZOMBIES:
+		{
+			buy_items(id)
+			client_print_color(id, print_team_red, "%s ^3Este item exige pelo menos ^4%d zumbis vivos^3.", xSettingsVars[CONFIG_PREFIX_CHAT], zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_MIN_ZOMBIES))
+		}
+
+		case ITEM_BUY_LIMIT_REACHED:
+		{
+			buy_items(id)
+			client_print_color(id, print_team_red, "%s ^3Limite de compras deste item atingido.", xSettingsVars[CONFIG_PREFIX_CHAT])
+		}
+
+		case ITEM_BUY_NO_AMMO_PACKS:
+		{
+			buy_items(id)
+			client_print_color(id, print_team_red, "%s ^3Você não tem ^4Ammo Packs ^3suficiente.", xSettingsVars[CONFIG_PREFIX_CHAT])
+		}
+
+		case ITEM_BUY_SUCCESS: return
+	}
 }
 
 public select_class_type(id)

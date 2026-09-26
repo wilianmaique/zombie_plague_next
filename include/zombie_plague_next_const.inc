@@ -10,6 +10,7 @@
 #define zpn_is_null_string(%0) bool:(%0[0] == EOS)
 
 stock const MAX_LEVEL = 10000
+#define ZPN_ITEM_EXTRA_TEXT_SIZE 64
 
 stock const PATH_SETTINGS_CONFIG[] = "zombie_plague_next/configs.json";
 stock const PATH_SETTINGS_CLASSES[] = "zombie_plague_next/classes.json";
@@ -62,12 +63,22 @@ enum ePropItemRegisters
 	PROP_ITEM_REGISTER_CMD_BUY, //
 	PROP_ITEM_REGISTER_COST, // int
 	PROP_ITEM_REGISTER_TEAM, // eClassTypes
-	PROP_ITEM_REGISTER_LIMIT_PLAYER_PER_ROUND, // int
-	PROP_ITEM_REGISTER_LIMIT_MAX_PER_ROUND, // int
-	PROP_ITEM_REGISTER_LIMIT_PER_MAP, // int
-	PROP_ITEM_REGISTER_MIN_ZOMBIES, // int
+	PROP_ITEM_REGISTER_LIMIT_PLAYER_PER_ROUND, // int, <= 0 = unlimited
+	PROP_ITEM_REGISTER_LIMIT_MAX_PER_ROUND, // int, <= 0 = unlimited
+	PROP_ITEM_REGISTER_LIMIT_PER_MAP, // int, <= 0 = unlimited
+	PROP_ITEM_REGISTER_MIN_ZOMBIES, // int, minimum living zombies; <= 0 = disabled
 	PROP_ITEM_REGISTER_ALLOW_BUY_SPECIAL_MODS, // bool
 	PROP_ITEM_REGISTER_FLAG, // int (flags ADMIN_RCON, etc...)
+}
+
+enum eItemBuyResults
+{
+	ITEM_BUY_INVALID = 0,
+	ITEM_BUY_BLOCKED,
+	ITEM_BUY_NOT_ENOUGH_ZOMBIES,
+	ITEM_BUY_LIMIT_REACHED,
+	ITEM_BUY_NO_AMMO_PACKS,
+	ITEM_BUY_SUCCESS,
 }
 
 enum ePropClassRegisters
