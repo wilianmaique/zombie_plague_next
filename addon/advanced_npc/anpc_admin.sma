@@ -1,0 +1,451 @@
+#pragma dynamic 16384
+
+#include <amxmodx>
+#include <amxmisc>
+#include <fakemeta>
+#include <reapi>
+#include "advanced_npc/advanced_npc"
+#include "advanced_npc/advanced_npc_navigation"
+#include "advanced_npc/math"
+
+#define TASK_SHOW 7800
+#define TASK_RECORD 7900
+
+new gTrace, gBeamSprite, gAutoSpawn, gRecorder, gRecordedNode = -1
+new gMap[64], gBspSize, gSpawnPath[256], gBspHash[33]
+new bool:gShow[33]
+
+public plugin_precache()
+{
+	gBeamSprite = precache_model("sprites/laserbeam.spr")
+}
+
+public plugin_init()
+{
+	register_plugin("Advanced NPC: Administration", ANPC_VERSION, "ZPN")
+	register_concmd("anpc_spawn", "command_spawn", ADMIN_RCON, "[type] [x y z yaw] - aim at floor, or supply feet coordinates")
+	register_concmd("anpc_remove", "command_remove", ADMIN_RCON, "[entity] - remove aimed NPC or entity id")
+	register_concmd("anpc_clear", "command_clear", ADMIN_RCON, "Remove all NPCs")
+	register_concmd("anpc_status", "command_status", ADMIN_RCON, "Show entity and navigation status")
+	register_concmd("anpc_nav_add", "command_nav_add", ADMIN_RCON, "[flags] [radius] - add a node at your feet")
+	register_concmd("anpc_nav_link", "command_nav_link", ADMIN_RCON, "from to flags [vx vy vz] - directed link; flags 0 walk, 1 jump, 2 drop")
+	register_concmd("anpc_nav_unlink", "command_nav_unlink", ADMIN_RCON, "from to - remove a directed link")
+	register_concmd("anpc_nav_flags", "command_nav_flags", ADMIN_RCON, "node flags - 1 crouch, 2 ladder, 4 disabled")
+	register_concmd("anpc_nav_save", "command_nav_save", ADMIN_RCON, "Save the current map's graph")
+	register_concmd("anpc_nav_reload", "command_nav_reload", ADMIN_RCON, "Reload the current map's graph")
+	register_concmd("anpc_nav_show", "command_nav_show", ADMIN_RCON, "0|1 - show nearby nodes/links to this admin")
+	register_concmd("anpc_nav_record", "command_nav_record", ADMIN_RCON, "0|1 - record verified walking connections")
+	register_concmd("anpc_spawns_save", "command_spawns_save", ADMIN_RCON, "Save live NPC positions as this map's spawn points")
+	register_concmd("anpc_spawns_load", "command_spawns_load", ADMIN_RCON, "Spawn saved points; requires no existing NPCs")
+	RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "round_freeze_end_post", true)
+	bind_pcvar_num(create_cvar("anpc_auto_spawn", "0", FCVAR_NONE, "Spawn saved map points after freeze time", true, 0.0, true, 1.0), gAutoSpawn)
+	gTrace = create_tr2()
+	rh_get_mapname(gMap, charsmax(gMap), MNT_TRUE)
+	new directory[192], bsp[128]
+	get_configsdir(directory, charsmax(directory))
+	formatex(gSpawnPath, charsmax(gSpawnPath), "%s/advanced_npc/maps/%s.spawns", directory, gMap)
+	formatex(bsp, charsmax(bsp), "maps/%s.bsp", gMap)
+	gBspSize = file_size(bsp)
+	if (gBspSize > 0) hash_file(bsp, Hash_Md5, gBspHash, charsmax(gBspHash))
+}
+
+public plugin_cfg()
+{
+	new directory[192], path[256]
+	get_configsdir(directory, charsmax(directory))
+	formatex(path, charsmax(path), "%s/advanced_npc/advanced_npc.cfg", directory)
+	if (file_exists(path))
+	{
+		server_cmd("exec ^"%s^"", path)
+		server_exec()
+	}
+}
+
+public plugin_end()
+{
+	free_tr2(gTrace)
+}
+
+public client_disconnected(id)
+{
+	remove_task(TASK_SHOW+id)
+	gShow[id] = false
+	if (gRecorder == id) { remove_task(TASK_RECORD); gRecorder = 0; gRecordedNode = -1; }
+}
+
+stock bool:admin_editor_ready(const id)
+{
+	if (anpc_nav_editing())
+	{
+		console_print(id, "[ANPC] Automatic mapper owns the graph. Stop it before editing or spawning NPCs.")
+		return false
+	}
+	if (anpc_get_count())
+	{
+		console_print(id, "[ANPC] Clear NPCs before editing/reloading navigation. Wait for deferred removal.")
+		return false
+	}
+	return true
+}
+
+stock admin_read_vector(const first_argument, Float:vector[3])
+{
+	new value[48]
+	for (new axis = 0; axis < 3; axis++)
+	{
+		read_argv(first_argument+axis, value, charsmax(value))
+		vector[axis] = str_to_float(value)
+	}
+}
+
+stock bool:admin_aim_floor(const id, Float:feet[3])
+{
+	if (!id || !is_user_alive(id)) return false
+	new Float:start[3], Float:end[3], Float:view[3], Float:direction[3], Float:normal[3], Float:fraction
+	get_entvar(id, var_origin, start)
+	get_entvar(id, var_view_ofs, view)
+	for (new axis = 0; axis < 3; axis++) start[axis] += view[axis]
+	get_entvar(id, var_v_angle, view)
+	engfunc(EngFunc_MakeVectors, view)
+	global_get(glb_v_forward, direction)
+	for (new axis = 0; axis < 3; axis++) end[axis] = start[axis]+direction[axis]*2048.0
+	engfunc(EngFunc_TraceLine, start, end, IGNORE_MONSTERS, id, gTrace)
+	get_tr2(gTrace, TR_flFraction, fraction)
+	get_tr2(gTrace, TR_vecPlaneNormal, normal)
+	get_tr2(gTrace, TR_vecEndPos, feet)
+	return fraction < 1.0 && normal[2] >= 0.7 && !get_tr2(gTrace, TR_StartSolid)
+}
+
+stock admin_aim_entity(const id)
+{
+	if (!id || !is_user_alive(id)) return 0
+	new Float:start[3], Float:end[3], Float:view[3], Float:direction[3]
+	get_entvar(id, var_origin, start)
+	get_entvar(id, var_view_ofs, view)
+	for (new axis = 0; axis < 3; axis++) start[axis] += view[axis]
+	get_entvar(id, var_v_angle, view)
+	engfunc(EngFunc_MakeVectors, view)
+	global_get(glb_v_forward, direction)
+	for (new axis = 0; axis < 3; axis++) end[axis] = start[axis]+direction[axis]*2048.0
+	engfunc(EngFunc_TraceLine, start, end, DONT_IGNORE_MONSTERS, id, gTrace)
+	return get_tr2(gTrace, TR_pHit)
+}
+
+public command_spawn(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 1)) return PLUGIN_HANDLED
+	if (anpc_nav_editing()) { console_print(id, "[ANPC] Stop the automatic mapper before spawning NPCs."); return PLUGIN_HANDLED; }
+	new type_name[48] = "zombie_default", Float:feet[3], Float:yaw
+	if (read_argc() >= 2) read_argv(1, type_name, charsmax(type_name))
+	if (read_argc() >= 5)
+	{
+		admin_read_vector(2, feet)
+		new value[48]
+		read_argv(5, value, charsmax(value))
+		yaw = str_to_float(value)
+	}
+	else if (!admin_aim_floor(id, feet))
+	{
+		console_print(id, "[ANPC] Aim at walkable floor, or use: anpc_spawn type x y z [yaw]")
+		return PLUGIN_HANDLED
+	}
+	new type = anpc_find_type(type_name), entity
+	if (type >= 0) entity = anpc_create(type, feet, yaw)
+	console_print(id, "[ANPC] Spawn result: entity %d. Graph, model, floor clearance, type and capacity must be valid.", entity)
+	return PLUGIN_HANDLED
+}
+
+public command_remove(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 1)) return PLUGIN_HANDLED
+	new value[24], entity
+	if (read_argc() >= 2) { read_argv(1, value, charsmax(value)); entity = str_to_num(value); }
+	else entity = admin_aim_entity(id)
+	console_print(id, "[ANPC] Removal scheduled: %d", anpc_remove(entity))
+	return PLUGIN_HANDLED
+}
+
+public command_clear(const id, const level, const cid)
+{
+	if (cmd_access(id, level, cid, 1)) console_print(id, "[ANPC] Scheduled removal of %d NPC entities", anpc_remove_all())
+	return PLUGIN_HANDLED
+}
+
+public command_status(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 1)) return PLUGIN_HANDLED
+	console_print(id, "[ANPC] Entities %d/%d | navigation nodes %d | revision %d", anpc_get_count(), anpc_get_capacity(), anpc_nav_count(), anpc_nav_revision())
+	new entity
+	while ((entity = rg_find_ent_by_class(entity, ANPC_CLASSNAME)))
+	{
+		if (!anpc_is_npc(entity)) continue
+		console_print(id, " entity %d serial %d type %d state %d target %d health %.0f", entity, anpc_get_serial(entity), anpc_get_type(entity), anpc_get_state(entity), anpc_get_target(entity), Float:get_entvar(entity, var_health))
+	}
+	return PLUGIN_HANDLED
+}
+
+public command_nav_add(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 1) || !admin_editor_ready(id)) return PLUGIN_HANDLED
+	if (!id || !is_user_alive(id)) { console_print(id, "[ANPC] This command requires a living admin in the map."); return PLUGIN_HANDLED; }
+	new value[32], flags, Float:radius = 24.0, Float:feet[3]
+	if (read_argc() >= 2) { read_argv(1, value, charsmax(value)); flags = str_to_num(value); }
+	if (read_argc() >= 3) { read_argv(2, value, charsmax(value)); radius = str_to_float(value); }
+	anpc_entity_feet(id, feet)
+	if (!(get_entvar(id, var_flags) & FL_ONGROUND) && !((flags & ANPC_NODE_LADDER) && anpc_nav_ladder(feet)))
+	{
+		console_print(id, "[ANPC] Stand on the floor, or mark a node on a real ladder.")
+		return PLUGIN_HANDLED
+	}
+	console_print(id, "[ANPC] Added node %d", anpc_nav_add(feet, flags, radius))
+	return PLUGIN_HANDLED
+}
+
+public command_nav_link(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 4) || !admin_editor_ready(id)) return PLUGIN_HANDLED
+	new value[32], from, to, flags, Float:velocity[3], Float:a[3], Float:b[3], Float:radius, af, bf
+	read_argv(1, value, charsmax(value)); from = str_to_num(value)
+	read_argv(2, value, charsmax(value)); to = str_to_num(value)
+	read_argv(3, value, charsmax(value)); flags = str_to_num(value)
+	if (flags & ANPC_LINK_JUMP)
+	{
+		if (read_argc() > 4 && read_argc() < 7) { console_print(id, "[ANPC] Supply all vx vy vz, or omit all for a computed jump."); return PLUGIN_HANDLED; }
+		if (read_argc() >= 7) admin_read_vector(4, velocity)
+	}
+	if (!anpc_nav_node(from, a, af, radius) || !anpc_nav_node(to, b, bf, radius)) return PLUGIN_HANDLED
+	if (!flags && !((af | bf) & ANPC_NODE_LADDER)
+	&& !anpc_nav_walkable(a, b, bool:((af | bf) & ANPC_NODE_CROUCH), id))
+	{
+		console_print(id, "[ANPC] Walking connection has a blocked hull or unsafe floor. Use the appropriate jump/drop/ladder route.")
+		return PLUGIN_HANDLED
+	}
+	console_print(id, "[ANPC] Directed link %d -> %d: %d", from, to, anpc_nav_connect(from, to, flags, velocity))
+	return PLUGIN_HANDLED
+}
+
+public command_nav_unlink(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 3) || !admin_editor_ready(id)) return PLUGIN_HANDLED
+	new value[24], from, to
+	read_argv(1, value, charsmax(value)); from = str_to_num(value)
+	read_argv(2, value, charsmax(value)); to = str_to_num(value)
+	console_print(id, "[ANPC] Unlinked: %d", anpc_nav_disconnect(from, to))
+	return PLUGIN_HANDLED
+}
+
+public command_nav_flags(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 3) || !admin_editor_ready(id)) return PLUGIN_HANDLED
+	new value[24], node, flags
+	read_argv(1, value, charsmax(value)); node = str_to_num(value)
+	read_argv(2, value, charsmax(value)); flags = str_to_num(value)
+	console_print(id, "[ANPC] Flags changed: %d", anpc_nav_set_flags(node, flags))
+	return PLUGIN_HANDLED
+}
+
+public command_nav_save(const id, const level, const cid)
+{
+	if (cmd_access(id, level, cid, 1) && admin_editor_ready(id)) console_print(id, "[ANPC] Graph saved: %d", anpc_nav_save())
+	return PLUGIN_HANDLED
+}
+
+public command_nav_reload(const id, const level, const cid)
+{
+	if (cmd_access(id, level, cid, 1) && admin_editor_ready(id)) console_print(id, "[ANPC] Graph loaded: %d", anpc_nav_reload())
+	return PLUGIN_HANDLED
+}
+
+public command_nav_record(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 2) || !id || !admin_editor_ready(id)) return PLUGIN_HANDLED
+	new value[16]
+	read_argv(1, value, charsmax(value))
+	if (!str_to_num(value))
+	{
+		if (gRecorder == id) { remove_task(TASK_RECORD); gRecorder = 0; gRecordedNode = -1; }
+		return PLUGIN_HANDLED
+	}
+	if (gRecorder && gRecorder != id) { console_print(id, "[ANPC] Another admin is recording."); return PLUGIN_HANDLED; }
+	gRecorder = id
+	gRecordedNode = -1
+	remove_task(TASK_RECORD)
+	set_task_ex(0.2, "record_step", TASK_RECORD, .flags = SetTask_Repeat)
+	console_print(id, "[ANPC] Recording safe WALK routes. Add directed jumps and ladders explicitly. Save when finished.")
+	return PLUGIN_HANDLED
+}
+
+public record_step()
+{
+	new id = gRecorder
+	if (!id || !is_user_alive(id) || anpc_get_count() || get_entvar(id, var_movetype) == MOVETYPE_NOCLIP) return
+	if (!(get_entvar(id, var_flags) & FL_ONGROUND)) return
+	new Float:feet[3], Float:last[3], Float:radius, flags
+	anpc_entity_feet(id, feet)
+	if (gRecordedNode >= 0 && anpc_nav_node(gRecordedNode, last, flags, radius)
+	&& anpc_distance_2d(feet, last) < 128.0 && floatabs(feet[2]-last[2]) < 18.0) return
+	new node = anpc_nav_nearest(feet, ANPC_CAP_ALL, id, 64.0)
+	if (node < 0) node = anpc_nav_add(feet, get_entvar(id, var_flags) & FL_DUCKING ? ANPC_NODE_CROUCH : 0)
+	if (node < 0 || node == gRecordedNode) return
+	new Float:destination[3], destination_flags
+	anpc_nav_node(node, destination, destination_flags, radius)
+	if (gRecordedNode >= 0 && anpc_nav_node(gRecordedNode, last, flags, radius))
+	{
+		new bool:duck = bool:((flags | destination_flags) & ANPC_NODE_CROUCH)
+		if (anpc_nav_walkable(last, destination, duck, id)) anpc_nav_connect(gRecordedNode, node)
+		if (anpc_nav_walkable(destination, last, duck, id)) anpc_nav_connect(node, gRecordedNode)
+	}
+	gRecordedNode = node
+	console_print(id, "[ANPC] Recorded node %d", node)
+}
+
+public command_nav_show(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 2) || !id) return PLUGIN_HANDLED
+	new value[16]
+	read_argv(1, value, charsmax(value))
+	gShow[id] = bool:str_to_num(value)
+	remove_task(TASK_SHOW+id)
+	if (gShow[id]) set_task_ex(0.5, "show_nodes", TASK_SHOW+id, .flags = SetTask_Repeat)
+	return PLUGIN_HANDLED
+}
+
+stock admin_beam(const id, const Float:from[3], const Float:to[3], const red, const green)
+{
+	message_begin(MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, _, id)
+	write_byte(TE_BEAMPOINTS)
+	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, from[axis])
+	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, to[axis])
+	write_short(gBeamSprite)
+	write_byte(0); write_byte(0); write_byte(6); write_byte(3); write_byte(0)
+	write_byte(red); write_byte(green); write_byte(40); write_byte(170); write_byte(0)
+	message_end()
+}
+
+public show_nodes(const task)
+{
+	new id = task-TASK_SHOW
+	if (!is_user_alive(id) || !gShow[id]) return
+	new Float:feet[3], Float:point[3], Float:top[3], Float:radius, flags, shown, links_shown
+	anpc_entity_feet(id, feet)
+	new nearest = anpc_nav_nearest(feet, ANPC_CAP_ALL, id)
+	for (new node = 0, count = anpc_nav_count(); node < count && shown < 16; node++)
+	{
+		anpc_nav_node(node, point, flags, radius)
+		if (anpc_distance_sq(feet, point) > 384.0*384.0) continue
+		anpc_copy_vec(point, top)
+		top[2] += 24.0
+		admin_beam(id, point, top, flags & ANPC_NODE_DISABLED ? 255 : 40, node == nearest ? 255 : 100)
+		for (new link = 0, links = anpc_nav_link_count(node); link < links && links_shown < 12; link++)
+		{
+			new to, link_flags, destination_flags, Float:destination[3], Float:velocity[3]
+			if (!anpc_nav_link_at(node, link, to, link_flags, velocity) || !anpc_nav_node(to, destination, destination_flags, radius)) continue
+			if (anpc_distance_sq(feet, destination) > 384.0*384.0) continue
+			admin_beam(id, point, destination, link_flags ? 220 : 40, 100)
+			links_shown++
+		}
+		shown++
+	}
+	set_hudmessage(80, 220, 80, -1.0, 0.65, 0, 0.0, 0.6, 0.0, 0.0)
+	show_hudmessage(id, "ANPC: nearest node %d | total %d", nearest, anpc_nav_count())
+}
+
+public round_freeze_end_post()
+{
+	if (gAutoSpawn && !anpc_nav_editing() && !anpc_get_count() && !gRecorder) admin_load_spawns(0)
+}
+
+public anpc_nav_changed(const revision)
+{
+	if (!anpc_nav_editing() || !gRecorder) return
+	console_print(gRecorder, "[ANPC] Recording stopped: automatic mapper owns navigation.")
+	remove_task(TASK_RECORD)
+	gRecorder = 0
+	gRecordedNode = -1
+}
+
+public command_spawns_save(const id, const level, const cid)
+{
+	if (!cmd_access(id, level, cid, 1)) return PLUGIN_HANDLED
+	new directory[256], temporary[272]
+	get_configsdir(directory, charsmax(directory))
+	add(directory, charsmax(directory), "/advanced_npc")
+	if (!dir_exists(directory)) mkdir(directory)
+	add(directory, charsmax(directory), "/maps")
+	if (!dir_exists(directory)) mkdir(directory)
+	formatex(temporary, charsmax(temporary), "%s.tmp", gSpawnPath)
+	new file = fopen(temporary, "wt")
+	if (!file) { console_print(id, "[ANPC] Cannot open spawn file for writing."); return PLUGIN_HANDLED; }
+	fprintf(file, "ANPC_SPAWNS 1 ^"%s^" %d %s^n", gMap, gBspSize, gBspHash)
+	new entity, count, name[48], Float:feet[3], Float:angles[3]
+	while ((entity = rg_find_ent_by_class(entity, ANPC_CLASSNAME)))
+	{
+		if (!anpc_is_npc(entity) || anpc_get_state(entity) == ANPC_DEAD) continue
+		anpc_get_type_name(anpc_get_type(entity), name, charsmax(name))
+		anpc_entity_feet(entity, feet)
+		get_entvar(entity, var_angles, angles)
+		fprintf(file, "S ^"%s^" %.4f %.4f %.4f %.2f^n", name, feet[0], feet[1], feet[2], angles[1])
+		count++
+	}
+	fclose(file)
+	console_print(id, "[ANPC] Saved %d spawn points: %d", count, anpc_commit_file(temporary, gSpawnPath))
+	return PLUGIN_HANDLED
+}
+
+public command_spawns_load(const id, const level, const cid)
+{
+	if (cmd_access(id, level, cid, 1) && admin_editor_ready(id)) admin_load_spawns(id)
+	return PLUGIN_HANDLED
+}
+
+stock admin_load_spawns(const id)
+{
+	new file = fopen(gSpawnPath, "rt")
+	if (!file) { console_print(id, "[ANPC] No saved spawn file for %s.", gMap); return; }
+	new line[256], token[7][64], bool:header, bool:valid = true, count
+	// Validate all records BEFORE creating anything; malformed input cannot
+	// leave a half-loaded NPC group.
+	new Array:points = ArrayCreate(5), record[5]
+	while (!feof(file))
+	{
+		fgets(file, line, charsmax(line)); trim(line)
+		if (!line[0] || line[0] == ';' || line[0] == '#') continue
+		new fields = parse(line, token[0],63, token[1],63, token[2],63, token[3],63, token[4],63, token[5],63, token[6],63)
+		if (!header)
+		{
+			valid = fields == 5 && equal(token[0], "ANPC_SPAWNS") && equal(token[1], "1") && equal(token[2], gMap)
+			&& anpc_number(token[3], true) && str_to_num(token[3]) == gBspSize && gBspSize > 0
+			&& equal(token[4], gBspHash) && strlen(gBspHash) == 32
+			header = true
+		}
+		else
+		{
+			valid = fields == 6 && equal(token[0], "S") && ArraySize(points) < ANPC_MAX_ACTORS
+			record[0] = anpc_find_type(token[1])
+			if (record[0] < 0) valid = false
+			for (new axis = 1; axis <= 4; axis++)
+			{
+				new Float:value = str_to_float(token[axis+1])
+				if (!anpc_number(token[axis+1]) || !anpc_finite(value)) valid = false
+				record[axis] = _:value
+			}
+			if (valid) ArrayPushArray(points, record)
+		}
+		if (!valid) break
+	}
+	fclose(file)
+	if (header && valid)
+	{
+		for (new i = 0, total = ArraySize(points); i < total; i++)
+		{
+			ArrayGetArray(points, i, record)
+			new Float:feet[3]
+			for (new axis = 0; axis < 3; axis++) feet[axis] = Float:record[axis+1]
+			if (anpc_create(record[0], feet, Float:record[4])) count++
+			else log_amx("Spawn point %d failed: navigation, clearance, type or capacity", i)
+		}
+		console_print(id, "[ANPC] Spawned %d/%d saved NPCs", count, ArraySize(points))
+	}
+	else log_amx("Invalid spawn file rejected: %s", gSpawnPath)
+	ArrayDestroy(points)
+}

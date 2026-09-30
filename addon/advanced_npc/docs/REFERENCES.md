@@ -1,0 +1,34 @@
+# Referências e decisões de API
+
+Consultas realizadas em 30/09/2026. Foram examinadas as includes locais do servidor configurado em `.vscode/settings.json`: AMXX 1.10 e ReAPI 5.26.0.338. A referência disponibilizada pelo projeto também indexava ReAPI 5.29.0.358. As interfaces empregadas existem nas includes locais e foram comparadas com a documentação e/ou fonte do provedor.
+
+## YaPB
+
+Revisão consultada: `4967a220ba3a58c461ee1cef8b6fb37c6fd93b5e`.
+
+- [graph.h](https://github.com/yapb/yapb/blob/4967a220ba3a58c461ee1cef8b6fb37c6fd93b5e/inc/graph.h): nós, flags, `Path`, `PathLink`, `StorageHeader` e `ExtenHeader`.
+- [storage.cpp](https://github.com/yapb/yapb/blob/4967a220ba3a58c461ee1cef8b6fb37c6fd93b5e/src/storage.cpp): formato binário atual e ULZ.
+- [navigate.cpp](https://github.com/yapb/yapb/blob/4967a220ba3a58c461ee1cef8b6fb37c6fd93b5e/src/navigate.cpp): caminhos, recuperação, obstáculos, saltos e tratamento próprio de elevadores.
+- [crlib ULZ](https://github.com/yapb/crlib/blob/92abc88773c710eedd8299a5ae86d1d94d9f7d22/crlib/ulz.h): descompressão e codificação aditiva de comprimentos.
+- [Banco de grafos](https://github.com/yapb/graph/tree/19b802d42fbdadabd3205fb767c8ea59d976a7de): origem do exemplo `de_dust2`, autor `$_Vladislav`.
+
+Os plugins Pawn são uma implementação própria para entidades. O importador reproduz a interpretação do formato e a descompressão ULZ em Python, com validações de tamanho e índices. Avisos de licença constam em `THIRD_PARTY_NOTICES.md`.
+
+## ReAPI e AMXX
+
+- [Pesquisa fornecida pelo projeto](https://amxx-api.csrevo.com/search.json?q=SetThink).
+- [SetThink](https://amxx-api.csrevo.com/reapi-5-26-0-338/reapi_gamedll/function/SetThink): callback específico de entidade, evitando um loop global de Think.
+- [rg_create_entity](https://amxx-api.csrevo.com/reapi-5-26-0-338/reapi_gamedll/function/rg_create_entity): argumento `useHashTable = false` necessário para depois alterar classname sem deixar entradas nessa tabela.
+- [Fonte oficial ReAPI](https://github.com/rehlds/ReAPI/blob/master/reapi/extra/amxmodx/scripting/include/reapi_gamedll.inc): `rg_remove_entity`, `rg_find_ent_by_class`, callbacks e hooks de rodada.
+- [Fonte oficial engine ReAPI](https://github.com/rehlds/ReAPI/blob/master/reapi/extra/amxmodx/scripting/include/reapi_engine.inc): acesso tipado a entvars.
+- [AMXX oficial](https://github.com/alliedmodders/amxmodx/tree/master/plugins/include): arquivos, `hash_file`, cvars vinculadas, `Array`, forwards, Fakemeta e Hamsandwich.
+- [Ciclo de carga do AMXX](https://github.com/alliedmodders/amxmodx/blob/master/amxmodx/meta_api.cpp): todos os `plugin_precache` executam antes dos `plugin_init`. O núcleo limita o registro de tipos/animações à fase de precache.
+- [Física ReHLDS](https://github.com/rehlds/ReHLDS/blob/master/rehlds/engine/sv_phys.cpp): movimento terrestre/velocidade, gravidade, fly e toss.
+- [Física de jogador ReGameDLL](https://github.com/rehlds/ReGameDLL_CS/blob/master/regamedll/pm_shared/pm_shared.cpp): comandos de jogador, salto, agachamento e movimento em escadas usados pelo fake client.
+- [Fakemeta do AMXX](https://github.com/alliedmodders/amxmodx/blob/master/plugins/include/fakemeta_const.inc): assinaturas de `CreateFakeClient`, `RunPlayerMove`, hulls e callbacks da DLL.
+- [Criação do fake client no ReHLDS](https://github.com/rehlds/ReHLDS/blob/master/rehlds/engine/pr_cmds.cpp): `CreateFakeClient_internal` aloca o cliente/edict; [ClientPutInServer no ReGameDLL](https://github.com/rehlds/ReGameDLL_CS/blob/master/regamedll/dlls/client.cpp) constrói a instância de jogador. [Validação de set_entvar na ReAPI](https://github.com/rehlds/ReAPI/blob/master/reapi/src/natives/natives_members.cpp) exige private data. [Despacho Fakemeta](https://github.com/alliedmodders/amxmodx/blob/master/modules/fakemeta/dllfunc.cpp) exige `charsmax(rejection)` em `DLLFunc_ClientConnect` e usa o buffer de userinfo do motor em `DLLFunc_ClientUserInfoChanged`.
+- [CBaseEntity ReGameDLL](https://github.com/rehlds/ReGameDLL_CS/blob/master/regamedll/dlls/cbase.cpp): `TraceAttack`, `AddMultiDamage`, dano e remoção por `Killed` da entidade base.
+
+ReAPI atende criação, remoção, leitura/escrita de variáveis e rodada. Fakemeta fornece primitivas do motor para hull, trace, tamanho, origem e `WalkMove`. Hamsandwich atende funções virtuais genéricas de entidades (`TraceAttack`, `TakeDamage`, `BloodColor`, `Use`) e despacho do dano de jogador. Usar essas interfaces evita offsets privados e simulação manual da geometria do BSP.
+
+`hash_file(..., Hash_Md5, ...)` é a interface atual do AMXX, substituindo o native depreciado `md5_file`. O digest identifica o BSP usado para gerar o arquivo; o plugin calcula-o apenas ao inicializar o mapa.
