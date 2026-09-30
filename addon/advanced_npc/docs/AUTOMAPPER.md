@@ -43,6 +43,8 @@ Os estados numéricos são `0` desligado, `1` preparando episódio, `2` escolhen
 
 Use `anpc_nav_show 1` para desenhar os pontos próximos. A edição manual e a criação de NPCs ficam bloqueadas enquanto o scanner mantém a edição exclusiva. O gravador manual ativo é encerrado ao começar a análise.
 
+O scout é identificado pela vaga e pelo `userid` da conexão, com confirmação de private data e estado de bot. O mapper preserva os campos `iuser*` usados pela física/GameDLL. Toda linha `Mapper ended` informa `reason` e a etapa em que a sessão terminou. Quando a identidade deixa de ser válida, o log também mostra a vaga, os userids esperado/atual, conexão, flag de fake client e private data antes de liberar a sessão.
+
 ## Checkpoints
 
 Os arquivos ficam em `addons/amxmodx/configs/advanced_npc/maps/`:

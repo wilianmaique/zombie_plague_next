@@ -6,7 +6,8 @@
 - Leitura do modelo studio v10 `zpn_z_default.mdl`: 111 sequências; confirmação dos sete labels usados pelo tipo inicial.
 - Conferência estática das chamadas, registro dos natives próprios e integridade de delimitadores nas fontes.
 - Compilação dos seis plugins, incluindo `anpc_mapper`, com `D:\GOOGLE DRIVE\Counter-Strike\Ferramentas\compiler\amxxpc.exe` (AMXX 1.10.0.5467), usando as includes de `D:\GOOGLE DRIVE\Counter-Strike\Ferramentas\compiler\include`: zero erros e zero avisos.
-- Correção do mapper `1.1.1`: o marcador inicial usa Fakemeta no edict recém-alocado; `set_entvar` e as funções de jogador da ReAPI só são chamadas após `ClientPutInServer` e confirmação de private data. A conexão recebe o tamanho do buffer de rejeição; a rotina também registra o fake client no AMXX quando necessário e remove conexões incompletas ao liberar a sessão. Apenas o mapper foi recompilado após essa correção, com o mesmo compilador e includes: zero erros e zero avisos. Essa correção aguarda validação manual no jogo.
+- Correção da criação do fake client: `set_entvar` e as funções de jogador da ReAPI só são chamadas após `ClientPutInServer` e confirmação de private data. A conexão recebe o tamanho do buffer de rejeição; a rotina também registra o fake client no AMXX quando necessário e remove conexões incompletas ao liberar a sessão.
+- Correção do encerramento imediato na revisão `1.1.2`: o ReGameDLL escreve `iuser4` durante `PreThink`, invalidando o antigo marcador. A identidade agora usa vaga/`userid`, conexão, private data e estado de bot. O marcador foi removido da API e da percepção; a sessão já exige zero NPCs e bloqueia sua criação. Os encerramentos registram motivo/etapa e a perda de identidade inclui seus campos de diagnóstico. Os seis plugins foram recompilados com zero erros e zero avisos; a validação no jogo dessa revisão permanece manual.
 - Correção do parâmetro reservado `state` na rotina de troca de estado, dos índices sem tag `AnpcAnimation` e da indentação na include local `advanced_npc/movement.inc`.
 - 11 testes Python do importador: ULZ com overlap e comprimentos estendidos, limites de saída, arquivo truncado, header/versão/tamanho inválidos, conversão de agachamento, saltos calculados, ações sem implementação, vínculo ao mapa, CLI e proteção contra sobrescrita.
 - Importação de um grafo real da base oficial do YaPB para o BSP `de_dust2` local, com tamanho correspondente e MD5 gravado.
@@ -20,6 +21,7 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Cenário | Resultado esperado |
 | --- | --- |
 | Iniciar sem navegação/YaPB | Um fake client explora e acrescenta nós/conexões por deslocamentos reais |
+| Primeiros comandos e `PreThink` do scout | Sessão permanece ativa após começar a assentar a primeira semente; `iuser4` mantém o estado original de veículos, sem invalidar a identidade |
 | Regiões e ramificações abertas | Direções analisadas, retornos tentados e deslocamento A* para outras fronteiras |
 | Parede ou quina | Ausência de conexões que cortem sólidos |
 | Piso descontínuo/buraco | Não gerar ligação de caminhada só porque o hull horizontal passa |
@@ -37,6 +39,7 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Pausar e retomar durante uma tentativa | Retoma de uma âncora; direção interrompida disponível para reanálise |
 | Salvar e continuar | `.nav`, `.scan` e relatório confirmados; análise retomada |
 | Encerrar com `stop` | `active=1` durante gravação; depois bot removido e edição liberada |
+| Scout removido ou identidade inválida | Sessão encerrada com `reason`/etapa no log; vaga reutilizada por outro jogador/bot não é removida |
 | Reiniciar o scan com os mesmos arquivos/parâmetros | Memória correspondente reutilizada |
 | `.scan` truncado, NAV alterado ou outro perfil | Memória descartada; grafo preservado e exploração refeita |
 | Desligar no meio de um `.tmp` | Último checkpoint confirmado preservado |

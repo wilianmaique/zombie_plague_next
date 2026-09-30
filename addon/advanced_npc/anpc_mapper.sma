@@ -15,7 +15,6 @@
 #define SCAN_MAX_SEEDS 512
 #define SCAN_MAX_LADDERS 128
 #define SCAN_TASK_AUTO 8160
-#define ANPC_MAPPER_VERSION "1.1.1"
 
 enum _:ScanSeed { Float:SEED_FEET[3], SEED_FLAGS, bool:SEED_USED }
 enum _:ScanLadder { LADDER_ENTITY, Float:LADDER_MINS[3], Float:LADDER_MAXS[3] }
@@ -79,7 +78,7 @@ public plugin_natives()
 
 public plugin_init()
 {
-	register_plugin("Advanced NPC: Autonomous Mapper", ANPC_MAPPER_VERSION, "ZPN")
+	register_plugin("Advanced NPC: Autonomous Mapper", ANPC_VERSION, "ZPN")
 	gActiveCvar = create_cvar("anpc_scan_active", "0", FCVAR_SERVER | FCVAR_SPONLY, "Maintenance state controlled by automatic mapper")
 	if (!is_rehlds() || !is_regamedll()) set_fail_state("Automatic mapper requires ReHLDS and ReGameDLL CS")
 	register_concmd("anpc_scan", "command_scan", ADMIN_RCON, "start [new] | stop | pause | resume | save | status | seed [x y z] | watch 0|1")
@@ -135,7 +134,7 @@ public plugin_end()
 	if (gLoadFile) { fclose(gLoadFile); gLoadFile = 0; }
 	if (gSaveFile) { fclose(gSaveFile); gSaveFile = 0; }
 	// An interrupted temporary file is never committed over a good checkpoint.
-	if (gActive) scan_finish(false)
+	if (gActive) scan_finish(false, "map shutdown")
 	free_tr2(gTrace)
 	DestroyForward(gStartForward)
 	DestroyForward(gFinishForward)
@@ -149,7 +148,7 @@ public client_disconnected(id, bool:drop, message[], maxlen)
 	{
 		gBot = gBotUserid = 0
 		log_amx("Scout disconnected; mapping stopped. Last committed checkpoint is preserved.")
-		scan_finish(false)
+		scan_finish(false, "scout disconnected")
 	}
 }
 
@@ -244,8 +243,9 @@ stock bool:scan_start(const bool:reset)
 	gMemoryLoaded = false
 	scan_init_survey()
 	scan_collect_seeds()
-	if (!gRoute || !scan_create_bot()) { scan_finish(false); return false; }
-	if (reset && !anpc_nav_reset()) { scan_finish(false); return false; }
+	if (!gRoute) { scan_finish(false, "route allocation failed"); return false; }
+	if (!scan_create_bot()) { scan_finish(false, "scout initialization failed"); return false; }
+	if (reset && !anpc_nav_reset()) { scan_finish(false, "navigation reset failed"); return false; }
 	gStage = ANPC_SCAN_SEED
 	gFrame = register_forward(FM_StartFrame, "mapper_frame")
 	gTouch = register_forward(FM_Touch, "scan_touch")
@@ -262,7 +262,7 @@ stock bool:scan_stop(const bool:save)
 	if (!save)
 	{
 		if (gDriving) gAbortRequested = true
-		else scan_finish(false)
+		else scan_finish(false, "requested stop without saving")
 		return true
 	}
 	if (gStage == ANPC_SCAN_SAVE) gStopAfterSave = true
@@ -270,10 +270,11 @@ stock bool:scan_stop(const bool:save)
 	return true
 }
 
-stock scan_finish(const bool:saved)
+stock scan_finish(const bool:saved, const reason[])
 {
 	if (!gActive || gFinishing) return
 	gFinishing = true
+	new AnpcScanStatus:stage = gStage
 	if (gFrame) { unregister_forward(FM_StartFrame, gFrame); gFrame = 0; }
 	if (gTouch) { unregister_forward(FM_Touch, gTouch); gTouch = 0; }
 	if (gSaveFile) { fclose(gSaveFile); gSaveFile = 0; }
@@ -292,7 +293,7 @@ stock scan_finish(const bool:saved)
 	gStage = gCompleted ? ANPC_SCAN_COMPLETE : ANPC_SCAN_OFF
 	new result
 	ExecuteForward(gFinishForward, result, gCompleted, saved, gKnownCount, gLinks)
-	log_amx("Mapper ended: completed=%d saved=%d nodes=%d links=%d jumps=%d failures=%d episodes=%d", gCompleted, saved, gKnownCount, gLinks, gJumps, gFailures, gSeedEpisodes)
+	log_amx("Mapper ended: reason=%s; stage=%d completed=%d saved=%d nodes=%d links=%d jumps=%d failures=%d episodes=%d", reason, stage, gCompleted, saved, gKnownCount, gLinks, gJumps, gFailures, gSeedEpisodes)
 	if (gRestart && !gFinishingMap) set_cvar_num("sv_restart", 1)
 	gFinishing = false
 }
@@ -300,7 +301,7 @@ stock scan_finish(const bool:saved)
 public mapper_frame()
 {
 	if (!gActive) return FMRES_IGNORED
-	if (!scan_bot_valid()) { scan_finish(false); return FMRES_IGNORED; }
+	if (!scan_check_bot()) return FMRES_IGNORED
 	gTraces = 0
 	gFrameStart = Float:engfunc(EngFunc_Time)
 	new Float:now = get_gametime()
