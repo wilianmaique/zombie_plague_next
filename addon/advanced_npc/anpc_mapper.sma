@@ -15,6 +15,9 @@
 #define SCAN_MAX_SEEDS 512
 #define SCAN_MAX_LADDERS 128
 #define SCAN_TASK_AUTO 8160
+#define SCAN_FRAME_OPERATIONS 96
+#define SCAN_SENSE_REACH 3.0
+#define SCAN_SECTOR_ALIGNMENT 0.93
 
 enum _:ScanSeed { Float:SEED_FEET[3], SEED_FLAGS, bool:SEED_USED }
 enum _:ScanLadder { LADDER_ENTITY, Float:LADDER_MINS[3], Float:LADDER_MAXS[3] }
@@ -24,14 +27,20 @@ enum ScanProbe { PROBE_FLOOR, PROBE_HULL, PROBE_WALK, PROBE_ARC, PROBE_RUNUP }
 enum _:ScanProfile { Float:SCAN_CFG_SPACING, Float:SCAN_CFG_SPEED, Float:SCAN_CFG_GRAVITY, Float:SCAN_CFG_DROP, SCAN_CFG_SURVEY }
 
 new gBot, gBotUserid, gFrame, gTouch, gTrace, gActiveCvar, gStartForward, gFinishForward, gEdgeForward
+new gBeamSprite, gBeamTrace, gBeamEnabled, Float:gNextBeam
 new HookChain:gHooks[6], bool:gActive, bool:gFinishing, bool:gFinishingMap, bool:gDriving, bool:gWatch[33]
 new AnpcScanStatus:gStage = ANPC_SCAN_OFF, AnpcScanStatus:gResumeStage
 new ScanPurpose:gPurpose, ScanMotion:gMotion, ScanProbe:gProbe
 new gMask[ANPC_MAX_NODES], gVisits[ANPC_MAX_NODES], gUnreachable[ANPC_MAX_NODES]
+new gExploreParent[ANPC_MAX_NODES], bool:gParentClosed[ANPC_MAX_NODES], bool:gSeedRejected[ANPC_MAX_NODES]
 new Float:gKnown[ANPC_MAX_NODES][3], gKnownFlags[ANPC_MAX_NODES], gKnownCount
 new gSeeds[SCAN_MAX_SEEDS][ScanSeed], gSeedCount, gSeedCursor, gSeedEpisodes
 new gLadder[SCAN_MAX_LADDERS][ScanLadder], gLadderCount
-new gCurrent = -1, gSource = -1, gGoalNode = -1, gDirection, gRangeIndex, gReverseNode = -1
+new gCurrent = -1, gSource = -1, gGoalNode = -1, gDirection, gRangeIndex, gHeading = -1, gSeedAnchor = -1
+new gSenseNode = -1, gSenseEpoch, gSenseCursor, gSenseTarget[8]
+new Float:gSenseDistance[8], Float:gSenseScore[8], Float:gFrontierRange
+new Float:gSenseVector[8][2], Float:gFrontierVector[2]
+new gSweeps, gKnownSkips, gReturnTrials, gLongTrials, Float:gExploreDistance, Float:gTravelDistance
 new gRoute, gRouteGoal = -1, gRouteCursor, gSelectCursor, gSelectBest = -1, Float:gSelectScore
 new gGraphEpoch, gLinks, gWalks, gJumps, gDrops, gClimbs, gFailures, gHazards, gWarps, gUnsupported, gCapacitySkips
 new gTraces, gTraceLimit, gAuto, gSurveyEnabled, gRestart, gSaveRecords
@@ -63,8 +72,14 @@ new const Float:SCAN_DIR[8][2] =
 new const Float:SCAN_RANGE[4] = {1.0, 0.5, 1.75, 2.5}
 
 #include "advanced_npc/mapper_world"
+#include "advanced_npc/mapper_exploration"
 #include "advanced_npc/mapper_motion"
 #include "advanced_npc/mapper_storage"
+
+public plugin_precache()
+{
+	gBeamSprite = precache_model("sprites/laserbeam.spr")
+}
 
 public plugin_natives()
 {
@@ -83,6 +98,7 @@ public plugin_init()
 	if (!is_rehlds() || !is_regamedll()) set_fail_state("Automatic mapper requires ReHLDS and ReGameDLL CS")
 	register_concmd("anpc_scan", "command_scan", ADMIN_RCON, "start [new] | stop | pause | resume | save | status | seed [x y z] | watch 0|1")
 	bind_pcvar_num(create_cvar("anpc_scan_auto", "0", FCVAR_NONE, "Automatically map when no navigation exists", true, 0.0, true, 1.0), gAuto)
+	bind_pcvar_num(create_cvar("anpc_scan_beam", "1", FCVAR_NONE, "Show the scout viewing direction while mapping", true, 0.0, true, 1.0), gBeamEnabled)
 	bind_pcvar_num(create_cvar("anpc_scan_traces", "24", FCVAR_NONE, "Maximum mapper hull/line traces per frame (engine player physics excluded)", true, 16.0, true, 64.0), gTraceLimit)
 	bind_pcvar_num(create_cvar("anpc_scan_survey", "1", FCVAR_NONE, "Survey BSP bounds for additional exploration seeds", true, 0.0, true, 1.0), gConfig[SCAN_CFG_SURVEY])
 	bind_pcvar_num(create_cvar("anpc_scan_restart", "0", FCVAR_NONE, "Optional round restart when mapping ends", true, 0.0, true, 1.0), gRestart)
@@ -110,6 +126,7 @@ public plugin_init()
 	gFinishForward = CreateMultiForward("anpc_scan_finished", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL, FP_CELL)
 	gEdgeForward = CreateMultiForward("anpc_scan_edge_verified", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	gTrace = create_tr2()
+	gBeamTrace = create_tr2()
 	rh_get_mapname(gMap, charsmax(gMap), MNT_TRUE)
 	new directory[192], bsp[128]
 	get_configsdir(directory, charsmax(directory))
@@ -135,7 +152,8 @@ public plugin_end()
 	if (gSaveFile) { fclose(gSaveFile); gSaveFile = 0; }
 	// An interrupted temporary file is never committed over a good checkpoint.
 	if (gActive) scan_finish(false, "map shutdown")
-	free_tr2(gTrace)
+	if (gTrace) free_tr2(gTrace)
+	if (gBeamTrace) free_tr2(gBeamTrace)
 	DestroyForward(gStartForward)
 	DestroyForward(gFinishForward)
 	DestroyForward(gEdgeForward)
@@ -222,10 +240,16 @@ stock bool:scan_start(const bool:reset)
 	arrayset(gMask, 0, sizeof gMask)
 	arrayset(gVisits, 0, sizeof gVisits)
 	arrayset(gUnreachable, 0, sizeof gUnreachable)
+	arrayset(gExploreParent, -1, sizeof gExploreParent)
+	arrayset(gParentClosed, false, sizeof gParentClosed)
+	arrayset(gSeedRejected, false, sizeof gSeedRejected)
 	gKnownCount = gLinks = gWalks = gJumps = gDrops = gClimbs = gFailures = 0
 	gHazards = gWarps = gUnsupported = gCapacitySkips = gSeedEpisodes = 0
 	gSeedCount = gSeedCursor = gSurveyCursor = 0
-	gCurrent = gSource = gGoalNode = gRouteGoal = gReverseNode = -1
+	gCurrent = gSource = gGoalNode = gRouteGoal = gHeading = gSeedAnchor = -1
+	gSenseNode = -1
+	gSweeps = gKnownSkips = gReturnTrials = gLongTrials = 0
+	gExploreDistance = gTravelDistance = 0.0
 	gGraphEpoch = 1
 	gSelectCursor = -1
 	gSpacing = gConfig[SCAN_CFG_SPACING]
@@ -240,6 +264,7 @@ stock bool:scan_start(const bool:reset)
 	gStarted = get_gametime()
 	gCheckpointTime = gStarted+gCheckpointInterval
 	gNextDrive = gLastDrive = gStarted
+	gNextBeam = 0.0
 	gMemoryLoaded = false
 	scan_init_survey()
 	scan_collect_seeds()
@@ -313,9 +338,10 @@ public mapper_frame()
 		scan_drive(now, msec)
 		if (!gActive) return FMRES_IGNORED
 	}
+	scan_show_look(now)
 	if (gStage == ANPC_SCAN_PAUSED) return FMRES_IGNORED
 	if (gStage == ANPC_SCAN_SAVE) { scan_save_step(); return FMRES_IGNORED; }
-	for (new operation = 0; operation < 32 && scan_work_available(); operation++)
+	for (new operation = 0; operation < SCAN_FRAME_OPERATIONS && scan_work_available(); operation++)
 	{
 		switch (gStage)
 		{
@@ -326,25 +352,57 @@ public mapper_frame()
 			default: break
 		}
 		if (!gActive || gStage == ANPC_SCAN_MOVE || gStage == ANPC_SCAN_SAVE) break
+		if (gStage == ANPC_SCAN_SEED && gSeedSettling) break
 	}
-	if (gActive && gStage == ANPC_SCAN_SELECT && scan_work_available()) scan_survey_step()
+	// Discover disconnected regions while the scout moves, using only spare budget.
+	if (gActive && (gStage == ANPC_SCAN_SELECT || gStage == ANPC_SCAN_MOVE || gStage == ANPC_SCAN_ROUTE))
+		for (new cell = 0; cell < 8 && !gSurveyDone && scan_work_available(); cell++) scan_survey_step()
 	if (gActive && (gSaveRequested || now >= gCheckpointTime) && gStage != ANPC_SCAN_MOVE && gStage != ANPC_SCAN_SAVE && gLoadPhase == 2) scan_begin_save(gStopAfterSave)
 	return FMRES_IGNORED
 }
 
 stock bool:scan_work_available()
 {
-	return gTraces < gTraceLimit && (Float:engfunc(EngFunc_Time)-gFrameStart)*1000.0 < gBudgetMs
+	return gTraces <= gTraceLimit-4 && (Float:engfunc(EngFunc_Time)-gFrameStart)*1000.0 < gBudgetMs
+}
+
+stock scan_show_look(const Float:now)
+{
+	if (!gBeamEnabled || !gBeamSprite || !gBeamTrace || now < gNextBeam || !scan_work_available()) return
+	gNextBeam = now+0.1
+	new Float:start[3], Float:end[3], Float:view[3], Float:angles[3], Float:direction[3]
+	get_entvar(gBot, var_origin, start)
+	get_entvar(gBot, var_view_ofs, view)
+	get_entvar(gBot, var_v_angle, angles)
+	angle_vector(angles, ANGLEVECTOR_FORWARD, direction)
+	for (new axis = 0; axis < 3; axis++)
+	{
+		start[axis] += view[axis]
+		end[axis] = start[axis]+direction[axis]*1024.0
+	}
+	// This visual has its own trace handle and does not change planner readings.
+	gTraces++
+	engfunc(EngFunc_TraceLine, start, end, 0, gBot, gBeamTrace)
+	get_tr2(gBeamTrace, TR_vecEndPos, end)
+	engfunc(EngFunc_MessageBegin, MSG_PVS, SVC_TEMPENTITY, start, 0)
+	write_byte(TE_BEAMPOINTS)
+	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, start[axis])
+	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, end[axis])
+	write_short(gBeamSprite)
+	write_byte(0); write_byte(0); write_byte(2); write_byte(8); write_byte(0)
+	write_byte(40); write_byte(255); write_byte(80); write_byte(220); write_byte(0)
+	message_end()
 }
 
 stock scan_status(const id)
 {
 	new pending
-	for (new node = 0; node < gKnownCount; node++) if (gMask[node] != SCAN_DONE && !(gKnownFlags[node] & ANPC_NODE_DISABLED)) pending++
+	for (new node = 0; node < gKnownCount; node++) if (scan_frontier_weight(node)) pending++
 	console_print(id, "[ANPC] Mapper active=%d stage=%d bot=%d nodes=%d/%d links=%d pending=%d", gActive, gStage, gBot, gKnownCount, ANPC_MAX_NODES, gLinks, pending)
 	console_print(id, "[ANPC] Verified walk=%d jump=%d drop=%d ladder=%d | failures=%d hazards=%d warps=%d unsupported=%d link-limit=%d", gWalks,gJumps,gDrops,gClimbs,gFailures,gHazards,gWarps,gUnsupported,gCapacitySkips)
 	console_print(id, "[ANPC] Seeds %d/%d episodes=%d | survey %d/%d | elapsed %.1f min | last checkpoint saved=%d", gSeedCursor,gSeedCount,gSeedEpisodes,gSurveyCursor,gSurveyTotal,(get_gametime()-gStarted)/60.0,gSaved)
 	console_print(id, "[ANPC] Resumed memory=%d | trace/frame limit=%d | cooperative budget=%.2f ms",gMemoryLoaded,gTraceLimit,gBudgetMs)
+	console_print(id, "[ANPC] Sweeps=%d known-direction skips=%d long walks=%d deferred returns=%d | distance: explore=%.0f travel/return=%.0f",gSweeps,gKnownSkips,gLongTrials,gReturnTrials,gExploreDistance,gTravelDistance)
 	if (scan_bot_valid())
 	{
 		new Float:feet[3]

@@ -51,4 +51,4 @@ O próprio plugin grava `maps/<mapa>.nav`, `maps/<mapa>.scan` e `maps/<mapa>.sca
 
 Veja [o funcionamento e os limites do explorador](docs/AUTOMAPPER.md), [o editor de navegação](docs/NAVIGATION.md), [a API](docs/API.md) e [os cenários para teste manual](docs/TESTING.md).
 
-Os seis plugins foram compilados com AMXX 1.10.0.5467, sem erros nem avisos. A validação em jogo do scanner fica a cargo do usuário nesta entrega.
+As revisões anteriores dos seis plugins foram compiladas com AMXX 1.10.0.5467, sem erros nem avisos. A revisão de exploração contínua do mapper, com sensores de alcance e retorno adiado, ainda precisa de compilação manual e validação em jogo com as includes atualizadas. Consulte os cenários em `docs/TESTING.md`.

@@ -16,13 +16,25 @@ A compilação foi executada por solicitação explícita do usuário. Os seis b
 
 ## Scanner: validação manual
 
+A revisão de exploração contínua altera o mapper e as quatro includes internas, incluindo a nova `mapper_exploration.inc`. Essa revisão não foi compilada nem executada no HLDS; as compilações acima pertencem às revisões anteriores. Recompile o mapper manualmente com as includes atualizadas antes destes testes. O formato da memória agora é `ANPC_SCAN 2`; memórias anteriores são descartadas, preservando o `.nav`.
+
+A conferência estática desta revisão passou para as cinco fontes Pawn: delimitadores, funções e variáveis referenciadas, natives próprios, 45 chamadas com formatos/argumentos, sete campos do registro de nó `ANPC_SCAN 2` e protocolo do beam com trace separado. A propriedade angular do ajuste de parede foi conferida em 288.008 combinações de setor/ângulo. Esses checks não executam a máquina de estados nem a física do HLDS e não substituem a compilação e os testes abaixo.
+
 Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os seis plugins na ordem do manifesto e use `anpc_scan start new`. Observe a posição e os contadores com `anpc_scan status`; pelo cliente de um administrador, use `anpc_scan watch 1` e `anpc_nav_show 1`.
 
 | Cenário | Resultado esperado |
 | --- | --- |
 | Iniciar sem navegação/YaPB | Um fake client explora e acrescenta nós/conexões por deslocamentos reais |
 | Primeiros comandos e `PreThink` do scout | Sessão permanece ativa após começar a assentar a primeira semente; `iuser4` mantém o estado original de veículos, sem invalidar a identidade |
-| Regiões e ramificações abertas | Direções analisadas, retornos tentados e deslocamento A* para outras fronteiras |
+| `anpc_scan_beam 1`, em pé/agachado/escada e `watch` | Laser verde parte dos olhos, acompanha yaw/pitch reais e termina em obstáculo; leituras do planejamento permanecem independentes |
+| `anpc_scan_beam 0` ou encerrar o scan | Sem novos beams; último efeito expira em 0,2 segundo |
+| Corredor aberto longo | Percursos de até três espaçamentos, nós intermediários e continuidade; nenhuma volta automática após cada segmento |
+| Regiões e ramificações abertas | Prioridade por espaço desconhecido; retorno ao antecessor após explorar a fronteira local; A* para regiões com trabalho pendente |
+| Corredor inclinado com parede alta | Direção adaptada à tangente quando cabe no setor; nenhum avanço que atravesse a parede |
+| Saída com conexão já comprovada | Incremento de `known-direction skips`; nenhuma nova tentativa da mesma conexão |
+| Antecessor com conexão inversa existente | Retorno marcado como resolvido; deslocamento ao antecessor só quando o planejamento precisar dele |
+| Queda cuja volta não funciona | Volta rejeitada uma vez, preservando apenas as ligações fisicamente verificadas |
+| Sétima saída com volta pendente | Última vaga reservada à tentativa de retorno, respeitando oito saídas por nó |
 | Parede ou quina | Ausência de conexões que cortem sólidos |
 | Piso descontínuo/buraco | Não gerar ligação de caminhada só porque o hull horizontal passa |
 | Passagem baixa | Agachar; altura dos pés preservada; flags coerentes |
@@ -37,16 +49,21 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Área separada descoberta pela amostragem | Novo episódio, sem aresta entre a posição antiga e a relocação |
 | Editar/criar NPC durante scan | Mutação/criação bloqueada; desenho do grafo permanece disponível |
 | Pausar e retomar durante uma tentativa | Retoma de uma âncora; direção interrompida disponível para reanálise |
+| Pausar/salvar durante o retorno adiado | Antecessor e direção permanecem pendentes; retomada não os trata como comprovados |
+| Fila de sementes cheia ou semente inicial já usada | Âncoras pendentes do grafo iniciam episódios diretamente, sem exigir outra entrada na fila |
 | Salvar e continuar | `.nav`, `.scan` e relatório confirmados; análise retomada |
 | Encerrar com `stop` | `active=1` durante gravação; depois bot removido e edição liberada |
 | Scout removido ou identidade inválida | Sessão encerrada com `reason`/etapa no log; vaga reutilizada por outro jogador/bot não é removida |
 | Reiniciar o scan com os mesmos arquivos/parâmetros | Memória correspondente reutilizada |
 | `.scan` truncado, NAV alterado ou outro perfil | Memória descartada; grafo preservado e exploração refeita |
+| Antecessor negativo inválido, igual/maior que o filho ou estado não booleano | Memória rejeitada antes de aceitar a árvore de descoberta |
 | Desligar no meio de um `.tmp` | Último checkpoint confirmado preservado |
 | Alterar física global durante a sessão | Salva os segmentos provados e encerra |
 | Atingir 4.096 nós ou oito saídas | Sem escrita fora dos arrays; limites informados e grafo parcial salvo |
 
 Confira também `addons/amxmodx/logs/` e o `<mapa>.scan.txt`. Teste um NPC consumindo o `.nav` gerado: física de fake client e física do perfil de NPC precisam funcionar no mapa real. Os contadores mostram atividades/tentativas, sem certificar cobertura integral do BSP.
+
+Para comparar a exploração, use o mesmo BSP, parâmetros, posição inicial e orçamento de CPU. Observe tempo até esgotar candidatos, nós/conexões, regiões cobertas e as distâncias `explore` e `travel/return`. Um tempo menor com áreas ausentes não representa melhora de cobertura. A medição de ganho e a validação dos saltos/escadas continuam dependendo do servidor real.
 
 Para repetir os testes do importador, a partir da raiz do projeto:
 

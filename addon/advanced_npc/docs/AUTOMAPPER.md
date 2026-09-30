@@ -4,9 +4,13 @@
 
 ## Como ele explora
 
-O scanner começa nos spawns de CT/TR e nas posições de jogadores presentes. Mantém uma memória de direções tentadas e de visitas em cada nó, examina oito direções horizontais e duas direções de escada e alterna o comprimento das tentativas perto de obstáculos. Usa o índice espacial do provedor para reutilizar pontos, evitando uma comparação com todos os nós em cada passo.
+O scanner começa nos spawns de CT/TR e nas posições de jogadores presentes. Faz uma varredura incremental de oito setores horizontais, com alcance de até três vezes o espaçamento. As leituras de hull identificam espaço livre e obstáculos antes da caminhada. A escolha favorece espaço ainda sem pontos, continuidade da direção e menor repetição de visitas. Em corredores inclinados, pode ajustar a direção para a tangente de uma parede estática alta, mantendo o ajuste dentro do setor original. Obstáculos baixos continuam disponíveis para os testes de salto.
 
-Quando a região local já foi analisada, procura outra fronteira no grafo e usa A* para chegar até ela. Buscas impossíveis são lembradas até uma alteração relevante na topologia. A amostragem incremental dos limites do BSP procura outros pisos e acrescenta pontos iniciais para regiões separadas.
+Trechos livres recebem alvos mais distantes, com nós intermediários durante a travessia; o bot deixa de voltar automaticamente após cada avanço. Cada nó novo guarda seu antecessor de descoberta. A verificação física da volta fica para o fim da exploração local, reservando uma saída para esse retorno. Uma conexão inversa já comprovada dispensa a tentativa e pode ser usada pelo A*. Retornos impossíveis são encerrados sem inventar conexões. As direções de ligações percorridas também ficam registradas, evitando testar novamente a mesma saída.
+
+As leituras de alcance orientam o planejamento, sem certificar piso, salto ou passagem. O bot mantém testes de caminhada, agachamento, salto, queda e duas direções de escada. Alvos conhecidos são reutilizados quando estão no setor e têm acesso por hull; a conexão só entra no grafo depois da travessia. O índice espacial do provedor evita comparar cada amostra com todos os nós.
+
+Quando a região local já foi analisada, procura outra fronteira considerando distância, quantidade de direções pendentes e visitas, e usa A* para chegar até ela. Buscas impossíveis são lembradas até uma alteração relevante na topologia. A amostragem incremental dos limites do BSP procura outros pisos também enquanto o bot caminha, usando o orçamento restante do frame, e acrescenta pontos iniciais para regiões separadas. Âncoras do grafo sem rota podem iniciar episódios diretamente, sem duplicar nem consumir a fila de 512 sementes; âncoras que não conseguem assentar um jogador são registradas como rejeitadas.
 
 Mudanças de episódio e recuperação podem reposicionar o explorador em uma âncora validada. **Esse reposicionamento não grava uma conexão.** Regiões separadas continuam separadas no `.nav` até existir uma travessia física verificada.
 
@@ -30,7 +34,7 @@ Todos exigem `ADMIN_RCON`; o console do servidor também pode executá-los. `wat
 | --- | --- |
 | `anpc_scan start new` | Novo grafo em memória; ignora a memória de exploração anterior |
 | `anpc_scan start` | Continua o grafo atual e usa memória correspondente, se existir |
-| `anpc_scan status` | Estado, posição do bot, nós, conexões, movimentos verificados, rejeições e orçamento |
+| `anpc_scan status` | Estado, posição, nós, conexões, movimentos, rejeições, orçamento e contadores de exploração/deslocamento |
 | `anpc_scan pause` | Suspende exploração, mantendo o bot e a edição exclusiva |
 | `anpc_scan resume` | Retoma de uma âncora verificada; a tentativa interrompida pode ser refeita |
 | `anpc_scan save` | Checkpoint incremental, seguido de continuação; mantém a pausa se já estava pausado |
@@ -43,6 +47,8 @@ Os estados numéricos são `0` desligado, `1` preparando episódio, `2` escolhen
 
 Use `anpc_nav_show 1` para desenhar os pontos próximos. A edição manual e a criação de NPCs ficam bloqueadas enquanto o scanner mantém a edição exclusiva. O gravador manual ativo é encerrado ao começar a análise.
 
+Com `anpc_scan_beam 1` (padrão), um laser verde sai dos olhos do fake client e acompanha seu ângulo real de visão, incluindo a inclinação nas escadas. A linha termina no primeiro sólido/jogador encontrado ou em 1.024 unidades. É visível para clientes próximos, inclusive usando `watch`, e usa um trace próprio, até dez atualizações por segundo sob o orçamento do mapper. `anpc_scan_beam 0` desliga o efeito. O laser representa o olhar do bot, não todas as direções da varredura geométrica.
+
 O scout é identificado pela vaga e pelo `userid` da conexão, com confirmação de private data e estado de bot. O mapper preserva os campos `iuser*` usados pela física/GameDLL. Toda linha `Mapper ended` informa `reason` e a etapa em que a sessão terminou. Quando a identidade deixa de ser válida, o log também mostra a vaga, os userids esperado/atual, conexão, flag de fake client e private data antes de liberar a sessão.
 
 ## Checkpoints
@@ -52,12 +58,14 @@ Os arquivos ficam em `addons/amxmodx/configs/advanced_npc/maps/`:
 | Arquivo | Conteúdo |
 | --- | --- |
 | `<mapa>.nav` | Grafo no formato atual `ANPC_NAV 1`, pronto para o provedor |
-| `<mapa>.scan` | Direções/visitas, fila de pontos iniciais e progresso da amostragem |
+| `<mapa>.scan` | Memória `ANPC_SCAN 2`: direções/visitas, antecessores, retornos pendentes, âncoras rejeitadas, sementes e amostragem |
 | `<mapa>.scan.txt` | Contadores, perfil físico, limites atingidos e movimentos não representados |
 | `*.bak` | Versão anterior do respectivo arquivo |
 | `*.tmp` | Gravação em andamento; um arquivo incompleto nunca é promovido |
 
 A escrita congela a exploração e distribui registros por frames. O commit de cada arquivo usa renomeação com backup. A memória inclui MD5 do BSP, do `.nav` e dos parâmetros físicos. Se houver interrupção entre os commits, a memória que não corresponde ao novo `.nav` é descartada; o grafo permanece utilizável e as direções são examinadas novamente.
+
+O formato de memória atual é `ANPC_SCAN 2`. Memórias em outro formato são descartadas, sem converter registros antigos; o `.nav` continua no formato `ANPC_NAV 1` e permanece utilizável. Os antecessores têm IDs menores que seus filhos, impedindo ciclos na árvore de descoberta. Retornos interrompidos por pausa/checkpoint continuam pendentes.
 
 Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção interrompida à análise. Um desligamento inesperado preserva o último checkpoint já confirmado. O comando `stop` termina a gravação antes de remover o bot; evite desligar o mapa enquanto `active=1`.
 
@@ -66,6 +74,7 @@ Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção int
 | Cvar | Padrão | Efeito |
 | --- | --- | --- |
 | `anpc_scan_auto` | `0` | Inicia automaticamente apenas se não houver grafo |
+| `anpc_scan_beam` | `1` | Mostra o laser de direção do olhar durante a sessão; 0/1 |
 | `anpc_scan_spacing` | `96` | Espaçamento de exploração; 48 a 160 |
 | `anpc_scan_speed` | `300` | Limite de velocidade do explorador; 100 a 320 |
 | `anpc_scan_gravity` | `0.7` | Multiplicador de gravidade; 0,3 a 1,5 |
@@ -80,9 +89,11 @@ Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção int
 
 Espaçamento, velocidade, gravidade e limite de queda são capturados no início da sessão. Alterá-los na configuração afeta a próxima sessão. Mudanças relevantes na física global durante o scan fazem o plugin salvar os segmentos já provados e encerrar, para evitar misturar condições de teste.
 
-O movimento recebe serviço a aproximadamente 50 Hz, com um comando de até 50 ms por execução. Trabalho geométrico, seleção e escrita respeitam limites por frame. O A* conserva seu orçamento próprio de `anpc_nav_expansions`. As chamadas internas da física do motor não entram no contador de traces do mapper.
+O movimento recebe serviço a aproximadamente 50 Hz, com um comando de até 50 ms por execução. Trabalho geométrico, seleção e escrita respeitam limites por frame. O ciclo aceita até 96 etapas leves por frame, sempre sob o orçamento cooperativo; a amostragem em segundo plano aceita até oito células por frame. A preparação de uma semente aguarda o próximo movimento em vez de repetir sua espera no mesmo frame. O A* conserva seu orçamento próprio de `anpc_nav_expansions`. As chamadas internas da física do motor não entram no contador de traces do mapper.
 
-O orçamento em milissegundos é cooperativo: uma chamada nativa, hashing de arquivo ou renomeação não pode ser interrompida no meio. Não representa uma medição ou garantia de FPS. O mapper usa aproximadamente 0,17 MiB de dados Pawn e 0,125 MiB reservados para heap/stack, além do provedor e da vaga do bot.
+O orçamento em milissegundos é cooperativo: uma chamada nativa, hashing de arquivo ou renomeação não pode ser interrompida no meio. Não representa uma medição ou garantia de FPS. A árvore de descoberta e os estados de retorno/rejeição acrescentam 48 KiB de arrays Pawn; permanecem 0,125 MiB reservados para heap/stack, além do provedor e da vaga do bot.
+
+O status e o relatório mostram `sweeps` (varreduras locais), `known-direction skips` (saídas já ligadas), `long walks` (tentativas terrestres acima de 1,5 vezes o espaçamento) e `deferred returns` (tentativas de volta adiadas). As distâncias separam exploração de deslocamento/retorno, em unidades do mapa; reposicionamentos não entram nessas distâncias. São contadores da sessão, não porcentagens de cobertura nem medição de ganho de velocidade.
 
 Os limites atuais são 4.096 nós, oito saídas direcionadas por nó, 512 pontos iniciais e 128 volumes de escada. Ao atingir a capacidade de nós, o plugin salva um grafo parcial e encerra. O relatório identifica tentativas rejeitadas e limites de fila/conexões.
 
