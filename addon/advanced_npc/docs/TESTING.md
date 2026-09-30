@@ -18,7 +18,7 @@ A compilação foi executada por solicitação explícita do usuário. Os seis b
 
 A revisão de exploração contínua altera o mapper e as quatro includes internas, incluindo a nova `mapper_exploration.inc`. Essa revisão não foi compilada nem executada no HLDS; as compilações acima pertencem às revisões anteriores. Recompile o mapper manualmente com as includes atualizadas antes destes testes. O formato da memória agora é `ANPC_SCAN 2`; memórias anteriores são descartadas, preservando o `.nav`.
 
-A conferência estática desta revisão passou para as cinco fontes Pawn: delimitadores, funções e variáveis referenciadas, natives próprios, 45 chamadas com formatos/argumentos, sete campos do registro de nó `ANPC_SCAN 2` e protocolo do beam com trace separado. A propriedade angular do ajuste de parede foi conferida em 288.008 combinações de setor/ângulo. Esses checks não executam a máquina de estados nem a física do HLDS e não substituem a compilação e os testes abaixo.
+A conferência estática desta revisão passou para as cinco fontes Pawn: delimitadores, funções e variáveis referenciadas, natives próprios, 46 chamadas com formatos/argumentos, sete campos do registro de nó `ANPC_SCAN 2` e protocolo do beam com trace separado. A propriedade angular do ajuste de parede foi conferida em 288.008 combinações de setor/ângulo. Esses checks não executam a máquina de estados nem a física do HLDS e não substituem a compilação e os testes abaixo. A correção de rotação do corpo e da câmera `watch` também aguarda compilação e validação no servidor.
 
 Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os seis plugins na ordem do manifesto e use `anpc_scan start new`. Observe a posição e os contadores com `anpc_scan status`; pelo cliente de um administrador, use `anpc_scan watch 1` e `anpc_nav_show 1`.
 
@@ -26,6 +26,10 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | --- | --- |
 | Iniciar sem navegação/YaPB | Um fake client explora e acrescenta nós/conexões por deslocamentos reais |
 | Primeiros comandos e `PreThink` do scout | Sessão permanece ativa após começar a assentar a primeira semente; `iuser4` mantém o estado original de veículos, sem invalidar a identidade |
+| Scout muda de direção após nascer | Corpo gira com a direção do movimento, sem permanecer no ângulo do spawn; laser acompanha o olhar |
+| `watch 1` em curvas, agachamento e escadas | Câmera acompanha os olhos e yaw/pitch completos, sem a cabeça do scout cobrir a visão |
+| Dois administradores usam `watch`; um desliga ou desconecta | O outro continua acompanhando o scout; câmera compartilhada preservada |
+| Último `watch 0`, desconexão ou encerramento do scan | Câmera e hook liberados; clientes conectados que encerram a observação recuperam a própria visão |
 | `anpc_scan_beam 1`, em pé/agachado/escada e `watch` | Laser verde parte dos olhos, acompanha yaw/pitch reais e termina em obstáculo; leituras do planejamento permanecem independentes |
 | `anpc_scan_beam 0` ou encerrar o scan | Sem novos beams; último efeito expira em 0,2 segundo |
 | Corredor aberto longo | Percursos de até três espaçamentos, nós intermediários e continuidade; nenhuma volta automática após cada segmento |

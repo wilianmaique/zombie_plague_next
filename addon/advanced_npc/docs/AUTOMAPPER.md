@@ -18,6 +18,8 @@ Mudanças de episódio e recuperação podem reposicionar o explorador em uma â
 
 `EngFunc_RunPlayerMove` envia comandos de jogador ao motor. O plugin controla direção, velocidade solicitada e botões; colisão, gravidade, degraus, agachamento e contato com escadas são executados pela física do jogo. Não injeta velocidade para fazer um salto nem usa noclip para validar uma rota.
 
+Antes de cada comando, o mapper limpa a trava `fixangle` do fake client, que pode permanecer pendente após o nascimento por ele não receber pacotes de ângulo. Assim, o motor atualiza também a orientação do corpo conforme o olhar, usando a convenção de pitch do modelo de jogador.
+
 O planejamento testa hulls em pé/agachado, altura e inclinação do piso, espaço para corrida de preparação e arcos de salto em etapas. Em salto, o hook ReAPI `RG_PM_Jump` captura a posição de saída e a velocidade efetivamente produzida pela física. Depois da aterrissagem estável, o grafo recebe a ligação direcionada e essa velocidade. Saltos agachados são tentados para obter a folga adicional do hull de jogador.
 
 Quedas começam com caminhada até a borda real. A gravação só acontece após alcançar o piso seguinte, respeitando `anpc_scan_max_drop`. Dano de queda, `trigger_hurt`, `trigger_push`, teletransporte ou um deslocamento inesperado invalidam a tentativa. O bot protegido contra dano não transforma uma passagem perigosa em rota segura.
@@ -42,6 +44,8 @@ Todos exigem `ADMIN_RCON`; o console do servidor também pode executá-los. `wat
 | `anpc_scan seed` | Acrescenta os pés do administrador à fila de regiões a analisar |
 | `anpc_scan seed x y z` | Acrescenta coordenadas de pés, também pelo console/RCON; chão e hull serão validados |
 | `anpc_scan watch 1` / `watch 0` | Liga/desliga a câmera do explorador para esse administrador |
+
+O modo `watch` acompanha a posição dos olhos e os ângulos completos do scout, inclusive ao virar, agachar e subir/descer escadas. O corpo do scout fica oculto apenas para quem está usando essa câmera, para não cobrir a visão com a própria cabeça. `watch 0` ou o encerramento do scan devolvem a visão ao administrador; a câmera e seu hook de visibilidade são liberados quando o último observador sai. A câmera não acrescenta traces ao planejamento.
 
 Os estados numéricos são `0` desligado, `1` preparando episódio, `2` escolhendo fronteira, `3` aguardando/seguindo rota, `4` analisando geometria, `5` movendo, `6` pausado, `7` salvando e `8` candidatos esgotados.
 

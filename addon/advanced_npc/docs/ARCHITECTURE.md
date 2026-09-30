@@ -12,6 +12,8 @@ O grafo é carregado uma vez por mapa. Coordenadas de nós e spawns representam 
 
 Durante o scan, uma sessão de edição exclusiva bloqueia outros escritores e a criação de NPCs. Revisões e invalidações são publicadas no início/final da sessão, em vez de a cada ponto. Fronteiras, buscas A* e registros de checkpoint são processados por etapas. O forward de frame e os hooks de movimento/toque do explorador ficam ativos apenas durante a sessão. Consulte `AUTOMAPPER.md` para memória, prova de passagem e limites de custo.
 
+O comando `watch` usa uma única entidade de câmera invisível e não sólida, compartilhada entre os observadores, na posição dos olhos e com os ângulos completos do fake client. Um hook de `AddToFullPack` oculta o corpo do scout somente para esses clientes. A entidade e o hook existem apenas enquanto houver observadores; a direção do modelo de jogador continua sendo atualizada pela física, com `fixangle` liberado antes de `RunPlayerMove`.
+
 ## Percepção e escolha de alvo
 
 - Uma amostra de jogadores vivos é compartilhada durante 0,2 s, incluindo posição dos pés e velocidade.

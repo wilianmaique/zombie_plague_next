@@ -28,6 +28,7 @@ enum _:ScanProfile { Float:SCAN_CFG_SPACING, Float:SCAN_CFG_SPEED, Float:SCAN_CF
 
 new gBot, gBotUserid, gFrame, gTouch, gTrace, gActiveCvar, gStartForward, gFinishForward, gEdgeForward
 new gBeamSprite, gBeamTrace, gBeamEnabled, Float:gNextBeam
+new gWatchCamera, gWatchPack
 new HookChain:gHooks[6], bool:gActive, bool:gFinishing, bool:gFinishingMap, bool:gDriving, bool:gWatch[33]
 new AnpcScanStatus:gStage = ANPC_SCAN_OFF, AnpcScanStatus:gResumeStage
 new ScanPurpose:gPurpose, ScanMotion:gMotion, ScanProbe:gProbe
@@ -63,6 +64,7 @@ new bool:gCapacityHalt, bool:gSeedSettling, bool:gLaunchPending, bool:gSegmentDu
 new bool:gAbortRequested
 new Float:gServerGravity, Float:gTrialSpeed, Float:gSeedDeadline
 new gConfig[ScanProfile], gPhysicsCvar[7], gPhysicsDigest[33], Float:gJumpDuckLift
+new const SCAN_BEAM_MODEL[] = "sprites/laserbeam.spr"
 new const Float:SCAN_ZERO[3] = {0.0, 0.0, 0.0}
 new const Float:SCAN_DIR[8][2] =
 {
@@ -78,7 +80,7 @@ new const Float:SCAN_RANGE[4] = {1.0, 0.5, 1.75, 2.5}
 
 public plugin_precache()
 {
-	gBeamSprite = precache_model("sprites/laserbeam.spr")
+	gBeamSprite = precache_model(SCAN_BEAM_MODEL)
 }
 
 public plugin_natives()
@@ -162,6 +164,7 @@ public plugin_end()
 public client_disconnected(id, bool:drop, message[], maxlen)
 {
 	gWatch[id] = false
+	scan_release_camera()
 	if (id == gBot && !gFinishing)
 	{
 		gBot = gBotUserid = 0
@@ -217,8 +220,7 @@ public command_scan(const id, const level, const cid)
 	}
 	else if (equal(action, "watch") && id && is_user_connected(id))
 	{
-		gWatch[id] = bool:str_to_num(option) && scan_bot_valid()
-		engfunc(EngFunc_SetView, id, gWatch[id] ? gBot : id)
+		if (!scan_set_watch(id, bool:str_to_num(option))) console_print(id, "[ANPC] Scout camera unavailable.")
 	}
 	else scan_status(id)
 	return PLUGIN_HANDLED
@@ -306,9 +308,10 @@ stock scan_finish(const bool:saved, const reason[])
 	if (gLoadFile) { fclose(gLoadFile); gLoadFile = 0; }
 	for (new id = 1; id <= MaxClients; id++)
 	{
-		if (gWatch[id] && is_user_connected(id)) engfunc(EngFunc_SetView, id, id)
+		if (gWatch[id] && is_user_connected(id)) engset_view(id, id)
 		gWatch[id] = false
 	}
+	scan_release_camera()
 	scan_remove_bot()
 	if (gRoute) { anpc_nav_close(gRoute); gRoute = 0; }
 	anpc_nav_end_edit()
@@ -338,6 +341,7 @@ public mapper_frame()
 		scan_drive(now, msec)
 		if (!gActive) return FMRES_IGNORED
 	}
+	scan_update_camera()
 	scan_show_look(now)
 	if (gStage == ANPC_SCAN_PAUSED) return FMRES_IGNORED
 	if (gStage == ANPC_SCAN_SAVE) { scan_save_step(); return FMRES_IGNORED; }
@@ -364,6 +368,66 @@ public mapper_frame()
 stock bool:scan_work_available()
 {
 	return gTraces <= gTraceLimit-4 && (Float:engfunc(EngFunc_Time)-gFrameStart)*1000.0 < gBudgetMs
+}
+
+stock bool:scan_set_watch(const id, const bool:enabled)
+{
+	if (!enabled)
+	{
+		if (gWatch[id]) engset_view(id, id)
+		gWatch[id] = false
+		scan_release_camera()
+		return true
+	}
+	if (!scan_bot_valid()) return false
+	if (!gWatchCamera)
+	{
+		gWatchCamera = rg_create_entity("info_target", false)
+		if (!is_entity(gWatchCamera)) { gWatchCamera = 0; return false; }
+		set_entvar(gWatchCamera, var_classname, "anpc_scan_camera")
+		engfunc(EngFunc_SetModel, gWatchCamera, SCAN_BEAM_MODEL)
+		engfunc(EngFunc_SetSize, gWatchCamera, SCAN_ZERO, SCAN_ZERO)
+		set_entvar(gWatchCamera, var_movetype, MOVETYPE_NONE)
+		set_entvar(gWatchCamera, var_solid, SOLID_NOT)
+		// Keep a networked model for SetView, without rendering the camera itself.
+		set_entvar(gWatchCamera, var_rendermode, kRenderTransTexture)
+		set_entvar(gWatchCamera, var_renderamt, 0.0)
+	}
+	if (!is_entity(gWatchCamera)) return false
+	if (!gWatchPack) gWatchPack = register_forward(FM_AddToFullPack, "scan_watch_pack_post", true)
+	scan_update_camera()
+	gWatch[id] = true
+	engset_view(id, gWatchCamera)
+	return true
+}
+
+stock scan_update_camera()
+{
+	if (!gWatchCamera || !is_entity(gWatchCamera)) return
+	new Float:origin[3], Float:view[3], Float:angles[3]
+	get_entvar(gBot, var_origin, origin)
+	get_entvar(gBot, var_view_ofs, view)
+	get_entvar(gBot, var_v_angle, angles)
+	for (new axis = 0; axis < 3; axis++) origin[axis] += view[axis]
+	engfunc(EngFunc_SetOrigin, gWatchCamera, origin)
+	// A non-player view entity uses these full camera angles, not model pitch.
+	set_entvar(gWatchCamera, var_angles, angles)
+}
+
+public scan_watch_pack_post(const handle, const index, const entity, const host, const host_flags, const player, const visibility_set)
+{
+	// The scout's head must not cover the view from inside its eyes.
+	if (player && entity == gBot && gWatch[host] && get_orig_retval())
+		set_es(handle, ES_Effects, get_es(handle, ES_Effects) | EF_NODRAW)
+	return FMRES_IGNORED
+}
+
+stock scan_release_camera()
+{
+	for (new id = 1; id <= MaxClients; id++) if (gWatch[id]) return
+	if (gWatchPack) { unregister_forward(FM_AddToFullPack, gWatchPack, true); gWatchPack = 0; }
+	if (gWatchCamera && is_entity(gWatchCamera)) rg_remove_entity(gWatchCamera)
+	gWatchCamera = 0
 }
 
 stock scan_show_look(const Float:now)
