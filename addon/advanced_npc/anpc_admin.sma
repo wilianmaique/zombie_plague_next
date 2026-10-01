@@ -10,6 +10,13 @@
 
 #define TASK_SHOW 7800
 #define TASK_RECORD 7900
+#define NAV_SHOW_NODES 32
+#define NAV_SHOW_LINKS 32
+#define NAV_SHOW_RANGE 5000.0
+#define NAV_SHOW_CONE_COS 0.5
+#define NAV_SHOW_BEAM_WIDTH 10
+#define NAV_SHOW_NODE_HEIGHT 20.0
+#define NAV_SHOW_LIFT 2.0
 
 new gTrace, gBeamSprite, gAutoSpawn, gRecorder, gRecordedNode = -1
 new gMap[64], gBspSize, gSpawnPath[256], gBspHash[33]
@@ -33,7 +40,7 @@ public plugin_init()
 	register_concmd("anpc_nav_flags", "command_nav_flags", ADMIN_RCON, "node flags - 1 crouch, 2 ladder, 4 disabled")
 	register_concmd("anpc_nav_save", "command_nav_save", ADMIN_RCON, "Save the current map's graph")
 	register_concmd("anpc_nav_reload", "command_nav_reload", ADMIN_RCON, "Reload the current map's graph")
-	register_concmd("anpc_nav_show", "command_nav_show", ADMIN_RCON, "0|1 - show nearby nodes/links to this admin")
+	register_concmd("anpc_nav_show", "command_nav_show", ADMIN_RCON, "0|1 - show nodes/links ahead of your camera, including spectators")
 	register_concmd("anpc_nav_record", "command_nav_record", ADMIN_RCON, "0|1 - record verified walking connections")
 	register_concmd("anpc_spawns_save", "command_spawns_save", ADMIN_RCON, "Save live NPC positions as this map's spawn points")
 	register_concmd("anpc_spawns_load", "command_spawns_load", ADMIN_RCON, "Spawn saved points; requires no existing NPCs")
@@ -306,7 +313,7 @@ public command_nav_show(const id, const level, const cid)
 	read_argv(1, value, charsmax(value))
 	gShow[id] = bool:str_to_num(value)
 	remove_task(TASK_SHOW+id)
-	if (gShow[id]) set_task_ex(0.5, "show_nodes", TASK_SHOW+id, .flags = SetTask_Repeat)
+	if (gShow[id]) set_task_ex(0.2, "show_nodes", TASK_SHOW+id, .flags = SetTask_Repeat)
 	return PLUGIN_HANDLED
 }
 
@@ -317,37 +324,109 @@ stock admin_beam(const id, const Float:from[3], const Float:to[3], const red, co
 	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, from[axis])
 	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, to[axis])
 	write_short(gBeamSprite)
-	write_byte(0); write_byte(0); write_byte(6); write_byte(3); write_byte(0)
+	write_byte(0); write_byte(0); write_byte(6); write_byte(NAV_SHOW_BEAM_WIDTH); write_byte(0)
 	write_byte(red); write_byte(green); write_byte(40); write_byte(170); write_byte(0)
 	message_end()
+}
+
+stock admin_nav_view(const id, Float:eye[3], Float:direction[3])
+{
+	new Float:angles[3], Float:offset[3], source = id, view_entity = get_viewent(id)
+	if (view_entity > MaxClients && is_entity(view_entity))
+	{
+		// SetView cameras use their own origin/angles, not the player's aim.
+		get_entvar(view_entity, var_origin, eye)
+		get_entvar(view_entity, var_angles, angles)
+		angle_vector(angles, ANGLEVECTOR_FORWARD, direction)
+		return
+	}
+	new mode = get_entvar(id, var_iuser1)
+	get_entvar(id, var_v_angle, angles)
+	if (!is_user_alive(id) && (mode == OBS_IN_EYE || mode == OBS_CHASE_FREE || mode == OBS_CHASE_LOCKED))
+	{
+		new target = get_member(id, m_hObserverTarget)
+		if (target >= 1 && target <= MaxClients && is_user_connected(target))
+		{
+			source = target
+			if (mode == OBS_IN_EYE) get_entvar(target, var_v_angle, angles)
+			else if (mode == OBS_CHASE_LOCKED)
+			{
+				get_entvar(target, var_angles, angles)
+				angles[0] = -angles[0]
+			}
+		}
+	}
+	get_entvar(source, var_origin, eye)
+	get_entvar(source, var_view_ofs, offset)
+	for (new axis = 0; axis < 3; axis++) eye[axis] += offset[axis]
+	angle_vector(angles, ANGLEVECTOR_FORWARD, direction)
+	if (source != id && (mode == OBS_CHASE_FREE || mode == OBS_CHASE_LOCKED))
+	{
+		// Chase cameras are client-side; approximate the standard 112-unit offset.
+		new Float:end[3]
+		get_entvar(source, var_origin, eye)
+		eye[2] += 28.0
+		for (new axis = 0; axis < 3; axis++) end[axis] = eye[axis]-direction[axis]*112.0
+		engfunc(EngFunc_TraceLine, eye, end, IGNORE_MONSTERS, source, gTrace)
+		get_tr2(gTrace, TR_vecEndPos, eye)
+	}
+}
+
+stock bool:admin_nav_in_view(const Float:eye[3], const Float:direction[3], const Float:point[3], &Float:distance_sq)
+{
+	// Test the vertical marker's center, including its offset above the floor.
+	new Float:x = point[0]-eye[0], Float:y = point[1]-eye[1], Float:z = point[2]+NAV_SHOW_LIFT+NAV_SHOW_NODE_HEIGHT*0.5-eye[2]
+	distance_sq = x*x+y*y+z*z
+	if (distance_sq > NAV_SHOW_RANGE*NAV_SHOW_RANGE) return false
+	new Float:depth = x*direction[0]+y*direction[1]+z*direction[2]
+	// A broad 120-degree cone includes the floor and screen corners, but never the rear.
+	return depth > 0.0 && depth*depth >= distance_sq*NAV_SHOW_CONE_COS*NAV_SHOW_CONE_COS
 }
 
 public show_nodes(const task)
 {
 	new id = task-TASK_SHOW
-	if (!is_user_alive(id) || !gShow[id]) return
-	new Float:feet[3], Float:point[3], Float:top[3], Float:radius, flags, shown, links_shown
-	anpc_entity_feet(id, feet)
-	new nearest = anpc_nav_nearest(feet, ANPC_CAP_ALL, id)
-	for (new node = 0, count = anpc_nav_count(); node < count && shown < 16; node++)
+	if (!is_user_connected(id) || !gShow[id]) return
+	new Float:eye[3], Float:direction[3], Float:point[3], Float:top[3], Float:radius, Float:distance_sq
+	new nodes[NAV_SHOW_NODES], Float:distances[NAV_SHOW_NODES], flags, shown, links_shown, count = anpc_nav_count()
+	admin_nav_view(id, eye, direction)
+	// Select the nearest nodes in front before spending the message budget; IDs do not imply proximity.
+	for (new node = 0; node < count; node++)
 	{
-		anpc_nav_node(node, point, flags, radius)
-		if (anpc_distance_sq(feet, point) > 384.0*384.0) continue
+		if (!anpc_nav_node(node, point, flags, radius) || !admin_nav_in_view(eye, direction, point, distance_sq)) continue
+		new position = shown
+		while (position > 0 && distance_sq < distances[position-1]) position--
+		if (position >= NAV_SHOW_NODES) continue
+		for (new move = min(shown, NAV_SHOW_NODES-1); move > position; move--)
+		{
+			nodes[move] = nodes[move-1]
+			distances[move] = distances[move-1]
+		}
+		nodes[position] = node
+		distances[position] = distance_sq
+		if (shown < NAV_SHOW_NODES) shown++
+	}
+	new nearest = shown ? nodes[0] : -1
+	for (new index = 0; index < shown; index++)
+	{
+		new node = nodes[index]
+		if (!anpc_nav_node(node, point, flags, radius)) continue
+		point[2] += NAV_SHOW_LIFT
 		anpc_copy_vec(point, top)
-		top[2] += 24.0
+		top[2] += NAV_SHOW_NODE_HEIGHT
 		admin_beam(id, point, top, flags & ANPC_NODE_DISABLED ? 255 : 40, node == nearest ? 255 : 100)
-		for (new link = 0, links = anpc_nav_link_count(node); link < links && links_shown < 12; link++)
+		for (new link = 0, links = anpc_nav_link_count(node); link < links && links_shown < NAV_SHOW_LINKS; link++)
 		{
 			new to, link_flags, destination_flags, Float:destination[3], Float:velocity[3]
 			if (!anpc_nav_link_at(node, link, to, link_flags, velocity) || !anpc_nav_node(to, destination, destination_flags, radius)) continue
-			if (anpc_distance_sq(feet, destination) > 384.0*384.0) continue
+			if (!admin_nav_in_view(eye, direction, destination, distance_sq)) continue
+			destination[2] += NAV_SHOW_LIFT
 			admin_beam(id, point, destination, link_flags ? 220 : 40, 100)
 			links_shown++
 		}
-		shown++
 	}
 	set_hudmessage(80, 220, 80, -1.0, 0.65, 0, 0.0, 0.6, 0.0, 0.0)
-	show_hudmessage(id, "ANPC: nearest node %d | total %d", nearest, anpc_nav_count())
+	show_hudmessage(id, "ANPC: nearest shown node %d | total %d", nearest, count)
 }
 
 public round_freeze_end_post()

@@ -55,6 +55,10 @@ anpc_nav_show 0
 
 O gravador cobre trechos efetivamente percorridos. Para completar a cobertura, percorra ramificações, conecte segmentos e teste a rota de cada região importante. Saltos, quedas e escadas verticais são ligações explícitas.
 
+`anpc_nav_show 1` acompanha a posição e a direção da câmera, inclusive ao olhar para cima ou para baixo. A cada 0,5 segundo, seleciona os 16 nós mais próximos em um cone frontal de 120 graus e até 384 unidades da câmera; IDs menores ou nós atrás não ocupam essas vagas. Desenha até 12 ligações com ambos os nós nesse cone. O HUD e o destaque verde indicam o nó desenhado mais próximo, ou `-1` quando nenhum atende ao filtro. As linhas têm largura `12` no protocolo do beam (antes `3`) e ficam duas unidades acima do piso.
+
+O desenho continua ao morrer ou entrar em spectator, sem precisar repetir o comando. Em câmera livre, usa a posição e os ângulos do administrador; em primeira pessoa, usa os olhos e a direção do jogador acompanhado. Câmeras de entidade criadas com `SetView`, como as do addon de câmera do projeto, usam a própria posição e os próprios ângulos. Nas câmeras de perseguição, usa o alvo acompanhado e aproxima o recuo padrão de 112 unidades com trace contra o mapa; a posição exata, uma distância de perseguição personalizada, o autodirector e o overview são calculados pelo cliente e não estão disponíveis nessa consulta do servidor. Primeira pessoa e câmera livre são os modos indicados para conferir o grafo em spectator.
+
 | Comando | Uso |
 | --- | --- |
 | `anpc_nav_add [flags] [radius]` | Nó nos seus pés; no chão, ou próximo de uma escada real com flag de escada |
@@ -65,7 +69,7 @@ O gravador cobre trechos efetivamente percorridos. Para completar a cobertura, p
 | `anpc_nav_unlink from to` | Remove somente essa direção |
 | `anpc_nav_flags node flags` | Atualiza flags do nó |
 | `anpc_nav_save` / `anpc_nav_reload` | Grava/recarrega o mapa atual |
-| `anpc_nav_show 0|1` | Desenho temporário limitado ao admin e HUD com id próximo |
+| `anpc_nav_show 0|1` | Nós/ligações à frente da câmera, inclusive morto/spec; desenho limitado ao admin e HUD com id próximo |
 | `anpc_nav_record 0|1` | Gravação de trechos terrestres válidos |
 
 Uma conexão é direcionada. Para caminhar também na volta, crie `to -> from`. Quedas e saltos podem ser viáveis em apenas um sentido. O máximo é oito saídas por nó.

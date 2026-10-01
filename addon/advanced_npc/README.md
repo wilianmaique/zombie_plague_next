@@ -56,4 +56,4 @@ O próprio plugin grava `maps/<mapa>.nav`, `maps/<mapa>.scan` e `maps/<mapa>.sca
 
 Veja [o funcionamento e os limites do explorador](docs/AUTOMAPPER.md), [a análise das técnicas de cobertura](docs/MAPPING_STRATEGY.md), [o editor de navegação](docs/NAVIGATION.md), [a API](docs/API.md) e [os cenários para teste manual](docs/TESTING.md).
 
-As revisões anteriores dos seis plugins foram compiladas com AMXX 1.10.0.5467, sem erros nem avisos. A revisão atual precisa de compilação manual de `anpc_mapper.sma`, `anpc_navigation.sma` e `anpc_core.sma`, com as includes externas atualizadas, incluindo `ground.inc`. Os binários existentes não contêm os ajustes de rampas. A validação em jogo segue os cenários de `docs/TESTING.md`.
+As revisões anteriores dos seis plugins foram compiladas com AMXX 1.10.0.5467, sem erros nem avisos. A revisão atual precisa de compilação manual de `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma`, com as includes externas atualizadas, incluindo `ground.inc`. Os binários existentes não contêm os ajustes de rampas nem da visualização de navegação. A validação em jogo segue os cenários de `docs/TESTING.md`.

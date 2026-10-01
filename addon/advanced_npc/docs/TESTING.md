@@ -14,6 +14,27 @@
 
 A compilação foi executada por solicitação explícita do usuário. Os seis binários `.amxx` e seus logs estão em `compiled/advanced_npc/`. A validação em execução do scanner permanece pendente para os testes manuais do usuário; a tentativa de preparar um HLDS isolado foi encerrada a pedido dele. Compilar sem erros não valida física, carregamento, cobertura nem combate no HLDS. Nenhuma integração do scanner foi mantida em `core/zpn_main.sma`.
 
+## Visualização de navegação: validação manual
+
+A revisão de `anpc_nav_show` altera somente `anpc_admin.sma`, sem alterar o grafo ou suas APIs. Compile esse plugin manualmente e carregue o binário atualizado antes dos testes; esta alteração não foi compilada nem executada no HLDS.
+
+Foram conferidos os delimitadores da fonte, os campos de `TE_BEAMPOINTS`, as guardas dos limites de seleção e a disponibilidade das novas interfaces nas includes locais. As expressões do filtro extraídas da fonte passaram em 10.100 casos de posição, yaw, pitch, frente/trás e alcance, comparadas com uma referência angular independente em Python. Essa conferência matemática não executa Pawn nem a câmera do cliente.
+
+| Cenário | Resultado esperado |
+| --- | --- |
+| Ativar `anpc_nav_show 1` com nós à frente e atrás | Apenas nós no cone frontal; linhas quatro vezes mais largas e ligações acima do piso |
+| Girar 180 graus sem andar | Seleção acompanha a nova direção na atualização seguinte, em até 0,5 segundo |
+| Olhar para cima/baixo ou agachar | Filtro acompanha pitch e posição dos olhos, sem inverter a direção |
+| Mais de 16 nós à frente, com IDs em ordem diferente das distâncias | Os 16 nós mais próximos da câmera ocupam o limite; HUD/destaque correspondem ao primeiro |
+| Morrer, entrar em spectator e depois renascer com o desenho ligado | Desenho continua e troca a referência de visão automaticamente |
+| Spectator em câmera livre longe do corpo | Usa a câmera atual, sem desenhar apenas perto da posição da morte |
+| Spectator em primeira pessoa; observado olha para o lado oposto ao admin | Usa os olhos e a direção do jogador observado; mensagens continuam somente para o admin |
+| Trocar o jogador observado ou perder o alvo | Atualiza a referência na próxima passagem, sem consultar jogador desconectado |
+| Perseguição livre/travada perto de paredes | Aproxima a posição padrão de perseguição, sem projetar o recuo através do mapa; alterações de distância/autodirector seguem a limitação descrita em `NAVIGATION.md` |
+| Usar as câmeras de entidade do addon, inclusive frontal e superior | Desenho segue posição/ângulos da entidade de câmera |
+| Grafo vazio ou nenhum nó no cone/alcance | Sem beams; HUD mostra nó `-1` e total coerente |
+| Desativar com `anpc_nav_show 0` ou desconectar e reutilizar a vaga | Atualizações encerradas; beams existentes expiram em 0,6 segundo; novo jogador começa com desenho desligado |
+
 ## Scanner: validação manual
 
 A revisão atual altera mapper, provedor de navegação e núcleo, com a include compartilhada `ground.inc` e as includes internas externas configuradas no projeto. Essa revisão não foi compilada nem executada no HLDS; as compilações acima pertencem às revisões anteriores. Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma` e `anpc_core.sma` com as includes atualizadas antes destes testes. O formato da memória permanece `ANPC_SCAN 2`, com assinatura de política `blocks-frontiers-ramps-1`; memórias da política anterior são descartadas, preservando o `.nav`.
