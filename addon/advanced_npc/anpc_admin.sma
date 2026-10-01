@@ -452,7 +452,7 @@ public show_nodes(const task)
 		}
 	}
 
-	set_hudmessage(0, 255, 255, 0.68, 0.12, 0, 0.0, 0.0, 0.1, 0.1)
+	set_hudmessage(0, 255, 255, 0.7, 0.4, 0, 0.0, 0.0, 0.2, 0.2)
 	ShowSyncHudMsg(id, xMsgSyncANPC, "ANPC: nearest shown node %d^ntotal %d^nareas %d/%d", nearest, count, areas_shown, anpc_nav_area_count())
 }
 
