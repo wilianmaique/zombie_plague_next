@@ -30,7 +30,9 @@ Direções inteiramente contidas em blocos analisados deixam de gerar caminhadas
 
 Nas bordas irregulares, outra verificação evita caminhar de volta para dentro de uma área conhecida. Ela exige um trecho plano, sem volume sensível na origem, análise do pequeno prefixo ainda fora dos blocos e uma rota direcionada já existente até a âncora de destino. Só dispensa a caminhada se o custo dessa rota não superar `1,75 × (distância até a âncora + metade do espaçamento)`. Sem rota ou com um desvio maior, mantém a tentativa física para descobrir a ligação ou um atalho útil.
 
-No interior conhecido, a posição atual não recebe um nó apenas por atingir o intervalo de espaçamento. Entrada, destino e último ponto alcançado antes de sair para terreno irregular continuam representados. Âncoras comuns próximas são reutilizadas até `0,55 × anpc_scan_spacing`, com prova de hull e apoio entre as coordenadas realmente gravadas; proximidade através de paredes ou buracos não basta. Âncoras precisas reutilizam apenas posições a menos de quatro unidades. O mapper termina fisicamente numa âncora reutilizada antes da próxima análise, evitando deslocar uma decolagem por causa dessa tolerância maior.
+No interior conhecido, a posição atual não recebe um nó apenas por atingir o intervalo de espaçamento. Entrada, destino e último ponto alcançado antes de sair para terreno irregular continuam representados. Âncoras comuns próximas são reutilizadas até `0,75 × anpc_scan_spacing`, com prova de hull e apoio entre as coordenadas realmente gravadas; proximidade através de paredes ou buracos não basta. Âncoras precisas reutilizam apenas posições a menos de quatro unidades. O mapper termina fisicamente numa âncora reutilizada antes da próxima análise, evitando deslocar uma decolagem por causa dessa tolerância maior.
+
+Fora das áreas certificadas, o intervalo periódico passa a usar o espaçamento completo, limitado a doze passadas de prova do piso. Com `sv_stepsize 18` e o padrão de 128 unidades, isso permite intervalos de 128, em vez dos antigos 72. As amostras de apoio continuam separadas por no máximo 13,5 unidades nesse perfil; a prova de uma ligação admite até dezesseis amostras. Se o destino de uma caminhada está próximo e o segmento restante cabe nessa prova, o mapper dispensa o ponto periódico imediatamente anterior à chegada. Transições e destinos de exploração ainda podem exigir pontos mais próximos: o espaçamento não é um limite mínimo global.
 
 Retângulos adjacentes com mesma altura/postura podem ser unidos quando a extensão no outro eixo é igual e a união continua dentro da mesma célula espacial de 256 unidades. A união não preenche formas em L nem buracos. O provedor pode manter retângulos menores contidos num maior; a consulta escolhe o maior que aceita as capacidades. O A* continua usando conexões explícitas, enquanto o NPC dispensa pontos comuns da rota dentro do mesmo retângulo e mantém teste do hull atual. Saltos, quedas, escadas, posições precisas e mudanças de postura interrompem essa simplificação.
 
@@ -108,7 +110,7 @@ A escrita congela a exploração e distribui registros por frames. O commit de c
 
 O formato de memória permanece `ANPC_SCAN 2`; memórias em outro formato são descartadas. O provedor aceita somente `ANPC_NAV 2`, descrito em [NAVIGATION.md](NAVIGATION.md). Gere um scan novo ou reimporte grafos antigos antes de usar esta revisão. Continuar um grafo atual preserva seus IDs; para eliminar a geração densa de um scan anterior, use `anpc_scan start new`. Os antecessores têm IDs menores que seus filhos, impedindo ciclos na árvore de descoberta. Retornos interrompidos por pausa/checkpoint continuam pendentes.
 
-A política atual tem a assinatura `areas-landings-1`. Um `.scan` com outra assinatura é descartado mesmo no formato 2; o grafo atual permanece e a exploração é reanalisada. Checkpoints desta revisão podem ser retomados normalmente. As áreas e a cobertura da sessão são reconstruídas a partir do mapa e das âncoras; durante o checkpoint, retângulos atuais são gravados junto do grafo.
+A política atual tem a assinatura `sparse-walk-1`. Um `.scan` com outra assinatura é descartado mesmo no formato 2; o grafo atual permanece e a exploração é reanalisada. Checkpoints desta revisão podem ser retomados normalmente. As áreas e a cobertura da sessão são reconstruídas a partir do mapa e das âncoras; durante o checkpoint, retângulos atuais são gravados junto do grafo.
 
 Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção interrompida à análise. Um desligamento inesperado preserva o último checkpoint já confirmado. O comando `stop` termina a gravação antes de remover o bot; evite desligar o mapa enquanto `active=1`.
 
@@ -118,7 +120,7 @@ Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção int
 | --- | --- | --- |
 | `anpc_scan_auto` | `0` | Inicia automaticamente apenas se não houver grafo |
 | `anpc_scan_beam` | `1` | Mostra o laser de direção do olhar durante a sessão; 0/1 |
-| `anpc_scan_spacing` | `96` | Espaçamento de exploração; 48 a 160 |
+| `anpc_scan_spacing` | `128` | Espaçamento de exploração e dos nós comuns; 48 a 160, sujeito ao limite de prova do piso |
 | `anpc_scan_speed` | `300` | Limite de velocidade do explorador; 100 a 320 |
 | `anpc_scan_gravity` | `0.7` | Multiplicador de gravidade; 0,3 a 1,5 |
 | `anpc_scan_max_drop` | `160` | Limite de descida; 18 a 256 |
@@ -131,6 +133,8 @@ Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção int
 | `anpc_scan_active` | Estado | Indica se o scanner mantém uma sessão; controlado pelo plugin |
 
 Espaçamento, velocidade, gravidade e limite de queda são capturados no início da sessão. Alterá-los na configuração afeta a próxima sessão. Mudanças relevantes na física global durante o scan fazem o plugin salvar os segmentos já provados e encerrar, para evitar misturar condições de teste.
+
+Para substituir um grafo denso, encerre o scan com `anpc_scan stop` e aguarde `active=0`. Recompile manualmente `anpc_mapper.sma` com as includes atuais e carregue o binário atualizado. Configure `anpc_scan_spacing 128` no servidor e use `anpc_scan start new`. Retomar com `start` preserva os nós antigos; a nova política não os remove. Compare a passagem no mesmo corredor com `anpc_nav_show 1` e acompanhe `anpc_scan status`, inclusive os movimentos rejeitados. Esta alteração ainda precisa de validação no HLDS.
 
 O movimento recebe serviço a aproximadamente 50 Hz, com um comando de até 50 ms por execução. Trabalho geométrico, seleção e escrita respeitam limites por frame. O ciclo aceita até 96 etapas leves por frame, sempre sob o orçamento cooperativo. Cada etapa de Dijkstra expande até oito nós; a classificação divide testes de volumes, faixas de hull e amostras de chão entre chamadas. O trabalho em segundo plano aceita até oito etapas de blocos e oito células de amostragem, com prioridade para os blocos conhecidos. A preparação de uma semente e a consulta de rota interna aguardam outros frames em vez de repetir sua espera no mesmo frame. O A* conserva seu orçamento próprio de `anpc_nav_expansions`. As chamadas internas da física do motor não entram no contador de traces do mapper.
 

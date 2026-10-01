@@ -39,7 +39,11 @@ Foram conferidos os delimitadores da fonte, os campos de `TE_BEAMPOINTS`, as gua
 
 ## Scanner: validação manual
 
-A revisão 1.2 altera mapper, provedor, núcleo e administrador, com as includes externas configuradas no projeto e a nova `navigation_areas.inc`. Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma`. Não houve compilação, execução no HLDS ou medição de FPS nesta revisão. O `.nav` atual é `ANPC_NAV 2`; regenere mapas antigos ou reimporte os grafos YaPB. A memória permanece `ANPC_SCAN 2`, com política `areas-landings-1`. Para substituir os pontos densos anteriores, comece com `anpc_scan start new`.
+A revisão 1.2 altera mapper, provedor, núcleo e administrador, com as includes externas configuradas no projeto e a nova `navigation_areas.inc`. Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma`. Não houve compilação, execução no HLDS ou medição de FPS nesta revisão. O `.nav` atual é `ANPC_NAV 2`; regenere mapas antigos ou reimporte os grafos YaPB. A memória permanece `ANPC_SCAN 2`, com política atual `sparse-walk-1`. Para substituir os pontos densos anteriores, comece com `anpc_scan start new`.
+
+A redução de densidade altera somente o mapper e suas includes internas `mapper_motion.inc`, `mapper_world.inc` e `mapper_exploration.inc`. O padrão de `anpc_scan_spacing` passa a 128; a gravação periódica fora das áreas usa o espaçamento completo, em vez de três quartos limitados a seis passadas, e a prova terrestre admite até dezesseis amostras. Recompile esse plugin após a alteração, carregue o binário e confira também a configuração do servidor. A mudança de assinatura descarta a memória anterior, mas não remove os nós de um grafo retomado. Pontos precisos e provas de hull/piso permanecem necessários. Não houve compilação nem execução no HLDS desse ajuste.
+
+A conferência auxiliar desse ajuste verificou a coerência de configuração/constantes, delimitadores das quatro fontes alteradas e preservação integral do corpo da prova geométrica. Também passaram 791 combinações de espaçamento de 48 a 160 e `sv_stepsize` de 8 a 32: o intervalo com um comando de até 50 ms a 320 unidades/s e o adiamento da chegada com tolerância de 12 unidades cabem no limite de dezesseis amostras. Esses são limites matemáticos e checks de fonte; não executam Pawn, traces ou a física do HLDS.
 
 Conferências realizadas nesta revisão:
 
@@ -76,6 +80,10 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | `anpc_scan_beam 1`, em pé/agachado/escada e `watch` | Laser verde parte dos olhos, acompanha yaw/pitch reais e termina em obstáculo; leituras do planejamento permanecem independentes |
 | `anpc_scan_beam 0` ou encerrar o scan | Sem novos beams; último efeito expira em 0,2 segundo |
 | Corredor aberto longo | Percursos de até três espaçamentos; pontos intermediários somente fora da cobertura plana ou em transições; nenhuma volta automática após cada segmento |
+| Corredor reto sem áreas, `sv_stepsize 18` e espaçamento 128 | Intervalo periódico de 128 unidades, sujeito ao frame de movimento; raio de reaproveitamento comum de 96, com prova de passagem e apoio |
+| Destino próximo após atingir o intervalo periódico | Dispensar o ponto imediatamente anterior à chegada apenas quando o trecho restante cabe na prova limitada; chegada ainda registrada ou reutilizada |
+| Destino distante ou piso com `sv_stepsize` menor | Preservar âncoras intermediárias conforme o limite de prova; não gravar uma ligação sem amostras suficientes |
+| Nó próximo através de parede, buraco ou crista | Não reutilizar apenas pela distância; manter nós separados se hull ou apoio do segmento gravado falhar |
 | Rampa longa que permite andar sem saltar, nas duas direções | Apoios medidos pelo hull, alvos longos e ausência de saltos/agachamento apenas por causa da inclinação; subida total pode superar um degrau/salto |
 | Rampa uniforme com grande variação de Z | Nós pelo espaçamento XY, sem gerar outro nó a cada 14 unidades de subida; arestas só após travessia real |
 | Entrada/saída da rampa, crista ou elevação estreita | Âncora antes da mudança importante do piso; ligações não cortam a elevação por dentro |
