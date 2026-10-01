@@ -1,5 +1,38 @@
 # Verificação e testes
 
+## Equipe de exploradores — 01/10/2026
+
+`anpc_scan_bots` permite 1 a 8 scouts, com padrão 1. Esta alteração exige recompilação manual de `anpc_mapper.sma` com todas as includes externas atuais, incluindo `mapper_team.inc` e `advanced_npc_mapper.inc`. O Codex não executou o compilador, os plugins no HLDS nem mediu aceleração/FPS.
+
+O log de compilação enviado pelo usuário revelou o uso indevido da palavra reservada `forward` como parâmetro de `scan_avoid_peers`, invalidando sua declaração e as expressões que usavam esse parâmetro. Ele foi renomeado para `forward_speed`; a chamada mantém seus quatro argumentos. A nova checagem de parâmetros reproduziu a falha antes da correção e passou depois dela. A recompilação dessa correção continua manual.
+
+- Os 45 testes Python passaram, incluindo 17 verificações relacionadas à equipe. As condições são extraídas das fontes Pawn instaladas e avaliadas com doubles; blocos de atribuição verificam devolução da semente correta e liberação somente da reserva própria. A suíte cobre identidade reutilizada, colisão restrita aos scouts, reservas, journal interrompido, buscas não reiniciadas por descobertas de parceiros, proteção de movimentos especiais, vagas disponíveis, conclusão conjunta, pausa deferida durante checkpoint e palavras reservadas em parâmetros das funções do mapper e de sua API. Não executa a máquina de estados Pawn, o escalonador ou a física do motor.
+- As oito fontes do mapper passaram na conferência estática de delimitadores, aridade das chamadas próprias, argumentos de formatação, globais e índices dos estados individuais. Essa conferência não substitui o compilador nem os testes no servidor.
+
+```powershell
+rtk proxy python -B -m unittest discover -s addon/advanced_npc/tools -p "test_*.py"
+```
+
+| Teste manual | Resultado esperado |
+| --- | --- |
+| `anpc_scan_bots 1`, depois 4 e 8, em sessões novas do mesmo mapa | Quantidade indicada por `bots`; entidades, rotas, sondagens e posições independentes |
+| Poucas vagas livres, com quantidade configurada maior que o disponível | Reduz a equipe, mantendo uma vaga para administrador; sem vagas suficientes, não inicia |
+| Falha de conexão/respawn durante a criação de um scout | Remove todos os clientes criados, fecha rotas e libera edição sem remover outra identidade |
+| Alterar `anpc_scan_bots` durante o scan | Equipe atual permanece; próxima sessão usa a nova quantidade |
+| Explorar saídas de uma região comum | Reservas distintas; nenhuma origem analisada simultaneamente por dois scouts |
+| Dois scouts frente a frente, em corredor largo e depois estreito | Desvio apoiado quando possível; filtro entre parceiros permite passagem sem bloquear ou inventar conexões |
+| Um scout abaixo de outro, junto a caixa, salto ou escada | Nunca ganha apoio no parceiro; salto, queda e escada continuam físicos |
+| Um scout termina antes dos demais ou enquanto o survey ainda avança | Aguarda; a sessão continua até a equipe inteira esgotar o trabalho compartilhado |
+| Pausar/salvar enquanto dois scouts assentam sementes consumidas fora de ordem | Cada um devolve sua semente; direções já provadas por parceiros permanecem no journal |
+| Salvar durante caminhada/salto/rota e continuar | Todos congelam em âncoras; retoma sem reservar trabalho para clientes antigos |
+| Pausar durante preparação inicial e pedir `save` ou `stop` | Inicialização compartilhada termina; gravação não fica presa na pausa; `save` mantém a pausa |
+| Parar e depois retomar com outra quantidade de scouts | Reutiliza o journal atual; sementes, antecessores e direções independem da quantidade |
+| `watch 1 1` e `watch 1 2` por administradores distintos | Câmeras independentes, corpo correto oculto e blocos próximos do scout selecionado |
+| Remover qualquer scout e reutilizar sua vaga | Encerra a equipe, preserva o último checkpoint e não remove o novo ocupante |
+| Encerrar por conclusão, `stop`, mudança de física ou troca de mapa | Todos os clientes/rotas/câmeras/hooks liberados; sem grafo alterado por reposicionamento |
+
+Compare tempo até conclusão e cobertura com o mesmo BSP, perfil, survey e orçamento, primeiro com um scout e depois com quatro. Os limites de análise permanecem globais; a física e a prova imediata de cada comando somam custo indivisível. Confirme o grafo produzido com um NPC no servidor antes de avaliar o ganho de tempo.
+
 ## Revisão 1.3: áreas e portais — 01/10/2026
 
 Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma` com as includes externas atuais, inclusive a nova `navigation_portals.inc`. Carregue os quatro juntos. O formato é `ANPC_NAV 3` e a política do journal `ANPC_SCAN 2` é `planar-regions-1`. Não houve compilação, execução dos plugins no HLDS ou medição de FPS.

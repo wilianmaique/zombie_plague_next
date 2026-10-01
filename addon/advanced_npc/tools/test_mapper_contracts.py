@@ -13,7 +13,7 @@ import unittest
 
 
 def body(source, name):
-    match = re.search(r'\bstock\s+(?:bool:)?'+name+r'\s*\(', source)
+    match = re.search(r'\b(?:stock|public)\s+(?:\w+:)?'+name+r'\s*\(', source)
     if not match:
         raise AssertionError('Missing function: '+name)
     start = source.index('{', match.end())
@@ -39,13 +39,17 @@ def conditions(source):
 
 
 def predicate(expression, values):
+    expression = expression.replace('bool:', '')
+    expression = re.sub(r'\btrue\b', 'True', expression)
+    expression = re.sub(r'\bfalse\b', 'False', expression)
     expression = expression.replace('&&', ' and ').replace('||', ' or ')
     expression = ' '.join(re.sub(r'!(?!=)', ' not ', expression).split())
     tree = ast.parse(expression, mode='eval')
     allowed = (ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.UnaryOp,
                ast.Not, ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE,
                ast.Gt, ast.GtE, ast.Call, ast.Name, ast.Load, ast.Constant,
-               ast.Subscript, ast.BinOp, ast.Add, ast.Sub, ast.Mult)
+               ast.Subscript, ast.BinOp, ast.Add, ast.Sub, ast.Mult,
+               ast.USub, ast.BitAnd, ast.BitOr, ast.LShift)
     if any(not isinstance(node, allowed) for node in ast.walk(tree)):
         raise AssertionError('Unsupported guard syntax: '+expression)
     return bool(eval(expression, {'__builtins__': {}}, values))
@@ -78,7 +82,7 @@ class MapperNativeContractTests(unittest.TestCase):
         values = {'anpc_ground_floor': lambda *args: support,
                   'get_tr2': lambda trace, field: {'TR_StartSolid': solid, 'TR_pHit': hit}[field],
                   'point': [739., 557.4, 0.], 'floor': [739., 557.4, height],
-                  'duck': False, 'gBot': 2, 'gTrace': 1, 'gTraces': 0,
+                  'duck': False, 'gBot': [2], 'gWorker': 0, 'gTrace': 1, 'gTraces': 0,
                   'TR_StartSolid': 'TR_StartSolid', 'TR_pHit': 'TR_pHit',
                   'FM_NULLENT': -1, 'floatabs': abs}
         return not any(predicate(check, values) for check in self.floor_checks)
@@ -133,7 +137,7 @@ class MapperNativeContractTests(unittest.TestCase):
             values = {'get_tr2': lambda trace, field: hit if field == 'TR_pHit' else False,
                       'gTrace': 1, 'TR_pHit': 'TR_pHit', 'TR_StartSolid': 'TR_StartSolid',
                       'TR_AllSolid': 'TR_AllSolid', 'FM_NULLENT': -1,
-                      'clear': False, 'gSenseDistance': [64.], 'direction': 0,
+                      'clear': False, 'gSenseDistance': [[64.]], 'gWorker': 0, 'direction': 0,
                       'normal': [1., 0., 0.], 'high_normal': [1., 0., 0.],
                       'floatabs': abs, 'fraction': 0.5, 'reach': 128.}
             with self.subTest(hit=hit):

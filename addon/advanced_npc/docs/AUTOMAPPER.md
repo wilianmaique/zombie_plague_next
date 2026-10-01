@@ -1,6 +1,16 @@
 # Explorador autônomo
 
-`anpc_mapper.sma` gera navegação no mapa carregado, inteiramente por plugins AMXX. O bot ocupa uma vaga de jogador durante a análise e deixa uma vaga adicional disponível para o administrador. Os NPCs usados no jogo continuam sendo entidades sem ocupar vagas.
+`anpc_mapper.sma` gera navegação no mapa carregado, inteiramente por plugins AMXX. Cada scout ocupa uma vaga de jogador durante a análise; a equipe deixa uma vaga adicional disponível para o administrador. Os NPCs usados no jogo continuam sendo entidades sem ocupar vagas.
+
+## Exploração com vários scouts
+
+Defina `anpc_scan_bots 4` antes de `anpc_scan start` ou `start new` para usar quatro exploradores. A cvar aceita 1 a 8, com padrão 1. O início captura a quantidade e a reduz às vagas disponíveis, preservando uma vaga livre; se nenhuma estiver disponível, não inicia. Uma falha de criação libera todos os clientes e rotas já alocados. Alterar a cvar durante uma sessão afeta o próximo início.
+
+Cada scout mantém sensores, sondagens, postura, saltos, prazos, histórico de rotas impossíveis e Dijkstra próprios. O grafo, a cobertura geométrica, as sementes e a memória são compartilhados. As sementes são escolhidas longe dos exploradores ativos. Uma reserva por âncora impede que dois scouts analisem a mesma origem ou escolham a mesma fronteira enquanto o responsável viaja até ela. Reservas são devolvidas ao terminar, falhar, pausar ou salvar. Descobertas de outros scouts não reiniciam constantemente uma varredura ou busca em andamento.
+
+Na caminhada, os scouts antecipam encontros e tentam um comando lateral com hull e apoio comprovados, mantendo o destino da tentativa. O hook ReAPI `RH_SV_AllowPhysent` exclui somente outros membros válidos da equipe da física de cada scout. Assim, corredores sem espaço lateral não bloqueiam a equipe, e um explorador não serve de apoio para saltos de outro. Paredes, portas, terreno e jogadores fora da equipe conservam suas colisões. Saltos, quedas e escadas seguem seus comandos físicos próprios. O desvio e o filtro não acrescentam conexões: continuam valendo as provas de movimento e terreno.
+
+Pausa e checkpoint interrompem todos os scouts em suas últimas âncoras verificadas, cancelam as rotas e devolvem as sementes que ainda estavam assentando. Só tentativas encerradas entram na máscara do journal; uma interrupção preserva segmentos já provados por qualquer scout. A conclusão automática espera toda a equipe ficar sem trabalho, terminar a amostragem e conferir novamente as fronteiras compartilhadas. Se qualquer cliente perder sua identidade, a sessão é encerrada e o último checkpoint confirmado permanece preservado.
 
 ## Como ele explora
 
@@ -77,16 +87,16 @@ Todos exigem `ADMIN_RCON`; o console do servidor também pode executá-los. `wat
 | `anpc_scan stop` | Salva e encerra; aguarde `active=0` |
 | `anpc_scan seed` | Acrescenta os pés do administrador à fila de regiões a analisar |
 | `anpc_scan seed x y z` | Acrescenta coordenadas de pés, também pelo console/RCON; chão e hull serão validados |
-| `anpc_scan watch 1` / `watch 0` | Liga/desliga a câmera do explorador para esse administrador |
+| `anpc_scan watch 1 [scout]` / `watch 0` | Liga/desliga a câmera; índice de 1 até a quantidade ativa, padrão 1 |
 | `anpc_scan blocks 1` / `blocks 0` | Liga/desliga quadrados azuis de piso analisado perto do scout, apenas para esse administrador |
 
-O modo `watch` acompanha a posição dos olhos e os ângulos completos do scout, inclusive ao virar, agachar e subir/descer escadas. O corpo do scout fica oculto apenas para quem está usando essa câmera, para não cobrir a visão com a própria cabeça. `watch 0` ou o encerramento do scan devolvem a visão ao administrador; a câmera e seu hook de visibilidade são liberados quando o último observador sai. A câmera não acrescenta traces ao planejamento.
+O modo `watch` acompanha a posição dos olhos e os ângulos completos do scout, inclusive ao virar, agachar e subir/descer escadas. `watch 1 2` seleciona o segundo explorador; administradores podem observar scouts diferentes. Há uma câmera por scout observado, compartilhada por seus observadores. O corpo selecionado fica oculto apenas para quem usa sua câmera. `watch 0` ou o encerramento devolvem a visão; câmeras sem observadores são liberadas. A câmera não acrescenta traces ao planejamento.
 
-Os estados numéricos são `0` desligado, `1` preparando episódio, `2` escolhendo fronteira, `3` aguardando/seguindo rota, `4` analisando geometria, `5` movendo, `6` pausado, `7` salvando e `8` candidatos esgotados.
+Os estados numéricos individuais são `0` desligado, `1` preparando episódio, `2` escolhendo fronteira, `3` aguardando/seguindo rota, `4` analisando geometria, `5` movendo, `6` pausado, `7` salvando e `8` candidatos esgotados. O estado da sessão mostra preparação compartilhada (`1`), exploração (`2`), pausa (`6`), gravação (`7`) ou encerramento (`0`/`8`). `status` lista também entidade, estado, âncora, reserva e posição de cada scout.
 
 Use `anpc_nav_show 1` para desenhar as âncoras e os contornos azuis de até oito retângulos visíveis, selecionados independentemente dos pontos. A edição manual e a criação de NPCs ficam bloqueadas enquanto o scanner mantém a edição exclusiva. O gravador manual ativo é encerrado ao começar a análise.
 
-Com `anpc_scan_beam 1` (padrão), um laser verde sai dos olhos do fake client e acompanha seu ângulo real de visão, incluindo a inclinação nas escadas. A linha termina no primeiro sólido/jogador encontrado ou em 1.024 unidades. É visível para clientes próximos, inclusive usando `watch`, e usa um trace próprio, até dez atualizações por segundo sob o orçamento do mapper. `anpc_scan_beam 0` desliga o efeito. O laser representa o olhar do bot, não todas as direções da varredura geométrica.
+Com `anpc_scan_beam 1` (padrão), lasers verdes saem dos olhos dos scouts e acompanham seus ângulos reais de visão, incluindo a inclinação nas escadas. Cada linha termina no primeiro sólido/jogador encontrado ou em 1.024 unidades. O desenho alterna entre exploradores, até dez atualizações por segundo no total, usando somente o orçamento restante. `anpc_scan_beam 0` desliga o efeito. O laser representa o olhar do bot, não todas as direções da varredura geométrica.
 
 `blocks 1` desenha uma seleção de até 12 blocos próximos, no piso atual do scout, cerca de duas vezes por segundo por observador e sob o orçamento disponível. Não acrescenta traces e fica desligado por padrão. Azul indica um bloco que passou na classificação geométrica desta sessão, sem significar cobertura integral do BSP ou passagem física em todos os seus pontos.
 
@@ -108,15 +118,16 @@ A escrita congela a exploração e distribui registros por frames. O commit de c
 
 O formato de memória permanece `ANPC_SCAN 2`; memórias em outro formato são descartadas. O provedor aceita somente `ANPC_NAV 3`, descrito em [NAVIGATION.md](NAVIGATION.md). Gere um scan novo ou reimporte grafos antigos antes de usar esta revisão. Continuar um grafo preserva IDs até a compactação final; `anpc_scan start new` facilita comparar a geração atual sem amostras antigas. Os antecessores têm IDs menores que seus filhos, impedindo ciclos na árvore de descoberta. Retornos interrompidos por pausa/checkpoint continuam pendentes.
 
-A política atual tem a assinatura `planar-regions-1`. Um `.scan` com outra assinatura é descartado mesmo no formato 2; o grafo atual permanece e a exploração é reanalisada. Checkpoints desta revisão podem ser retomados normalmente. As áreas e a cobertura da sessão são reconstruídas a partir do mapa e das âncoras; durante o checkpoint, retângulos atuais são gravados junto do grafo.
+A política atual tem a assinatura `planar-regions-team-1`. Um `.scan` com outra assinatura é descartado mesmo no formato 2; o grafo atual permanece e a exploração é reanalisada. Checkpoints desta revisão podem ser retomados com outra quantidade de scouts, pois a memória conserva trabalho compartilhado, sem identidades ou reservas transitórias. As áreas e a cobertura são reconstruídas a partir do mapa e das âncoras; durante o checkpoint, retângulos atuais são gravados junto do grafo.
 
-Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção interrompida à análise. Um desligamento inesperado preserva o último checkpoint já confirmado. O comando `stop` termina a gravação antes de remover o bot; evite desligar o mapa enquanto `active=1`.
+Pausa e checkpoint mantêm pendentes as tentativas interrompidas, preservando direções já comprovadas em segmentos parciais. Um desligamento inesperado preserva o último checkpoint confirmado. O comando `stop` termina a gravação antes de remover todos os bots; evite desligar o mapa enquanto `active=1`.
 
 ## Configuração e custo
 
 | Cvar | Padrão | Efeito |
 | --- | --- | --- |
 | `anpc_scan_auto` | `0` | Inicia automaticamente apenas se não houver grafo |
+| `anpc_scan_bots` | `1` | De 1 a 8 scouts independentes; limitado às vagas disponíveis, com uma reservada |
 | `anpc_scan_beam` | `1` | Mostra o laser de direção do olhar durante a sessão; 0/1 |
 | `anpc_scan_spacing` | `128` | Espaçamento de exploração e dos nós comuns; 48 a 160, sujeito ao limite de prova do piso |
 | `anpc_scan_speed` | `300` | Limite de velocidade do explorador; 100 a 320 |
@@ -130,13 +141,15 @@ Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção int
 | `anpc_scan_restart` | `0` | Restart opcional após encerrar |
 | `anpc_scan_active` | Estado | Indica se o scanner mantém uma sessão; controlado pelo plugin |
 
-Espaçamento, velocidade, gravidade e limite de queda são capturados no início da sessão. Alterá-los na configuração afeta a próxima sessão. Mudanças relevantes na física global durante o scan fazem o plugin salvar os segmentos já provados e encerrar, para evitar misturar condições de teste.
+Quantidade, espaçamento, velocidade, gravidade e limite de queda são capturados no início da sessão. Alterá-los na configuração afeta a próxima sessão. Mudanças relevantes na física global durante o scan fazem o plugin salvar os segmentos já provados e encerrar, para evitar misturar condições de teste.
 
 Para conferir no `de_dust2`, encerre a sessão anterior e aguarde `active=0`. Recompile manualmente mapper, navegação, núcleo e administrador com as includes externas atualizadas, incluindo `navigation_portals.inc`; carregue os quatro binários juntos. Use `anpc_scan start new`, `anpc_nav_show 1` e `anpc_scan status`. Observe áreas nas rampas e corredores, aguarde a conclusão automática e compare as âncoras finais. O formato atual é `ANPC_NAV 3`; nenhum formato anterior é aceito. A execução no HLDS continua pendente.
 
 O movimento recebe serviço a aproximadamente 50 Hz, com um comando de até 50 ms por execução. Trabalho geométrico, seleção e escrita respeitam limites por frame. O ciclo aceita até 96 etapas leves por frame, sempre sob o orçamento cooperativo. Cada etapa de Dijkstra expande até oito nós; a classificação divide testes de volumes, faixas de hull e amostras de chão entre chamadas. O trabalho em segundo plano aceita até oito etapas de blocos e oito células de amostragem, com prioridade para os blocos conhecidos. A preparação de uma semente e a consulta de rota interna aguardam outros frames em vez de repetir sua espera no mesmo frame. O A* conserva seu orçamento próprio de `anpc_nav_expansions`. As chamadas internas da física do motor não entram no contador de traces do mapper.
 
-O orçamento em milissegundos é cooperativo: uma chamada nativa, hashing de arquivo ou renomeação não pode ser interrompida no meio. Não representa uma medição ou garantia de FPS. A árvore de descoberta e os estados de retorno/rejeição usam 48 KiB de arrays Pawn; a tabela de até 32.768 blocos ocupa cerca de 2,4 MiB, além dos índices e da seleção. O provedor acrescenta associação área/âncoras, remapeamento e estado de finalização. Permanecem 0,125 MiB reservados para heap/stack, além do provedor e da vaga do bot.
+Os 96 passos, traces, orçamento de CPU e escrita são compartilhados por toda a equipe. O movimento tem prioridade e a ordem de atendimento alterna; consultas aguardando física/rotas não monopolizam os passos restantes. Cada cliente continua recebendo comandos a aproximadamente 50 Hz. A física do motor e a prova imediata de um comando são indivisíveis e podem ultrapassar o orçamento cooperativo; mais scouts aumentam esse custo, sem garantir aceleração proporcional.
+
+O orçamento em milissegundos é cooperativo: uma chamada nativa, hashing de arquivo ou renomeação não pode ser interrompida no meio. Não representa uma medição ou garantia de FPS. A árvore de descoberta e os estados de retorno/rejeição usam 48 KiB de arrays Pawn; as reservas acrescentam 16 KiB. Busca e histórico de inacessibilidade reservam cerca de 96 KiB por scout, com arrays para até oito. A tabela de até 32.768 blocos ocupa cerca de 2,4 MiB, além dos índices e estados menores. O provedor acrescenta associação área/âncoras, remapeamento e finalização. Permanecem 0,125 MiB reservados para heap/stack, além do provedor e das vagas dos bots.
 
 A prova de terreno processa um intervalo por etapa e reserva até 14 traces para tentar as duas posturas. Sem essa reserva, aguarda o próximo frame. Rampas uniformes normalmente precisam apenas da busca de apoio e do hull entre os dois apoios; buscas de teto/piso e folga adicional são usadas quando necessário. A caminhada continua atendida antes desse trabalho.
 
