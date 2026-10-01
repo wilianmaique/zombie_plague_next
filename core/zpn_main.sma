@@ -1732,6 +1732,9 @@ public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 	// if(xFwFloatParam[1] != -1.0) this = xFwFloatParam[1]
 	// if(xFwFloatParam[2] != -1.0) class_id = xFwFloatParam[2]
 
+	if(!zpn_is_valid_player_alive(this))
+		return false
+
 	ExecuteForward(xForwards[FW_USER_FROZEN_PRE], xForwardReturn, this)
 
 	if(xForwardReturn >= ZPN_RETURN_HANDLED)
@@ -1769,6 +1772,9 @@ public remove_user_frozen(this)
 	this -= TASK_FROZEN
 
 	if(!is_user_connected(this)) { remove_task(this + TASK_FROZEN); return; }
+
+	if(!zpn_is_valid_player_alive(this))
+		return
 
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_FREEZED, false)
 
