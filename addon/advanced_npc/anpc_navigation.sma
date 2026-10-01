@@ -14,6 +14,8 @@ new gLinkTo[ANPC_MAX_NODES][ANPC_MAX_LINKS], gLinkFlags[ANPC_MAX_NODES][ANPC_MAX
 new Float:gLinkVelocity[ANPC_MAX_NODES][ANPC_MAX_LINKS][3]
 new Float:gLinkCost[ANPC_MAX_NODES][ANPC_MAX_LINKS], Float:gLinkBlocked[ANPC_MAX_NODES][ANPC_MAX_LINKS]
 new gBucketHead[ANPC_HASH_BUCKETS], gBucketNext[ANPC_MAX_NODES]
+new Float:gAreaMins[ANPC_MAX_AREAS][3], Float:gAreaMaxs[ANPC_MAX_AREAS][3]
+new gAreaFlags[ANPC_MAX_AREAS], gAreaNext[ANPC_MAX_AREAS], gAreaHead[ANPC_HASH_BUCKETS], gAreaCount
 new gNodeCount, gRevision, gChangedForward, gTrace, gExpansions, gFrameForward
 new Float:gStepSize
 new gMap[64], gNavPath[256], gBspSize, gBspHash[33]
@@ -31,6 +33,7 @@ new gHeap[ANPC_SEARCH_JOBS][ANPC_MAX_NODES]
 new Float:gCost[ANPC_SEARCH_JOBS][ANPC_MAX_NODES], Float:gPriority[ANPC_SEARCH_JOBS][ANPC_MAX_NODES]
 new gQueueCursor, gJobCursor, gReversePath[ANPC_MAX_NODES]
 
+#include "advanced_npc/navigation_areas"
 #include "advanced_npc/navigation_graph"
 #include "advanced_npc/navigation_search"
 
@@ -45,6 +48,11 @@ public plugin_natives()
 	register_native("anpc_nav_reset", "native_reset")
 	register_native("anpc_nav_find_near", "native_find_near")
 	register_native("anpc_nav_node", "native_node")
+	register_native("anpc_nav_area_count", "native_area_count")
+	register_native("anpc_nav_area", "native_area")
+	register_native("anpc_nav_area_at", "native_area_at")
+	register_native("anpc_nav_area_add", "native_area_add")
+	register_native("anpc_nav_area_clear", "native_area_clear")
 	register_native("anpc_nav_nearest", "native_nearest")
 	register_native("anpc_nav_walkable", "native_walkable")
 	register_native("anpc_nav_link", "native_link")
@@ -155,7 +163,7 @@ public native_find_near()
 	new Float:feet[3], Float:radius = get_param_f(2), Float:height = get_param_f(3)
 	get_array_f(1, feet, 3)
 	if (!gTrace || !anpc_finite(radius, 512.0) || radius < 1.0 || !anpc_finite(height, 512.0) || height < 0.0) return ANPC_INVALID_NODE
-	return nav_find_near(feet, radius, height)
+	return nav_find_near(feet, radius, height, get_param(4))
 }
 
 public bool:native_node()
@@ -165,6 +173,44 @@ public bool:native_node()
 	set_array_f(2, gNodeOrigin[node], 3)
 	set_param_byref(3, gNodeFlags[node])
 	set_float_byref(4, gNodeRadius[node])
+	return true
+}
+
+public native_area_count() { return gAreaCount; }
+
+public bool:native_area()
+{
+	new area = get_param(1)
+	if (!(0 <= area < gAreaCount)) return false
+	set_array_f(2, gAreaMins[area], 3)
+	set_array_f(3, gAreaMaxs[area], 3)
+	set_param_byref(4, gAreaFlags[area])
+	return true
+}
+
+public native_area_at()
+{
+	new Float:feet[3]
+	get_array_f(1, feet, 3)
+	return nav_area_at(feet, get_param(2))
+}
+
+public native_area_add(const plugin)
+{
+	if (!nav_edit_allowed(plugin) || gEditOwner != plugin+1) return -1
+	new Float:mins[3], Float:maxs[3]
+	get_array_f(1, mins, 3)
+	get_array_f(2, maxs, 3)
+	new area = nav_add_area(mins, maxs, get_param(3), true)
+	if (area >= 0) nav_changed()
+	return area
+}
+
+public bool:native_area_clear(const plugin)
+{
+	if (!gTrace || gEditOwner != plugin+1) return false
+	nav_clear_areas()
+	nav_changed()
 	return true
 }
 

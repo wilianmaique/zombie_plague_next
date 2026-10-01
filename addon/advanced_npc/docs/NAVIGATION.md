@@ -33,7 +33,7 @@ Pontos com `Button`, `Lift` e `DoubleJump` ficam desabilitados. Essas ações de
 
 `configs/maps/de_dust2.nav` foi convertido de [de_dust2.graph](https://github.com/yapb/graph/blob/19b802d42fbdadabd3205fb767c8ea59d976a7de/graph/de_dust2.graph), autor `$_Vladislav`, usando o BSP encontrado no servidor local. Tem 1.238 nós e 5.939 conexões direcionadas. O relatório acompanha o arquivo.
 
-Esse exemplo oferece uma topologia inicial para testar o sistema após sua compilação. Os saltos e descidas listados no relatório ainda exigem validação física no jogo. O BSP não é distribuído com este pacote. Uma versão diferente do mapa exige uma nova importação.
+Reimporte esse exemplo com a ferramenta atual para obter `ANPC_NAV 2`. Grafos YaPB fornecem nós e conexões, sem retângulos certificados; esses são gerados pelo mapper no servidor. Os saltos e descidas listados no relatório ainda exigem validação física no jogo. O BSP não é distribuído com este pacote. Uma versão diferente do mapa exige uma nova importação.
 
 ## Editor de mapa
 
@@ -55,7 +55,7 @@ anpc_nav_show 0
 
 O gravador cobre trechos efetivamente percorridos. Para completar a cobertura, percorra ramificações, conecte segmentos e teste a rota de cada região importante. Saltos, quedas e escadas verticais são ligações explícitas.
 
-`anpc_nav_show 1` acompanha a posição e a direção da câmera, inclusive ao olhar para cima ou para baixo. A cada 0,5 segundo, seleciona os 16 nós mais próximos em um cone frontal de 120 graus e até 384 unidades da câmera; IDs menores ou nós atrás não ocupam essas vagas. Desenha até 12 ligações com ambos os nós nesse cone. O HUD e o destaque verde indicam o nó desenhado mais próximo, ou `-1` quando nenhum atende ao filtro. As linhas têm largura `12` no protocolo do beam (antes `3`) e ficam duas unidades acima do piso.
+`anpc_nav_show 1` acompanha a posição e a direção da câmera, inclusive ao olhar para cima ou para baixo. A cada 0,5 segundo, seleciona até 32 nós mais próximos em um cone frontal de 120 graus e até 5.000 unidades da câmera; IDs menores ou nós atrás não ocupam essas vagas. Desenha até 32 ligações com ambos os nós nesse cone e os contornos azuis de até oito áreas associadas aos pontos selecionados. O HUD informa o nó desenhado mais próximo, ou `-1`, total de nós e áreas desenhadas/total. As linhas têm largura `10` no protocolo do beam e ficam duas unidades acima do piso.
 
 O desenho continua ao morrer ou entrar em spectator, sem precisar repetir o comando. Em câmera livre, usa a posição e os ângulos do administrador; em primeira pessoa, usa os olhos e a direção do jogador acompanhado. Câmeras de entidade criadas com `SetView`, como as do addon de câmera do projeto, usam a própria posição e os próprios ângulos. Nas câmeras de perseguição, usa o alvo acompanhado e aproxima o recuo padrão de 112 unidades com trace contra o mapa; a posição exata, uma distância de perseguição personalizada, o autodirector e o overview são calculados pelo cliente e não estão disponíveis nessa consulta do servidor. Primeira pessoa e câmera livre são os modos indicados para conferir o grafo em spectator.
 
@@ -69,24 +69,27 @@ O desenho continua ao morrer ou entrar em spectator, sem precisar repetir o coma
 | `anpc_nav_unlink from to` | Remove somente essa direção |
 | `anpc_nav_flags node flags` | Atualiza flags do nó |
 | `anpc_nav_save` / `anpc_nav_reload` | Grava/recarrega o mapa atual |
-| `anpc_nav_show 0|1` | Nós/ligações à frente da câmera, inclusive morto/spec; desenho limitado ao admin e HUD com id próximo |
+| `anpc_nav_show 0|1` | Nós, ligações e retângulos à frente da câmera; desenho limitado ao admin, inclusive morto/spec |
 | `anpc_nav_record 0|1` | Gravação de trechos terrestres válidos |
 
 Uma conexão é direcionada. Para caminhar também na volta, crie `to -> from`. Quedas e saltos podem ser viáveis em apenas um sentido. O máximo é oito saídas por nó.
 
-Flags de nó: `1` agachado, `2` escada, `4` desabilitado; podem ser somadas. Raio deve ficar entre 8 e 64. O seguidor limita tolerância de avanço a 24 unidades. Para saída de salto e posições precisas, prefira raio 8.
+Flags de nó: `1` agachado, `2` escada, `4` desabilitado; podem ser somadas. Raio deve ficar entre 8 e 64. O seguidor limita tolerância de avanço a 24 unidades e a quatro unidades antes de uma saída de salto/queda. Para posições precisas, prefira raio 8.
 
 ## Formato atual `.nav`
 
-Todos os nós devem aparecer antes das conexões. IDs são sequenciais a partir de zero. Coordenadas representam os pés, com decimais; `NaN`, infinitos, índices fora dos limites e registros desconhecidos são rejeitados.
+A ordem é nós, áreas opcionais e conexões. IDs de nós e de áreas são sequenciais a partir de zero em contagens independentes. Coordenadas representam os pés, com decimais; `NaN`, infinitos, índices fora dos limites e registros desconhecidos são rejeitados.
 
 ```text
-ANPC_NAV 1 "nome_do_mapa" tamanho_do_bsp md5_do_bsp
+ANPC_NAV 2 "nome_do_mapa" tamanho_do_bsp md5_do_bsp
 N id x y z raio flags
+A id min_x min_y max_x max_y piso_z flags
 E origem destino flags vx vy vz
 ```
 
-O header contém cinco campos. `N` e `E` têm sete campos cada. O MD5 tem 32 caracteres hexadecimais minúsculos. Linhas vazias e comentários começando com `;` ou `#` são aceitos.
+O header contém cinco campos, `N` e `E` sete campos e `A` oito. O MD5 tem 32 caracteres hexadecimais minúsculos. Linhas vazias e comentários começando com `;` ou `#` são aceitos. O provedor aceita somente a versão atual; arquivos antigos devem ser gerados ou importados novamente.
+
+Cada `A` descreve piso estático plano: lados entre 32 e 256 unidades, contidos numa única célula espacial de 256 unidades, com flags `0` ou `1` (agachamento). XY usa limites semiabertos `[min, max)` e a consulta admite até uma unidade de diferença do piso. Até 4.096 áreas podem ser gravadas. Uma área não cria conectividade entre componentes: as conexões continuam explícitas. O NPC usa seu interior para seguir diretamente, dispensar âncoras comuns intermediárias e reaproveitar a prova de apoio, mantendo o teste do hull atual. Saltos, escadas, posições precisas e mudanças de postura interrompem essa simplificação.
 
 Velocidade da aresta fica zerada para caminhada/descida. No salto, uma referência zero solicita cálculo pelo perfil. A referência define uma preferência de tempo quando viável; o núcleo sempre calcula o lançamento usando a gravidade atual e verifica o arco.
 

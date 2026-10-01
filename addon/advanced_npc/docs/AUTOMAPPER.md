@@ -8,9 +8,9 @@ O scanner começa nos spawns de CT/TR e nas posições de jogadores presentes. F
 
 Um hull horizontal que encontra uma superfície caminhável (`normal.z >= 0.7`) mantém o candidato longo de exploração. A inclinação observada ajuda a estimar a altura das amostras usadas na escolha; ela não certifica a passagem. Antes de andar, o mapper acompanha o piso em pequenos intervalos XY, obtendo os pés pelo contato de um hull de jogador com o chão. A subida acumulada de uma rampa pode superar a altura de um degrau ou de um salto, desde que cada intervalo continue caminhável. Se o piso termina ou encontra um obstáculo depois de um avanço útil, o alvo pode ser encurtado para o fim desse trecho validado.
 
-Trechos livres recebem alvos mais distantes, com nós intermediários durante a travessia; um ponto conhecido perto do bot não encurta um alvo desconhecido mais adiante. Cada nó novo guarda seu antecessor de descoberta. A verificação física da volta é adiada enquanto existe uma fronteira nova alcançável pelo grafo, reservando uma saída para esse retorno. Uma conexão inversa já comprovada dispensa a tentativa e pode ser usada pelo A*. Retornos impossíveis são encerrados sem inventar conexões. As direções de ligações percorridas também ficam registradas, evitando testar novamente a mesma saída.
+Trechos livres recebem alvos mais distantes; um ponto conhecido perto do bot não encurta um alvo desconhecido mais adiante. Em interiores planos já validados, o mapper dispensa âncoras intermediárias periódicas. Fora deles, preserva espaçamento e pontos necessários para representar o terreno. Cada nó novo guarda seu antecessor de descoberta. A verificação física da volta é adiada enquanto existe uma fronteira nova alcançável pelo grafo. Uma ida real inteiramente em cobertura estática plana permite comprovar a caminhada inversa sem repetir o percurso; nos demais casos, a volta mantém sua própria tentativa física. Retornos impossíveis são encerrados sem inventar conexões. As direções de ligações percorridas também ficam registradas.
 
-Ao começar com um `.nav` existente, também examina suas arestas por etapas. Para nós sem antecessor, pode agendar uma volta ausente para um nó de ID menor que já tenha ligação de ida. Isso mantém uma árvore sem ciclos e permite verificar retornos mesmo sem journal; uma tentativa já encerrada na memória é preservada. A aresta inversa só será acrescentada após movimento real.
+Ao começar com um `.nav` atual existente, também examina suas arestas por etapas. Para nós sem antecessor, pode agendar uma volta ausente para um nó de ID menor que já tenha ligação de ida. Isso mantém uma árvore sem ciclos e permite verificar retornos mesmo sem journal; uma tentativa já encerrada na memória é preservada. Essa preparação não cria a inversa presumindo que um salto ou uma queda são reversíveis.
 
 As leituras de alcance orientam o planejamento, sem certificar piso, salto ou passagem. O bot mantém testes de caminhada, agachamento, salto, queda e duas direções de escada. Alvos conhecidos são reutilizados quando estão no setor e têm acesso por hull; a conexão só entra no grafo depois da travessia. O índice espacial do provedor evita comparar cada amostra com todos os nós.
 
@@ -22,7 +22,7 @@ Mudanças de episódio e recuperação podem reposicionar o explorador em uma â
 
 ## Blocos adaptativos e redução das repetições
 
-O mapa tem uma camada de cobertura separada do grafo. Uma âncora conhecida começa a classificação de um quadrado de 256 unidades no seu piso. Quando o quadrado contém irregularidades, o bloco que contém essa âncora é subdividido sob demanda em 128, 64 e 32 unidades. Onde nenhum desses tamanhos passa nos testes, o scanner continua usando os nós e as provas detalhadas de movimento.
+A navegação combina áreas planas e um grafo de âncoras. Uma âncora conhecida começa a classificação de um quadrado de 256 unidades no seu piso. Quando ele contém irregularidades, o bloco dessa âncora é subdividido sob demanda em 128, 64 e 32 unidades. Cada bloco aprovado passa a ser um retângulo do provedor, gravado no `.nav` e usado pelos NPCs. Onde nenhum tamanho passa nos testes, permanecem nós e provas detalhadas de movimento.
 
 A classificação usa amostras de piso com intervalo máximo de 24 unidades e faixas de hull sobrepostas. Exige piso estático quase horizontal, diferença de altura menor que uma unidade e espaço para o hull do jogador. Traces de cima, acima do salto admitido, impedem que plataformas acessíveis e tetos baixos desapareçam dentro de um bloco plano. Água, rampas, degraus e volumes próximos de escadas, triggers, portas, botões, quebráveis ou plataformas móveis permanecem na análise detalhada. Blocos no mesmo XY guardam alturas distintas: conhecer o térreo não resolve automaticamente um andar acima.
 
@@ -30,9 +30,13 @@ Direções inteiramente contidas em blocos analisados deixam de gerar caminhadas
 
 Nas bordas irregulares, outra verificação evita caminhar de volta para dentro de uma área conhecida. Ela exige um trecho plano, sem volume sensível na origem, análise do pequeno prefixo ainda fora dos blocos e uma rota direcionada já existente até a âncora de destino. Só dispensa a caminhada se o custo dessa rota não superar `1,75 × (distância até a âncora + metade do espaçamento)`. Sem rota ou com um desvio maior, mantém a tentativa física para descobrir a ligação ou um atalho útil.
 
-Os blocos não acrescentam nós, não fabricam conexões e não substituem o `.nav` por uma malha. São memória geométrica para decidir **onde ainda vale a pena explorar**. Retornar pelo grafo, atravessar uma região para chegar a outra e verificar uma ligação inversa continuam podendo exigir passagem por áreas conhecidas.
+No interior conhecido, a posição atual não recebe um nó apenas por atingir o intervalo de espaçamento. Entrada, destino e último ponto alcançado antes de sair para terreno irregular continuam representados. Âncoras comuns próximas são reutilizadas até `0,55 × anpc_scan_spacing`, com prova de hull e apoio entre as coordenadas realmente gravadas; proximidade através de paredes ou buracos não basta. Âncoras precisas reutilizam apenas posições a menos de quatro unidades. O mapper termina fisicamente numa âncora reutilizada antes da próxima análise, evitando deslocar uma decolagem por causa dessa tolerância maior.
 
-Depois que o mapper executa `Use`/`TakeDamage` em um obstáculo, invalida a cobertura e a reconstrói por etapas. Decisões derivadas dos blocos ficam fora da memória persistente, para não esconder saídas após retomar em outra configuração de portas/caixas. A comparação com exploração por fronteiras, varredura de cobertura e navmeshes está em [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md).
+Retângulos adjacentes com mesma altura/postura podem ser unidos quando a extensão no outro eixo é igual e a união continua dentro da mesma célula espacial de 256 unidades. A união não preenche formas em L nem buracos. O provedor pode manter retângulos menores contidos num maior; a consulta escolhe o maior que aceita as capacidades. O A* continua usando conexões explícitas, enquanto o NPC dispensa pontos comuns da rota dentro do mesmo retângulo e mantém teste do hull atual. Saltos, quedas, escadas, posições precisas e mudanças de postura interrompem essa simplificação.
+
+Depois de uma caminhada real cujo segmento inteiro está em cobertura plana estática, a prova permite sua inversa, respeitando capacidade de saídas e flags. Saltos, quedas, escadas, volumes sensíveis e piso desconhecido conservam retornos físicos. Atravessar uma região conhecida para alcançar outra continua podendo ser necessário.
+
+Depois que o mapper executa `Use`/`TakeDamage` em um obstáculo, invalida cobertura e retângulos e os reconstrói por etapas. Ao iniciar uma sessão, também refaz as áreas a partir da geometria atual. As máscaras de exploração derivadas ficam fora do journal; o `.nav` conserva áreas para uso em jogo. A comparação com exploração por fronteiras, varredura de cobertura e navmeshes está em [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md).
 
 ## Movimento e provas de passagem
 
@@ -40,11 +44,15 @@ Depois que o mapper executa `Use`/`TakeDamage` em um obstáculo, invalida a cobe
 
 Antes de cada comando, o mapper limpa a trava `fixangle` do fake client, que pode permanecer pendente após o nascimento por ele não receber pacotes de ângulo. Assim, o motor atualiza também a orientação do corpo conforme o olhar, usando a convenção de pitch do modelo de jogador.
 
-O planejamento testa hulls em pé/agachado, altura e inclinação do piso, espaço para corrida de preparação e arcos de salto em etapas. Em salto, o hook ReAPI `RG_PM_Jump` captura a posição de saída e a velocidade efetivamente produzida pela física. Depois da aterrissagem estável, o grafo recebe a ligação direcionada e essa velocidade. Saltos agachados são tentados para obter a folga adicional do hull de jogador.
+O planejamento testa hulls em pé/agachado, altura e inclinação do piso, apoio de toda a corrida de preparação e arcos de salto em etapas. Quando a prova terrestre encontra a face de uma caixa estática perto da origem, procura o topo em cinco profundidades após o contato: 32, 48, 72, 96 e 128 unidades. Isso permite aterrissar numa caixa curta que ficava antes do antigo alvo distante. Cada candidato precisa de piso e hull válidos e de uma travessia real.
+
+Um arco que colide com a face pode tentar recuos de 16, 32, 48, 72, 96 e 128 unidades, verificando o apoio de cada aproximação. O explorador recua, freia e acumula velocidade horizontal na direção da decolagem antes de pressionar salto. Também aguarda a penalidade natural de saltos consecutivos terminar na aproximação apoiada, sem alterar `fuser2` ou injetar velocidade. Limites de tempo continuam ativos.
+
+No salto com saída em pé, o mapper mantém o hull original no primeiro comando e agacha no ar, elevando os pés em 18 unidades sem deslocar o centro. A postura de chegada pode exigir permanecer agachado; onde há espaço, levanta após pousar. O hook ReAPI `RG_PM_Jump` captura posição, postura e velocidade real, corrigindo a referência vertical pelo meio passo de gravidade que o hook já observou. A aterrissagem estável e útil é exigida antes de criar as âncoras precisas de saída/chegada e a ligação. Saltar e voltar ao chão diante de uma caixa elevada não deixa uma ligação nem novos pontos de decolagem fracassada.
 
 Quedas começam com caminhada até a borda real. A gravação só acontece após alcançar o piso seguinte, respeitando `anpc_scan_max_drop`. Dano de queda, `trigger_hurt`, `trigger_push`, teletransporte ou um deslocamento inesperado invalidam a tentativa. O bot protegido contra dano não transforma uma passagem perigosa em rota segura.
 
-Trechos terrestres têm pontos intermediários, verificação de hull e amostras de chão para evitar conexões que cortem paredes, quinas ou buracos. As âncoras de saída e chegada de movimentos aéreos usam tolerância menor.
+Trechos terrestres fora de áreas certificadas têm pontos intermediários, verificação de hull e amostras de chão para evitar conexões que cortem paredes, quinas ou buracos. Dentro das áreas, a prova de apoio pode ser reutilizada com o teste do hull atual. As âncoras de saída e chegada de movimentos aéreos usam tolerância menor.
 
 O planejamento e a gravação usam o hull inteiro para medir apoio, evitando confundir o piso sob o centro com a altura dos pés necessária numa inclinação. O intervalo de amostragem é `min(16, sv_stepsize × 0,75)` unidades XY, com mínimo de 0,25; na configuração usual de 18, resulta em 13,5. A altura de degrau limita cada intervalo, sem limitar a subida total. Uma crista pode exigir elevação parcial do corpo: os testes consultam a folga real nas duas extremidades e verificam a passagem elevada, incluindo os trechos verticais. Um trace de busca de piso pode começar no teto e sair para espaço livre antes de tocar o chão; os hulls que verificam deslocamento continuam exigindo passagem livre.
 
@@ -76,7 +84,7 @@ O modo `watch` acompanha a posição dos olhos e os ângulos completos do scout,
 
 Os estados numéricos são `0` desligado, `1` preparando episódio, `2` escolhendo fronteira, `3` aguardando/seguindo rota, `4` analisando geometria, `5` movendo, `6` pausado, `7` salvando e `8` candidatos esgotados.
 
-Use `anpc_nav_show 1` para desenhar os pontos próximos. A edição manual e a criação de NPCs ficam bloqueadas enquanto o scanner mantém a edição exclusiva. O gravador manual ativo é encerrado ao começar a análise.
+Use `anpc_nav_show 1` para desenhar os pontos e os contornos azuis de até oito retângulos do provedor associados aos nós selecionados. A edição manual e a criação de NPCs ficam bloqueadas enquanto o scanner mantém a edição exclusiva. O gravador manual ativo é encerrado ao começar a análise.
 
 Com `anpc_scan_beam 1` (padrão), um laser verde sai dos olhos do fake client e acompanha seu ângulo real de visão, incluindo a inclinação nas escadas. A linha termina no primeiro sólido/jogador encontrado ou em 1.024 unidades. É visível para clientes próximos, inclusive usando `watch`, e usa um trace próprio, até dez atualizações por segundo sob o orçamento do mapper. `anpc_scan_beam 0` desliga o efeito. O laser representa o olhar do bot, não todas as direções da varredura geométrica.
 
@@ -90,7 +98,7 @@ Os arquivos ficam em `addons/amxmodx/configs/advanced_npc/maps/`:
 
 | Arquivo | Conteúdo |
 | --- | --- |
-| `<mapa>.nav` | Grafo no formato atual `ANPC_NAV 1`, pronto para o provedor |
+| `<mapa>.nav` | Nós, áreas `A` e conexões no formato atual `ANPC_NAV 2` |
 | `<mapa>.scan` | Memória `ANPC_SCAN 2`: direções/visitas, antecessores, retornos pendentes, âncoras rejeitadas, sementes e amostragem |
 | `<mapa>.scan.txt` | Contadores, perfil físico, limites atingidos e movimentos não representados |
 | `*.bak` | Versão anterior do respectivo arquivo |
@@ -98,9 +106,9 @@ Os arquivos ficam em `addons/amxmodx/configs/advanced_npc/maps/`:
 
 A escrita congela a exploração e distribui registros por frames. O commit de cada arquivo usa renomeação com backup. A memória inclui MD5 do BSP, do `.nav` e uma assinatura dos parâmetros físicos e da política de exploração. Se houver interrupção entre os commits, a memória que não corresponde ao novo `.nav` é descartada; o grafo permanece utilizável e as direções são examinadas novamente.
 
-O formato de memória atual é `ANPC_SCAN 2`. Memórias em outro formato são descartadas, sem converter registros antigos; o `.nav` continua no formato `ANPC_NAV 1` e permanece utilizável. Os antecessores têm IDs menores que seus filhos, impedindo ciclos na árvore de descoberta. Retornos interrompidos por pausa/checkpoint continuam pendentes.
+O formato de memória permanece `ANPC_SCAN 2`; memórias em outro formato são descartadas. O provedor aceita somente `ANPC_NAV 2`, descrito em [NAVIGATION.md](NAVIGATION.md). Gere um scan novo ou reimporte grafos antigos antes de usar esta revisão. Continuar um grafo atual preserva seus IDs; para eliminar a geração densa de um scan anterior, use `anpc_scan start new`. Os antecessores têm IDs menores que seus filhos, impedindo ciclos na árvore de descoberta. Retornos interrompidos por pausa/checkpoint continuam pendentes.
 
-A política atual tem a assinatura `blocks-frontiers-ramps-1`. Um `.scan` da política anterior é descartado mesmo se tiver o formato 2, preservando o `.nav`; isso devolve à análise direções de rampas que os testes anteriores podem ter rejeitado. Checkpoints desta revisão podem ser retomados normalmente. A cobertura dos blocos é reconstruída a partir do mapa e das âncoras, sem criar um segundo formato persistente.
+A política atual tem a assinatura `areas-landings-1`. Um `.scan` com outra assinatura é descartado mesmo no formato 2; o grafo atual permanece e a exploração é reanalisada. Checkpoints desta revisão podem ser retomados normalmente. As áreas e a cobertura da sessão são reconstruídas a partir do mapa e das âncoras; durante o checkpoint, retângulos atuais são gravados junto do grafo.
 
 Pausa, checkpoint ou encerramento durante uma tentativa devolvem a direção interrompida à análise. Um desligamento inesperado preserva o último checkpoint já confirmado. O comando `stop` termina a gravação antes de remover o bot; evite desligar o mapa enquanto `active=1`.
 
@@ -132,9 +140,9 @@ A prova de terreno processa um intervalo por etapa e reserva até 14 traces para
 
 O status e o relatório mostram `sweeps` (varreduras locais), `known-direction skips` (saídas já ligadas), `long walks` (tentativas terrestres acima de 1,5 vezes o espaçamento) e `deferred returns` (tentativas de volta adiadas). As distâncias separam exploração de deslocamento/retorno, em unidades do mapa; reposicionamentos não entram nessas distâncias. São contadores da sessão, não porcentagens de cobertura nem medição de ganho de velocidade.
 
-Há também contadores de blocos abertos/detalhados, setores dispensados pela geometria, tentativas interiores dispensadas e destinos selecionados por custo. `pending-estimate` usa resultados já consultados, para que um comando de status não refaça a geometria do mapa inteiro; pode superestimar o trabalho que os próximos testes de cobertura vão retirar. A seleção efetiva consulta a cobertura atual.
+Há também contadores de blocos abertos/detalhados, setores dispensados pela geometria, tentativas interiores dispensadas e destinos selecionados por custo. `Navigation areas` informa retângulos atuais; `suppressed node samples` conta amostras periódicas dispensadas, podendo contar vários frames do mesmo trecho; `symmetric floor returns` conta inversas comprovadas pela área plana e `local landings` conta candidatos de topo validados. Esses valores não são uma contagem de nós removidos. `pending-estimate` usa resultados já consultados, para que um comando de status não refaça a geometria do mapa inteiro; pode superestimar o trabalho que os próximos testes de cobertura vão retirar.
 
-Os limites atuais são 4.096 nós, oito saídas direcionadas por nó, 512 pontos iniciais, 128 volumes de escada, 256 volumes sensíveis e 16.384 registros de blocos. Ao atingir a capacidade de nós, o plugin salva um grafo parcial e encerra. Esgotar registros de blocos mantém a exploração detalhada; exceder o cache de volumes sensíveis/escadas desativa a classificação de blocos. O relatório identifica esses limites e as tentativas rejeitadas.
+Os limites atuais são 4.096 nós, 4.096 áreas, oito saídas direcionadas por nó, 512 pontos iniciais, 128 volumes de escada, 256 volumes sensíveis e 16.384 registros de blocos. Ao atingir a capacidade de nós, o plugin salva um grafo parcial e encerra. Esgotar registros de blocos/áreas mantém a exploração detalhada; exceder o cache de volumes sensíveis/escadas desativa a classificação de blocos. O relatório identifica esses limites e as tentativas rejeitadas.
 
 ## Cobertura e teste manual
 

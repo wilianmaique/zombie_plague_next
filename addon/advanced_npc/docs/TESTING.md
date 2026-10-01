@@ -1,6 +1,6 @@
 # Verificação e testes
 
-## Realizado em 30/09/2026
+## Histórico das revisões anteriores em 30/09/2026
 
 - Pesquisa das interfaces do YaPB e ReAPI/AMXX, com consulta às includes do ambiente configurado do projeto.
 - Leitura do modelo studio v10 `zpn_z_default.mdl`: 111 sequências; confirmação dos sete labels usados pelo tipo inicial.
@@ -16,16 +16,16 @@ A compilação foi executada por solicitação explícita do usuário. Os seis b
 
 ## Visualização de navegação: validação manual
 
-A revisão de `anpc_nav_show` altera somente `anpc_admin.sma`, sem alterar o grafo ou suas APIs. Compile esse plugin manualmente e carregue o binário atualizado antes dos testes; esta alteração não foi compilada nem executada no HLDS.
+A seleção por câmera foi conferida na revisão anterior de `anpc_admin.sma`. A revisão 1.2 também desenha áreas do provedor; recompile os quatro consumidores indicados abaixo e carregue os binários atualizados. A revisão atual não foi compilada nem executada no HLDS.
 
 Foram conferidos os delimitadores da fonte, os campos de `TE_BEAMPOINTS`, as guardas dos limites de seleção e a disponibilidade das novas interfaces nas includes locais. As expressões do filtro extraídas da fonte passaram em 10.100 casos de posição, yaw, pitch, frente/trás e alcance, comparadas com uma referência angular independente em Python. Essa conferência matemática não executa Pawn nem a câmera do cliente.
 
 | Cenário | Resultado esperado |
 | --- | --- |
-| Ativar `anpc_nav_show 1` com nós à frente e atrás | Apenas nós no cone frontal; linhas quatro vezes mais largas e ligações acima do piso |
+| Ativar `anpc_nav_show 1` com nós à frente e atrás | Apenas nós no cone frontal; largura atual 10, ligações acima do piso e até oito retângulos azuis associados aos pontos |
 | Girar 180 graus sem andar | Seleção acompanha a nova direção na atualização seguinte, em até 0,5 segundo |
 | Olhar para cima/baixo ou agachar | Filtro acompanha pitch e posição dos olhos, sem inverter a direção |
-| Mais de 16 nós à frente, com IDs em ordem diferente das distâncias | Os 16 nós mais próximos da câmera ocupam o limite; HUD/destaque correspondem ao primeiro |
+| Mais de 32 nós à frente, com IDs em ordem diferente das distâncias | Os 32 nós mais próximos da câmera ocupam o limite; HUD/destaque correspondem ao primeiro |
 | Morrer, entrar em spectator e depois renascer com o desenho ligado | Desenho continua e troca a referência de visão automaticamente |
 | Spectator em câmera livre longe do corpo | Usa a câmera atual, sem desenhar apenas perto da posição da morte |
 | Spectator em primeira pessoa; observado olha para o lado oposto ao admin | Usa os olhos e a direção do jogador observado; mensagens continuam somente para o admin |
@@ -37,7 +37,19 @@ Foram conferidos os delimitadores da fonte, os campos de `TE_BEAMPOINTS`, as gua
 
 ## Scanner: validação manual
 
-A revisão atual altera mapper, provedor de navegação e núcleo, com a include compartilhada `ground.inc` e as includes internas externas configuradas no projeto. Essa revisão não foi compilada nem executada no HLDS; as compilações acima pertencem às revisões anteriores. Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma` e `anpc_core.sma` com as includes atualizadas antes destes testes. O formato da memória permanece `ANPC_SCAN 2`, com assinatura de política `blocks-frontiers-ramps-1`; memórias da política anterior são descartadas, preservando o `.nav`.
+A revisão 1.2 altera mapper, provedor, núcleo e administrador, com as includes externas configuradas no projeto e a nova `navigation_areas.inc`. Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma`. Não houve compilação, execução no HLDS ou medição de FPS nesta revisão. O `.nav` atual é `ANPC_NAV 2`; regenere mapas antigos ou reimporte os grafos YaPB. A memória permanece `ANPC_SCAN 2`, com política `areas-landings-1`. Para substituir os pontos densos anteriores, comece com `anpc_scan start new`.
+
+Conferências realizadas nesta revisão:
+
+- 11 testes existentes do importador passaram, incluindo o header `ANPC_NAV 2`, conversão, limites, arquivos inválidos e proteção contra sobrescrita.
+- Conferência estática de 25 fontes Pawn de navegação, mapper, núcleo e administrador: delimitadores, resolução de globais/funções próprias, quantidades de argumentos e 99 chamadas com formatos/argumentos. Nenhum compilador foi invocado.
+- Conferência auxiliar de expressões de limite, contenção e união extraídas das fontes: 12.000 adições de quadrados comparadas à união independente das células fornecidas, nas duas capacidades de postura; 351 registros de áreas salvos/recarregados preservaram IDs e contagem. Inclui coordenadas negativas/grandes, colisões do índice, pisos sobrepostos, limites semiabertos, flags inválidas e um buraco em L que não pode ser preenchido.
+- 35 combinações de altura de caixa/recuo verificadas por equações balísticas, com limites de velocidade e passagem pela face expandida do hull. O caso de 80 unidades sob o perfil usual exige recuo maior que 48; a lista atual inclui 72, 96 e 128. A geometria diferencia agachamento no chão, que preserva os pés, de agachamento no ar, que preserva o centro e eleva os pés.
+- Postura e ordem de salto/agachamento conferidas na implementação de [PM_Jump/PM_Duck do ReGameDLL](https://github.com/rehlds/ReGameDLL_CS/blob/master/regamedll/pm_shared/pm_shared.cpp) e nas assinaturas ReAPI instaladas. A penalidade de saltos consecutivos é aguardada naturalmente, sem alterar a velocidade ou o temporizador do jogador.
+
+Essas conferências auxiliares não executam Pawn, traces, a máquina de estados ou a física do HLDS. Os cenários abaixo precisam de validação no mapa real, especialmente as aterrissagens e a retomada após ações de obstáculos.
+
+### Conferências anteriores de exploração e rampas
 
 A conferência estática do mapper passou para as oito fontes Pawn, incluindo `ground.inc`: delimitadores, funções e variáveis referenciadas, natives próprios, 49 chamadas com formatos/argumentos, sete campos do registro de nó `ANPC_SCAN 2` e protocolo do beam com trace separado. A propriedade angular do ajuste de parede foi conferida em 288.008 combinações de setor/ângulo. Também foram conferidos delimitadores, globais e quantidades de argumentos das chamadas próprias nos três consumidores de terreno: mapper, navegação e núcleo.
 
@@ -45,7 +57,7 @@ Uma conferência auxiliar em Python comparou modelos dos algoritmos com referên
 
 A preparação de retornos em grafos existentes passou por mais 1.000 grafos direcionados, comparando os antecessores escolhidos com o conjunto de arestas de entrada elegíveis. Foram preservados antecessores existentes, tentativas encerradas e nós desabilitados; IDs estritamente menores impediram ciclos. A fonte dessa preparação usa apenas consultas de grafo, sem gravar inversas presumidas.
 
-Esses checks verificam propriedades matemáticas e referências nas fontes; não executam Pawn, a máquina de estados nem a física do HLDS, e não substituem a compilação e os testes abaixo. Corpo, câmera, beam, cobertura e seleção precisam de validação no servidor.
+Esses checks anteriores verificaram propriedades matemáticas e referências nas fontes daquela revisão; não executaram Pawn, a máquina de estados nem a física do HLDS. A antiga exclusão do overlay da criação de arestas foi substituída pela prova simétrica restrita ao piso estático plano. Corpo, câmera, beam, cobertura e seleção precisam de validação no servidor.
 
 A revisão de rampas passou por modelos auxiliares com 12.000 planos/orientações, comparando a altura de apoio com o máximo dos quatro cantos do footprint, e 5.000 combinações de velocidade/intervalo, verificando a distância acumulada das passadas. Foram conferidos 15 cenários de terreno: rampas longas/subida/descida, limite de inclinação, degraus de 18/24 unidades, parede, buraco largo, tetos em pé/agachado, cristas e elevação triangular. Incluem a necessidade de preservar uma âncora na crista, a elevação parcial sob teto, a diferença do teste de cantos em rampas diagonais e a limpeza da flag temporária sem alterar outras flags. São modelos de geometria e conferências de fonte; não medem velocidade/FPS e não reproduzem integralmente a física ou os callbacks do motor.
 
@@ -61,14 +73,17 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Último `watch 0`, desconexão ou encerramento do scan | Câmera e hook liberados; clientes conectados que encerram a observação recuperam a própria visão |
 | `anpc_scan_beam 1`, em pé/agachado/escada e `watch` | Laser verde parte dos olhos, acompanha yaw/pitch reais e termina em obstáculo; leituras do planejamento permanecem independentes |
 | `anpc_scan_beam 0` ou encerrar o scan | Sem novos beams; último efeito expira em 0,2 segundo |
-| Corredor aberto longo | Percursos de até três espaçamentos, nós intermediários e continuidade; nenhuma volta automática após cada segmento |
+| Corredor aberto longo | Percursos de até três espaçamentos; pontos intermediários somente fora da cobertura plana ou em transições; nenhuma volta automática após cada segmento |
 | Rampa longa que permite andar sem saltar, nas duas direções | Apoios medidos pelo hull, alvos longos e ausência de saltos/agachamento apenas por causa da inclinação; subida total pode superar um degrau/salto |
 | Rampa uniforme com grande variação de Z | Nós pelo espaçamento XY, sem gerar outro nó a cada 14 unidades de subida; arestas só após travessia real |
 | Entrada/saída da rampa, crista ou elevação estreita | Âncora antes da mudança importante do piso; ligações não cortam a elevação por dentro |
 | Rampa sob teto que exige agachamento | Usar o hull agachado e a folga disponível, sem exigir uma elevação inteira de 18 unidades nem atravessar o teto |
 | Rampa termina numa parede, buraco ou degrau alto | Avançar apenas pelo trecho apoiado, preservando a análise posterior do obstáculo; nenhum apoio presumido além da borda |
 | Laser e `watch` numa subida/descida | Pitch acompanha a altura do destino e o movimento, limitado a ±45 graus |
-| Sala plana larga | Blocos azuis em interiores livres; nós intermediários continuam no grafo, mas não iniciam novas caminhadas inteiramente dentro da cobertura |
+| Sala plana larga | Retângulos azuis, registros `A` salvos e poucos pontos de entrada/saída; amostras periódicas interiores dispensadas; nenhuma nova varredura do mesmo interior |
+| Quadrados vizinhos, uma parede em L ou pisos distintos | Unir somente retângulos compatíveis, sem preencher o espaço atrás da quina, buracos ou outro andar |
+| Âncoras comuns próximas | Reutilizar somente com hull/apoio válidos; concluir fisicamente na posição reutilizada antes de analisar a próxima saída |
+| Âncoras precisas de salto, escada ou crista | Preservar coordenadas necessárias e tolerância curta; nenhuma união através de paredes ou mudança de piso |
 | Parede corta um bloco de 256 unidades | Subdivisão sob demanda até 32; interior livre pode ser aproveitado, borda irregular mantém testes por nó |
 | Destino conhecido com uma célula desconhecida no caminho | Não dispensar o trajeto só por conhecer o destino |
 | Linha diagonal toca uma quina desconhecida ou segue uma borda da grade | Preservar os lados ainda desconhecidos; nenhum salto da consulta de cobertura por cima deles |
@@ -84,7 +99,8 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Corredor inclinado com parede alta | Direção adaptada à tangente quando cabe no setor; nenhum avanço que atravesse a parede |
 | Saída com conexão já comprovada | Incremento de `known-direction skips`; nenhuma nova tentativa da mesma conexão |
 | Antecessor com conexão inversa existente | Retorno marcado como resolvido; deslocamento ao antecessor só quando o planejamento precisar dele |
-| `.nav` existente com ligações de ida, sem journal correspondente | Preparação incremental de voltas para nós sem antecessor; blocos não dispensam sua prova física |
+| `.nav` atual existente com ligações de ida, sem journal correspondente | Preparação incremental de voltas para nós sem antecessor; saltos, quedas e regiões detalhadas mantêm retorno físico |
+| Ida real inteiramente em cobertura plana estática | Inversa de caminhada acrescentada pela prova simétrica, sem outra volta; contador correspondente sobe |
 | Grafo existente com ciclos, nós desabilitados ou retornos já encerrados | Antecessores adotados sempre têm ID menor; nós desabilitados e tentativas encerradas não são reagendados |
 | Queda cuja volta não funciona | Volta rejeitada uma vez, preservando apenas as ligações fisicamente verificadas |
 | Sétima saída com volta pendente | Última vaga reservada à tentativa de retorno, respeitando oito saídas por nó |
@@ -92,8 +108,14 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Piso descontínuo/buraco | Não gerar ligação de caminhada só porque o hull horizontal passa |
 | Passagem baixa | Agachar; altura dos pés preservada; flags coerentes |
 | Degraus | Pontos intermediários e caminhada dentro dos limites do motor |
-| Caixa/plataforma acessível por salto | Salto real e aterrissagem estável; `E` com flag `1` e velocidade observada |
-| Salto agachado com folga | Botões de salto/agachamento aplicados pela física, sem velocidade injetada |
+| Caixa curta antes do alvo distante, acessível por salto | Candidatos locais sobre o topo; salto real e aterrissagem estável; `E` com flag `1` e velocidade observada |
+| Caixa alta junto ao scout | Recuar o suficiente, validar todo o apoio da aproximação e acumular velocidade antes de saltar; não insistir decolando contra a face |
+| Buraco no meio da corrida de preparação | Não usar a corrida apenas porque seus dois extremos e o hull horizontal são livres |
+| Caixa acima da altura/velocidade admitida | Nenhuma ligação artificial nem pontos precisos deixados por tentativas sem aterrissagem útil |
+| Salto seguido rapidamente por outra caixa | Aguardar a penalidade natural de salto na aproximação; não rejeitar a segunda caixa apenas por redução temporária de altura |
+| Salto com leve agachamento no ar | Primeiro comando sai com postura da origem, depois agacha; pés ganham folga sem velocidade injetada; levantar após pousar quando houver espaço |
+| Chegada da caixa sob teto baixo, com origem em pé | Não agachar prematuramente no chão; agachar no ar e permanecer baixo na chegada |
+| Permanecer vários frames após uma aterrissagem | Registrar a travessia uma vez; sem recapturar a antiga decolagem nem criar grupo de nós juntos |
 | Queda segura | Saída pela borda; `E` com flag `2`, velocidade de arquivo zerada |
 | Queda com dano ou além do limite | Tentativa rejeitada, sem conexão que exija invulnerabilidade |
 | `func_ladder` | Subida/descida física, nós de escada, sem voo fora do volume |
@@ -105,7 +127,8 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Pausar e retomar durante uma tentativa | Retoma de uma âncora; direção interrompida disponível para reanálise |
 | Pausar/salvar durante o retorno adiado | Antecessor e direção permanecem pendentes; retomada não os trata como comprovados |
 | Fila de sementes cheia ou semente inicial já usada | Âncoras pendentes do grafo iniciam episódios diretamente, sem exigir outra entrada na fila |
-| Salvar e continuar | `.nav`, `.scan` e relatório confirmados; análise retomada |
+| Salvar, recarregar e continuar | `.nav` versão 2 conserva nós, áreas e conexões; `.scan` e relatório confirmados; nova sessão reconstrói certificados a partir do mundo atual |
+| Abrir `.nav` antigo ou `A` inválido/duplicado/fora da célula | Arquivo rejeitado integralmente; regenerar/reimportar no formato atual |
 | Encerrar com `stop` | `active=1` durante gravação; depois bot removido e edição liberada |
 | Scout removido ou identidade inválida | Sessão encerrada com `reason`/etapa no log; vaga reutilizada por outro jogador/bot não é removida |
 | Reiniciar o scan com os mesmos arquivos/parâmetros | Memória correspondente reutilizada |
@@ -119,7 +142,7 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 
 Confira também `addons/amxmodx/logs/` e o `<mapa>.scan.txt`. Teste um NPC consumindo o `.nav` gerado: física de fake client e física do perfil de NPC precisam funcionar no mapa real. Os contadores mostram atividades/tentativas, sem certificar cobertura integral do BSP.
 
-Para comparar a exploração, use o mesmo BSP, parâmetros, posição inicial e orçamento de CPU. Observe tempo até esgotar candidatos, nós/conexões, regiões cobertas e as distâncias `explore` e `travel/return`, junto com `pruned bearings`, `skipped interior trials` e `cost-ranked targets`. Um tempo menor com áreas ausentes não representa melhora de cobertura. A medição de ganho e a validação dos saltos/escadas continuam dependendo do servidor real. A escolha das técnicas e suas limitações estão em [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md).
+Para comparar a exploração, use o mesmo BSP, parâmetros, posição inicial e orçamento de CPU. Observe tempo até esgotar candidatos, nós/conexões/áreas, regiões cobertas e as distâncias `explore` e `travel/return`, junto com `pruned bearings`, `skipped interior trials`, `cost-ranked targets`, `suppressed node samples`, `symmetric floor returns` e `local landings`. Amostras dispensadas não equivalem a nós removidos. Um tempo menor com áreas ausentes não representa melhora de cobertura. A medição de ganho e a validação dos saltos/escadas continuam dependendo do servidor real. A escolha das técnicas e suas limitações estão em [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md).
 
 Para repetir os testes do importador, a partir da raiz do projeto:
 
@@ -135,6 +158,9 @@ python -B -m unittest discover -s addon/advanced_npc/tools -p "test_*.py" -v
 | Mapa sem grafo | Log informativo; `anpc_spawn` retorna 0 |
 | Arquivo com mapa, tamanho ou hash incorreto | Grafo rejeitado, sem criar uma topologia parcial |
 | NPC em corredor aberto | Caminha com hull e animação, sem ocupar vaga de jogador |
+| NPC e alvo dentro do mesmo retângulo | Movimento direto pelo interior com hull atual; sem seguir todos os pontos comuns da rota |
+| Rota com retângulo seguido de salto/queda, escada ou ponto preciso | Simplificação termina na transição; aproximação até quatro unidades antes de saída aérea |
+| Sólido novo dentro de área salva | Hull e física bloqueiam a passagem; nenhum movimento através do sólido |
 | Jogador atrás de parede, em outra região conectada | Planeja caminho e segue os corredores |
 | Escadas/degraus | Usa as regras de step height do motor |
 | NPC numa rampa com Think/passo longo | Completa a distância solicitada em partes menores antes de desviar; sem ganhar velocidade além do perfil |
@@ -144,6 +170,10 @@ python -B -m unittest discover -s addon/advanced_npc/tools -p "test_*.py" -v
 | NPC morre, é removido ou muda de estado durante um passo | Interromper as partes restantes e evitar alterar outra entidade/serial ou sobrescrever a animação de ataque |
 | Túnel agachado | Ajusta hull; só levanta com espaço |
 | Salto marcado | Calcula e verifica o arco; mantém gravidade e colisão durante o salto |
+| Referência aprendida colide, mas o salto completo do perfil cabe | Tentar solução com limite vertical do perfil, sem copiar a referência cegamente |
+| Caixa que exige salto e agachamento no ar | Tentar salto normal primeiro; usar hull menor conservando o centro quando necessário e permitido; levantar somente com espaço |
+| Destino baixo de um salto iniciado em pé | Postura de lançamento vem da origem, preservando a folga do agachamento no ar |
+| Arco inviável para esse perfil | Consultas limitadas a cada 0,2 s e recuperação por falta de progresso; sem repetir dezenas de traces a cada Think |
 | Escada vertical | Sobe/desce junto de `func_ladder`; saída devolve gravidade normal |
 | Porta comum | Executa `Use` respeitando a política de portas do pacote |
 | Porta com ação própria | Não abre a rota sem a implementação dessa ação |

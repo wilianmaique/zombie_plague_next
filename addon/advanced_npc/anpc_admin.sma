@@ -12,6 +12,7 @@
 #define TASK_RECORD 7900
 #define NAV_SHOW_NODES 32
 #define NAV_SHOW_LINKS 32
+#define NAV_SHOW_AREAS 8
 #define NAV_SHOW_RANGE 5000.0
 #define NAV_SHOW_CONE_COS 0.5
 #define NAV_SHOW_BEAM_WIDTH 10
@@ -317,7 +318,7 @@ public command_nav_show(const id, const level, const cid)
 	return PLUGIN_HANDLED
 }
 
-stock admin_beam(const id, const Float:from[3], const Float:to[3], const red, const green)
+stock admin_beam(const id, const Float:from[3], const Float:to[3], const red, const green, const blue = 40)
 {
 	message_begin(MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, _, id)
 	write_byte(TE_BEAMPOINTS)
@@ -325,7 +326,7 @@ stock admin_beam(const id, const Float:from[3], const Float:to[3], const red, co
 	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, to[axis])
 	write_short(gBeamSprite)
 	write_byte(0); write_byte(0); write_byte(6); write_byte(NAV_SHOW_BEAM_WIDTH); write_byte(0)
-	write_byte(red); write_byte(green); write_byte(40); write_byte(170); write_byte(0)
+	write_byte(red); write_byte(green); write_byte(blue); write_byte(170); write_byte(0)
 	message_end()
 }
 
@@ -407,10 +408,32 @@ public show_nodes(const task)
 		if (shown < NAV_SHOW_NODES) shown++
 	}
 	new nearest = shown ? nodes[0] : -1
+	new areas[NAV_SHOW_AREAS], areas_shown
 	for (new index = 0; index < shown; index++)
 	{
 		new node = nodes[index]
 		if (!anpc_nav_node(node, point, flags, radius)) continue
+		new area = anpc_nav_area_at(point)
+		if (area >= 0 && areas_shown < NAV_SHOW_AREAS)
+		{
+			new bool:duplicate
+			for (new drawn = 0; drawn < areas_shown; drawn++) if (areas[drawn] == area) duplicate = true
+			if (!duplicate)
+			{
+				new Float:mins[3], Float:maxs[3], Float:corner[4][3], area_flags
+				if (anpc_nav_area(area,mins,maxs,area_flags))
+				{
+					areas[areas_shown++] = area
+					for (new side = 0; side < 4; side++)
+					{
+						corner[side][0] = side == 1 || side == 2 ? maxs[0] : mins[0]
+						corner[side][1] = side >= 2 ? maxs[1] : mins[1]
+						corner[side][2] = mins[2]+NAV_SHOW_LIFT
+					}
+					for (new side = 0; side < 4; side++) admin_beam(id,corner[side],corner[(side+1)%4],40,140,255)
+				}
+			}
+		}
 		point[2] += NAV_SHOW_LIFT
 		anpc_copy_vec(point, top)
 		top[2] += NAV_SHOW_NODE_HEIGHT
@@ -426,7 +449,7 @@ public show_nodes(const task)
 		}
 	}
 	set_hudmessage(80, 220, 80, -1.0, 0.65, 0, 0.0, 0.6, 0.0, 0.0)
-	show_hudmessage(id, "ANPC: nearest shown node %d | total %d", nearest, count)
+	show_hudmessage(id, "ANPC: nearest shown node %d | total %d | areas %d/%d", nearest, count, areas_shown, anpc_nav_area_count())
 }
 
 public round_freeze_end_post()

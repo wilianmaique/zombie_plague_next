@@ -229,7 +229,7 @@ def navigation_text(graph: Graph, map_name: str, bsp_size: int, bsp_hash: str) -
         raise GraphError("Invalid BSP MD5 digest")
     if graph.bsp_size is not None and graph.bsp_size != bsp_size:
         raise GraphError(f"Graph BSP size {graph.bsp_size} does not match the supplied map {bsp_size}")
-    lines = [f'ANPC_NAV 1 "{map_name}" {bsp_size} {bsp_hash}']
+    lines = [f'ANPC_NAV 2 "{map_name}" {bsp_size} {bsp_hash}']
     for node in graph.nodes:
         x, y, z = node.feet
         lines.append(f"N {node.index} {x:.4f} {y:.4f} {z:.4f} {node.radius:.2f} {node.flags}")

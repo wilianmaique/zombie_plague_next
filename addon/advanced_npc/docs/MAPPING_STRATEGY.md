@@ -4,7 +4,7 @@
 
 A memória anterior era principalmente por nó: oito setores horizontais, visitas e antecessor. Um nó novo dentro de uma sala já percorrida podia iniciar outra série de tentativas sobre o mesmo interior. Conhecer pontos próximos não significava conhecer a região entre eles. Além disso, a escolha remota usava distância em linha reta, sem calcular o desvio exigido pelo grafo, e um ponto conhecido próximo podia encurtar um alvo mais distante que ainda continha espaço desconhecido.
 
-A árvore de descoberta resolve a continuidade e adia a volta imediata, mas não resolve sozinha a redundância geométrica entre muitos nós na mesma sala. A mudança atual acrescenta memória regional e custo de acesso às fronteiras, mantendo a prova física das ligações.
+A árvore de descoberta resolve a continuidade e adia a volta imediata, mas não resolve sozinha a redundância geométrica entre muitos nós na mesma sala. A representação atual combina retângulos de piso livre, âncoras de transição e custo de acesso às fronteiras. O resultado geométrico serve tanto à exploração quanto ao movimento dos NPCs.
 
 ## Técnicas examinadas
 
@@ -13,7 +13,7 @@ A árvore de descoberta resolve a continuidade e adia a volta imediata, mas não
 | Exploração por fronteiras | Procurar a transição de espaço conhecido para desconhecido. Orienta a seleção de saídas, em vez de repetir tentativas uniformemente em todos os pontos. |
 | Células de cobertura / boustrophedon | Dividir espaço navegável em células e varrer cada uma em faixas. É útil quando a tarefa exige que o robô passe fisicamente por toda a superfície. Aqui as leituras geométricas podem analisar um interior sem percorrê-lo inteiro. |
 | Fronteiras incrementais com custo e ganho | Manter trabalho pendente e escolher destinos considerando acesso e informação nova. Orienta a separação entre análise incremental, escolha de destino e rota de deslocamento. |
-| Heightfield / navmesh | Representar pisos e regiões caminháveis em uma estrutura geométrica, inclusive com alturas sobrepostas. Poderia substituir mais do grafo, mas exigiria outra representação, integração com o seguidor de NPC e ações de salto/escada. |
+| Heightfield / navmesh | Representar pisos e regiões caminháveis, inclusive com alturas sobrepostas. O projeto usa uma parte dessa ideia: retângulos planos certificados com âncoras explícitas para ligar regiões e executar movimentos especiais. |
 
 A exploração por fronteiras foi descrita por [Yamauchi (1997)](https://www.cs.cmu.edu/~motionplanning/papers/sbp_papers/integrated2/yamauchi_frontier_explor.pdf). A decomposição para cobertura física aparece em [Choset e Pignon](https://publications.ri.cmu.edu/coverage-path-planning-the-boustrophedon-decomposition). O [FUEL](https://arxiv.org/abs/2010.11561) apresenta estruturas incrementais de fronteiras e planejamento hierárquico para exploração rápida. O [heightfield do Recast](https://recastnav.com/structrcHeightfield.html) documenta células com spans de altura para representar o espaço caminhável. Esses trabalhos são referências conceituais; não houve importação de seus códigos, modelos de robô ou resultados de desempenho.
 
@@ -27,9 +27,11 @@ Para o objetivo deste projeto, a escolha é uma combinação de **blocos adaptat
 4. A varredura local prioriza amostras desconhecidas antes da continuidade da direção. Só reutiliza uma âncora distante quando ela não corta o alcance do alvo; um nó próximo deixa de provocar voltas curtas repetidas.
 5. Um Dijkstra incremental calcula custos sobre arestas direcionadas existentes, com heap de prioridade e parada por limite inferior. A pontuação combina custo, trabalho restante e visitas. O A* do provedor continua produzindo a rota efetiva.
 6. Uma tentativa que retorna para um interior conhecido pode ser dispensada quando já existe uma rota suficientemente curta até sua âncora. Rotas ausentes ou desvios longos mantêm a tentativa para descobrir conexões e atalhos.
-7. Novas fronteiras alcançáveis precedem a manutenção de ligações inversas. Se a volta for necessária, continua sendo executada pelo fake client e validada pela física.
+7. Novas fronteiras alcançáveis precedem a manutenção de ligações inversas. Após uma ida real em cobertura estática plana, a prova simétrica permite gravar a caminhada de volta; fora dela, o fake client continua executando o retorno.
+8. Retângulos são persistidos no `.nav`, usados para dispensa de pontos intermediários e simplificação do caminho do NPC. A união exige a mesma extensão transversal, contato por uma borda, altura/postura compatíveis e a mesma célula espacial de 256 unidades. Não preenche formas em L, buracos ou espaços entre ilhas.
+9. Âncoras próximas são reaproveitadas somente com provas de acesso e apoio. Saltos, escadas, bordas e cristas mantêm precisão. Pontos de decolagem só são acrescentados depois de aterrissagem útil, evitando grupos deixados por saltos fracassados.
 
-O overlay nunca chama a criação de nós ou conexões. Os registros de movimento, aterrissagem e contatos continuam sendo a única fonte de arestas novas. A geometria derivada é invalidada após ações de obstáculo do mapper e reconstruída ao retomar uma sessão; o journal conserva o trabalho por nó e a árvore de descoberta.
+O grafo continua fornecendo conectividade ao A*. Áreas certificadas não ligam componentes separados automaticamente. Movimentos observados fornecem arestas de ida e a cobertura estática plana permite sua caminhada inversa; movimentos especiais precisam de execução física. A geometria derivada é invalidada após ações de obstáculo do mapper e reconstruída ao retomar uma sessão; o journal conserva o trabalho por nó e a árvore de descoberta.
 
 Um grafo existente também passa por uma preparação incremental de retornos: uma ligação de ida sem inversa pode fornecer o antecessor de um nó que ainda não tenha um. IDs estritamente menores impedem ciclos; essa preparação agenda uma tentativa física, sem acrescentar a ligação. Assim, dispensar interiores conhecidos não elimina a manutenção de voltas quando o journal está ausente.
 
@@ -37,7 +39,7 @@ Um grafo existente também passa por uma preparação incremental de retornos: u
 
 A hipótese de ganho é reduzir a distância de exploração repetida em interiores planos e evitar deslocamentos a destinos que parecem próximos, mas têm acesso caro. Mapas com muitas rampas, escadas, triggers ou corredores onde não cabe um bloco podem aproveitar menos essa redução. Ainda haverá trânsito por áreas conhecidas e retornos necessários para conectar o grafo corretamente.
 
-Rampas continuam fora dos blocos planos, mas recebem acompanhamento de apoio por hull e alvos contínuos no mapper. A amostragem limita o desnível local e preserva mudanças relevantes do piso, sem transformar cada pequena subida numa nova âncora. Essa otimização é independente da dispensa de interiores planos.
+Rampas continuam fora dos blocos planos, mas recebem acompanhamento de apoio por hull e alvos contínuos no mapper. A amostragem limita o desnível local e preserva mudanças relevantes do piso, sem transformar cada pequena subida numa nova âncora. Caixas recebem alvos locais sobre seu topo e recuos de decolagem com apoio verificado; a corrida acumula velocidade real antes do comando de salto. As mesmas posições precisas permitem ao NPC tentar salto normal ou com agachamento no ar.
 
 Um bloco azul significa que ele passou nos testes geométricos desta sessão, na resolução adotada. Não significa “100% de qualquer detalhe do BSP”. As amostras de piso continuam discretas; detalhes menores que sua resolução e ações próprias de scripts precisam de validação no mapa real. Uma navmesh completa também precisaria representar esses movimentos e ações.
 

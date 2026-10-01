@@ -32,7 +32,7 @@ enum ScanBlockStatus { SCAN_BLOCK_PENDING, SCAN_BLOCK_OPEN, SCAN_BLOCK_DETAIL }
 enum _:ScanBlock { BL_X, BL_Y, BL_LEVEL, Float:BL_Z, BL_NODE, BL_SAMPLE, BL_PHASE, BL_NEXT, BL_GEOMETRY, bool:BL_SENSITIVE, ScanBlockStatus:BL_STATUS }
 enum ScanPurpose { SCAN_FRONTIER, SCAN_RETURN, SCAN_TRAVEL }
 enum ScanMotion { SCAN_WALK, SCAN_JUMP, SCAN_DROP, SCAN_LADDER }
-enum ScanProbe { PROBE_GROUND, PROBE_FLOOR, PROBE_HULL, PROBE_OBSTACLE, PROBE_ARC, PROBE_RUNUP, PROBE_INTERIOR, PROBE_KNOWN_PATH }
+enum ScanProbe { PROBE_GROUND, PROBE_LEDGE, PROBE_LANDING, PROBE_FLOOR, PROBE_HULL, PROBE_OBSTACLE, PROBE_TAKEOFF, PROBE_ARC, PROBE_RUNUP, PROBE_INTERIOR, PROBE_KNOWN_PATH }
 enum _:ScanProfile { Float:SCAN_CFG_SPACING, Float:SCAN_CFG_SPEED, Float:SCAN_CFG_GRAVITY, Float:SCAN_CFG_DROP, SCAN_CFG_SURVEY }
 
 new gBot, gBotUserid, gFrame, gTouch, gTrace, gActiveCvar, gStartForward, gFinishForward, gEdgeForward
@@ -56,6 +56,9 @@ new gSenseNode = -1, gSenseEpoch, gSenseBlockEpoch, gSenseCursor, gSenseTarget[8
 new Float:gSenseDistance[8], Float:gSenseScore[8], Float:gFrontierRange
 new Float:gSenseVector[8][2], Float:gSenseSlope[8], Float:gFrontierVector[2]
 new gSweeps, gKnownSkips, gReturnTrials, gLongTrials, Float:gExploreDistance, Float:gTravelDistance
+new gAreaNodesSkipped, gAreaReturns, gLandingTrials, gLandingSample, bool:gLandingActive
+new Float:gProbeGoal[3], Float:gLandingNear, Float:gLandingLength
+new Float:gJumpOrigin[3], gTakeoffRetry
 new gRoute, gRouteGoal = -1, gRouteCursor, gSelectCursor
 new gPlanStart = -1, gPlanEpoch, gPlanGraphEpoch, gPlanBlockEpoch, gPlanCurrent = -1, gPlanHeapSize
 new gPlanHeap[ANPC_MAX_NODES], gPlanPosition[ANPC_MAX_NODES], gPlanStamp[ANPC_MAX_NODES], gPlanClosed[ANPC_MAX_NODES]
@@ -80,7 +83,7 @@ new gSaveFile, gSavePhase, gSaveNode, gSaveLink, gSaveCount, bool:gStopAfterSave
 new gSaveTemporary[288], gNavDigest[33], bool:gMemoryLoaded
 new gLoadFile, gLoadPhase, gLoadNode, gLoadSeed, gLoadSeedCount, bool:gResetGraph, bool:gSaveRequested
 new gParentNode, gParentLink, bool:gParentsReady
-new bool:gCapacityHalt, bool:gSeedSettling, bool:gLaunchPending, bool:gSegmentDuck
+new bool:gCapacityHalt, bool:gSeedSettling, bool:gLaunchPending, bool:gSegmentDuck, bool:gLaunchDuck
 new bool:gAbortRequested
 new Float:gServerGravity, Float:gTrialSpeed, Float:gSeedDeadline, Float:gStepSize
 new gConfig[ScanProfile], gPhysicsCvar[7], gPhysicsDigest[33], Float:gJumpDuckLift
@@ -92,6 +95,8 @@ new const Float:SCAN_DIR[8][2] =
 	{-1.0,0.0}, {-0.70710678,-0.70710678}, {0.0,-1.0}, {0.70710678,-0.70710678}
 }
 new const Float:SCAN_RANGE[4] = {1.0, 0.5, 1.75, 2.5}
+new const Float:SCAN_LANDING_DEPTH[] = {32.0, 48.0, 72.0, 96.0, 128.0}
+new const Float:SCAN_TAKEOFF_BACK[] = {16.0, 32.0, 48.0, 72.0, 96.0, 128.0}
 new const Float:SCAN_BLOCK_SIZE[SCAN_BLOCK_LEVELS] = {256.0, 128.0, 64.0, 32.0}
 new const SCAN_VOLUME_CLASSES[][] = {"trigger_hurt", "trigger_push", "trigger_teleport", "trigger_multiple", "trigger_once", "trigger_changelevel", "func_train", "func_tracktrain", "func_plat", "func_rotating", "func_door", "func_door_rotating", "func_breakable", "func_button", "func_rot_button"}
 
@@ -295,6 +300,8 @@ stock bool:scan_start(const bool:reset)
 	gSenseNode = -1
 	gSweeps = gKnownSkips = gReturnTrials = gLongTrials = 0
 	gFrontierSkips = gCostSelections = 0
+	gAreaNodesSkipped = gAreaReturns = gLandingTrials = 0
+	gLandingActive = false
 	gExploreDistance = gTravelDistance = 0.0
 	gGraphEpoch = 1
 	gSelectCursor = -1
@@ -319,6 +326,8 @@ stock bool:scan_start(const bool:reset)
 	if (!gRoute) { scan_finish(false, "route allocation failed"); return false; }
 	if (!scan_create_bot()) { scan_finish(false, "scout initialization failed"); return false; }
 	if (reset && !anpc_nav_reset()) { scan_finish(false, "navigation reset failed"); return false; }
+	// Rebuild certificates from current geometry; keep existing graph anchors.
+	if (!anpc_nav_area_clear()) { scan_finish(false, "area reset failed"); return false; }
 	gStage = ANPC_SCAN_SEED
 	gFrame = register_forward(FM_StartFrame, "mapper_frame")
 	gTouch = register_forward(FM_Touch, "scan_touch")
@@ -401,7 +410,9 @@ public mapper_frame()
 			case ANPC_SCAN_ROUTE: { scan_route_step(); break; }
 			case ANPC_SCAN_PROBE:
 			{
-				if ((gProbe == PROBE_GROUND && gTraceLimit-gTraces < 14) || (gProbe == PROBE_FLOOR && gTraceLimit-gTraces < 6)) break
+				if ((gProbe == PROBE_GROUND && gTraceLimit-gTraces < 14)
+				|| ((gProbe == PROBE_FLOOR || gProbe == PROBE_LANDING) && gTraceLimit-gTraces < 6)
+				|| ((gProbe == PROBE_RUNUP || gProbe == PROBE_TAKEOFF) && gTraceLimit-gTraces < 7)) break
 				scan_probe_step()
 				if (gProbe == PROBE_KNOWN_PATH) break
 			}
@@ -572,7 +583,8 @@ stock scan_status(const id)
 	console_print(id, "[ANPC] Seeds %d/%d episodes=%d | survey %d/%d | elapsed %.1f min | last checkpoint saved=%d", gSeedCursor,gSeedCount,gSeedEpisodes,gSurveyCursor,gSurveyTotal,(get_gametime()-gStarted)/60.0,gSaved)
 	console_print(id, "[ANPC] Resumed memory=%d | trace/frame limit=%d | cooperative budget=%.2f ms",gMemoryLoaded,gTraceLimit,gBudgetMs)
 	console_print(id, "[ANPC] Sweeps=%d known-direction skips=%d long walks=%d deferred returns=%d | distance: explore=%.0f travel/return=%.0f",gSweeps,gKnownSkips,gLongTrials,gReturnTrials,gExploreDistance,gTravelDistance)
-	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d/%d | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d overlay-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,SCAN_MAX_BLOCKS,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
+	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d/%d | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d coverage-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,SCAN_MAX_BLOCKS,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
+	console_print(id, "[ANPC] Navigation areas=%d | suppressed node samples=%d symmetric floor returns=%d local landings=%d",anpc_nav_area_count(),gAreaNodesSkipped,gAreaReturns,gLandingTrials)
 	if (scan_bot_valid())
 	{
 		new Float:feet[3]
