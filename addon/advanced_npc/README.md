@@ -4,6 +4,8 @@ NPCs por entidade para CS 1.6, com navegação A*, animações, percepção e co
 
 O explorador usa a física de jogador para andar, agachar, saltar e subir escadas. Traces sugerem trajetos; uma conexão nova só é gravada depois de um deslocamento real. Retornos também são tentados fisicamente, pois saltos e quedas podem funcionar em apenas um sentido.
 
+A exploração compartilha blocos de piso de 256 a 32 unidades entre os nós para dispensar tentativas em interiores já analisados. Saídas desconhecidas têm prioridade; o custo das rotas direcionadas existentes orienta a escolha da próxima região. Passagens irregulares continuam com testes detalhados e cada ligação nova continua exigindo travessia real.
+
 ## Instalação
 
 1. Copie os seis `.amxx` de `compiled/advanced_npc/` para `cstrike/addons/amxmodx/plugins/advanced_npc/`.
@@ -32,6 +34,7 @@ O explorador anda sozinho. Para observar pelo cliente de um administrador com `A
 
 ```text
 anpc_scan watch 1
+anpc_scan blocks 1
 anpc_nav_show 1
 ```
 
@@ -47,8 +50,8 @@ Espere `anpc_scan status` mostrar `active=0`: a gravação é distribuída por v
 anpc_scan start
 ```
 
-O próprio plugin grava `maps/<mapa>.nav`, `maps/<mapa>.scan` e `maps/<mapa>.scan.txt` dentro de `configs/advanced_npc/`. O `.nav` já é o arquivo consumido pelos NPCs. A memória `.scan` só é reutilizada se mapa, BSP, arquivo `.nav` e parâmetros físicos corresponderem.
+O próprio plugin grava `maps/<mapa>.nav`, `maps/<mapa>.scan` e `maps/<mapa>.scan.txt` dentro de `configs/advanced_npc/`. O `.nav` já é o arquivo consumido pelos NPCs. A memória `.scan` só é reutilizada se mapa, BSP, arquivo `.nav`, parâmetros físicos e política de exploração corresponderem.
 
-Veja [o funcionamento e os limites do explorador](docs/AUTOMAPPER.md), [o editor de navegação](docs/NAVIGATION.md), [a API](docs/API.md) e [os cenários para teste manual](docs/TESTING.md).
+Veja [o funcionamento e os limites do explorador](docs/AUTOMAPPER.md), [a análise das técnicas de cobertura](docs/MAPPING_STRATEGY.md), [o editor de navegação](docs/NAVIGATION.md), [a API](docs/API.md) e [os cenários para teste manual](docs/TESTING.md).
 
-As revisões anteriores dos seis plugins foram compiladas com AMXX 1.10.0.5467, sem erros nem avisos. A revisão de exploração contínua do mapper, com sensores de alcance e retorno adiado, ainda precisa de compilação manual e validação em jogo com as includes atualizadas. Consulte os cenários em `docs/TESTING.md`.
+As revisões anteriores dos seis plugins foram compiladas com AMXX 1.10.0.5467, sem erros nem avisos. A revisão atual do mapper, com cobertura adaptativa, seleção por custo, sensores e retorno adiado, ainda precisa de compilação manual e validação em jogo com as seis includes internas atualizadas, incluindo `mapper_coverage.inc` e `mapper_frontiers.inc`. Consulte os cenários em `docs/TESTING.md`.

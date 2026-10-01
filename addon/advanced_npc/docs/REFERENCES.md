@@ -33,3 +33,12 @@ Os plugins Pawn são uma implementação própria para entidades. O importador r
 ReAPI atende criação, remoção, leitura/escrita de variáveis e rodada. Fakemeta fornece primitivas do motor para hull, trace, tamanho, origem e `WalkMove`. Hamsandwich atende funções virtuais genéricas de entidades (`TraceAttack`, `TakeDamage`, `BloodColor`, `Use`) e despacho do dano de jogador. Usar essas interfaces evita offsets privados e simulação manual da geometria do BSP.
 
 `hash_file(..., Hash_Md5, ...)` é a interface atual do AMXX, substituindo o native depreciado `md5_file`. O digest identifica o BSP usado para gerar o arquivo; o plugin calcula-o apenas ao inicializar o mapa.
+
+## Exploração e cobertura do mapper
+
+- [Yamauchi, 1997: exploração por fronteiras](https://www.cs.cmu.edu/~motionplanning/papers/sbp_papers/integrated2/yamauchi_frontier_explor.pdf): transição entre espaço conhecido e desconhecido como destino de exploração.
+- [Choset e Pignon: decomposição boustrophedon](https://publications.ri.cmu.edu/coverage-path-planning-the-boustrophedon-decomposition): divisão em células para cobertura física de superfície.
+- [FUEL](https://arxiv.org/abs/2010.11561) e [implementação dos autores](https://github.com/HKUST-Aerial-Robotics/FUEL): fronteiras incrementais e planejamento hierárquico para exploração.
+- [Recast heightfield](https://recastnav.com/structrcHeightfield.html): grade de spans de altura usada na construção de regiões caminháveis.
+
+Essas fontes orientam a camada adaptativa de cobertura e a seleção por fronteiras/custo. O mapper mantém seu grafo e as provas físicas próprias, sem importar código dessas bibliotecas nem resultados de desempenho de robôs para o HLDS. Veja [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md) para a comparação e a decisão de implementação.

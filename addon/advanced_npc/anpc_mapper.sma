@@ -18,17 +18,26 @@
 #define SCAN_FRAME_OPERATIONS 96
 #define SCAN_SENSE_REACH 3.0
 #define SCAN_SECTOR_ALIGNMENT 0.93
+#define SCAN_BLOCK_LEVELS 4
+#define SCAN_MAX_BLOCKS (ANPC_MAX_NODES*SCAN_BLOCK_LEVELS)
+#define SCAN_BLOCK_BUCKETS 4096
+#define SCAN_MAX_VOLUMES 256
+#define SCAN_PLAN_BLOCKED 64
 
 enum _:ScanSeed { Float:SEED_FEET[3], SEED_FLAGS, bool:SEED_USED }
 enum _:ScanLadder { LADDER_ENTITY, Float:LADDER_MINS[3], Float:LADDER_MAXS[3] }
+enum _:ScanVolume { VOLUME_ENTITY, VOLUME_TYPE, Float:VOLUME_MINS[3], Float:VOLUME_MAXS[3] }
+enum ScanBlockStatus { SCAN_BLOCK_PENDING, SCAN_BLOCK_OPEN, SCAN_BLOCK_DETAIL }
+enum _:ScanBlock { BL_X, BL_Y, BL_LEVEL, Float:BL_Z, BL_NODE, BL_SAMPLE, BL_PHASE, BL_NEXT, BL_GEOMETRY, bool:BL_SENSITIVE, ScanBlockStatus:BL_STATUS }
 enum ScanPurpose { SCAN_FRONTIER, SCAN_RETURN, SCAN_TRAVEL }
 enum ScanMotion { SCAN_WALK, SCAN_JUMP, SCAN_DROP, SCAN_LADDER }
-enum ScanProbe { PROBE_FLOOR, PROBE_HULL, PROBE_WALK, PROBE_ARC, PROBE_RUNUP }
+enum ScanProbe { PROBE_FLOOR, PROBE_HULL, PROBE_WALK, PROBE_ARC, PROBE_RUNUP, PROBE_INTERIOR, PROBE_KNOWN_PATH }
 enum _:ScanProfile { Float:SCAN_CFG_SPACING, Float:SCAN_CFG_SPEED, Float:SCAN_CFG_GRAVITY, Float:SCAN_CFG_DROP, SCAN_CFG_SURVEY }
 
 new gBot, gBotUserid, gFrame, gTouch, gTrace, gActiveCvar, gStartForward, gFinishForward, gEdgeForward
 new gBeamSprite, gBeamTrace, gBeamEnabled, Float:gNextBeam
 new gWatchCamera, gWatchPack
+new bool:gBlockView[33], gBlockViewers, gBlockViewerCursor, Float:gNextBlockDraw
 new HookChain:gHooks[6], bool:gActive, bool:gFinishing, bool:gFinishingMap, bool:gDriving, bool:gWatch[33]
 new AnpcScanStatus:gStage = ANPC_SCAN_OFF, AnpcScanStatus:gResumeStage
 new ScanPurpose:gPurpose, ScanMotion:gMotion, ScanProbe:gProbe
@@ -37,12 +46,20 @@ new gExploreParent[ANPC_MAX_NODES], bool:gParentClosed[ANPC_MAX_NODES], bool:gSe
 new Float:gKnown[ANPC_MAX_NODES][3], gKnownFlags[ANPC_MAX_NODES], gKnownCount
 new gSeeds[SCAN_MAX_SEEDS][ScanSeed], gSeedCount, gSeedCursor, gSeedEpisodes
 new gLadder[SCAN_MAX_LADDERS][ScanLadder], gLadderCount
+new gVolumes[SCAN_MAX_VOLUMES][ScanVolume], gVolumeCount, bool:gVolumeOverflow
+new gBlock[SCAN_MAX_BLOCKS][ScanBlock], gBlockHead[SCAN_BLOCK_BUCKETS], gBlockCount, gBlockCursor, gBlockEpoch, gBlockGeometry
+new gNodeBlock[ANPC_MAX_NODES], gBlockMask[ANPC_MAX_NODES], gBlockMaskEpoch[ANPC_MAX_NODES], gInteriorMask[ANPC_MAX_NODES], bool:gNodeLadder[ANPC_MAX_NODES]
+new gBlockOpen, gBlockDetail, gBlockSkips, gBlockLimit, gFrontierSkips, gCostSelections
 new gCurrent = -1, gSource = -1, gGoalNode = -1, gDirection, gRangeIndex, gHeading = -1, gSeedAnchor = -1
-new gSenseNode = -1, gSenseEpoch, gSenseCursor, gSenseTarget[8]
+new gSenseNode = -1, gSenseEpoch, gSenseBlockEpoch, gSenseCursor, gSenseTarget[8], gSenseGain[8], bool:gSenseWall[8]
 new Float:gSenseDistance[8], Float:gSenseScore[8], Float:gFrontierRange
 new Float:gSenseVector[8][2], Float:gFrontierVector[2]
 new gSweeps, gKnownSkips, gReturnTrials, gLongTrials, Float:gExploreDistance, Float:gTravelDistance
-new gRoute, gRouteGoal = -1, gRouteCursor, gSelectCursor, gSelectBest = -1, Float:gSelectScore
+new gRoute, gRouteGoal = -1, gRouteCursor, gSelectCursor
+new gPlanStart = -1, gPlanEpoch, gPlanGraphEpoch, gPlanBlockEpoch, gPlanCurrent = -1, gPlanHeapSize
+new gPlanHeap[ANPC_MAX_NODES], gPlanPosition[ANPC_MAX_NODES], gPlanStamp[ANPC_MAX_NODES], gPlanClosed[ANPC_MAX_NODES]
+new Float:gPlanDistance[ANPC_MAX_NODES], gPlanBest = -1, gPlanBestWork, gPlanReturn = -1, Float:gPlanScore, Float:gPlanReturnCost
+new gPlanBlockedFrom[SCAN_PLAN_BLOCKED], gPlanBlockedTo[SCAN_PLAN_BLOCKED], Float:gPlanBlockedUntil[SCAN_PLAN_BLOCKED], gPlanBlockedCursor
 new gGraphEpoch, gLinks, gWalks, gJumps, gDrops, gClimbs, gFailures, gHazards, gWarps, gUnsupported, gCapacitySkips
 new gTraces, gTraceLimit, gAuto, gSurveyEnabled, gRestart, gSaveRecords
 new Float:gSpacing, Float:gSpeed, Float:gGravity, Float:gDropLimit, Float:gBudgetMs, Float:gCheckpointInterval
@@ -50,6 +67,7 @@ new Float:gNextDrive, Float:gLastDrive, Float:gStarted, Float:gDeadline, Float:g
 new Float:gCheckpointTime, Float:gFrameStart, Float:gNextUse, Float:gStableSince
 new Float:gSourceFeet[3], Float:gGoalFeet[3], Float:gRunupFeet[3], Float:gArcPrevious[3]
 new Float:gFlightTime, Float:gJumpSpeed = 268.32816, Float:gLaunchVelocity[3], Float:gExpectedVelocity[3]
+new gInteriorTarget, gInteriorSample, gInteriorPathCursor, Float:gInteriorDistance, Float:gInteriorCost, Float:gInteriorLimit
 new Float:gLaunchFeet[3], Float:gLastFeet[3], Float:gPreviousGround[3], Float:gWalkPreviousZ
 new gLaunchNode = -1, gArcSample, gArcSamples, gWalkSample, gWalkSamples, gGoalFlags, gJumpPhase
 new gObstacle, gObstacleAttempts, bool:gDuck, bool:gRunup, bool:gAirborne, bool:gJumped
@@ -60,6 +78,7 @@ new gMap[64], gNavPath[256], gMemoryPath[256], gReportPath[256], gBspHash[33], g
 new gSaveFile, gSavePhase, gSaveNode, gSaveLink, gSaveCount, bool:gStopAfterSave, bool:gCompleted, bool:gSaved
 new gSaveTemporary[288], gNavDigest[33], bool:gMemoryLoaded
 new gLoadFile, gLoadPhase, gLoadNode, gLoadSeed, gLoadSeedCount, bool:gResetGraph, bool:gSaveRequested
+new gParentNode, gParentLink, bool:gParentsReady
 new bool:gCapacityHalt, bool:gSeedSettling, bool:gLaunchPending, bool:gSegmentDuck
 new bool:gAbortRequested
 new Float:gServerGravity, Float:gTrialSpeed, Float:gSeedDeadline
@@ -72,9 +91,13 @@ new const Float:SCAN_DIR[8][2] =
 	{-1.0,0.0}, {-0.70710678,-0.70710678}, {0.0,-1.0}, {0.70710678,-0.70710678}
 }
 new const Float:SCAN_RANGE[4] = {1.0, 0.5, 1.75, 2.5}
+new const Float:SCAN_BLOCK_SIZE[SCAN_BLOCK_LEVELS] = {256.0, 128.0, 64.0, 32.0}
+new const SCAN_VOLUME_CLASSES[][] = {"trigger_hurt", "trigger_push", "trigger_teleport", "trigger_multiple", "trigger_once", "trigger_changelevel", "func_train", "func_tracktrain", "func_plat", "func_rotating", "func_door", "func_door_rotating", "func_breakable", "func_button", "func_rot_button"}
 
 #include "advanced_npc/mapper_world"
+#include "advanced_npc/mapper_coverage"
 #include "advanced_npc/mapper_exploration"
+#include "advanced_npc/mapper_frontiers"
 #include "advanced_npc/mapper_motion"
 #include "advanced_npc/mapper_storage"
 
@@ -98,7 +121,7 @@ public plugin_init()
 	register_plugin("Advanced NPC: Autonomous Mapper", ANPC_VERSION, "ZPN")
 	gActiveCvar = create_cvar("anpc_scan_active", "0", FCVAR_SERVER | FCVAR_SPONLY, "Maintenance state controlled by automatic mapper")
 	if (!is_rehlds() || !is_regamedll()) set_fail_state("Automatic mapper requires ReHLDS and ReGameDLL CS")
-	register_concmd("anpc_scan", "command_scan", ADMIN_RCON, "start [new] | stop | pause | resume | save | status | seed [x y z] | watch 0|1")
+	register_concmd("anpc_scan", "command_scan", ADMIN_RCON, "start [new] | stop | pause | resume | save | status | seed [x y z] | watch 0|1 | blocks 0|1")
 	bind_pcvar_num(create_cvar("anpc_scan_auto", "0", FCVAR_NONE, "Automatically map when no navigation exists", true, 0.0, true, 1.0), gAuto)
 	bind_pcvar_num(create_cvar("anpc_scan_beam", "1", FCVAR_NONE, "Show the scout viewing direction while mapping", true, 0.0, true, 1.0), gBeamEnabled)
 	bind_pcvar_num(create_cvar("anpc_scan_traces", "24", FCVAR_NONE, "Maximum mapper hull/line traces per frame (engine player physics excluded)", true, 16.0, true, 64.0), gTraceLimit)
@@ -140,6 +163,7 @@ public plugin_init()
 	if (gBspSize > 0) hash_file(bsp, Hash_Md5, gBspHash, charsmax(gBspHash))
 	scan_read_bounds(bsp)
 	scan_cache_ladders()
+	scan_cache_volumes()
 	set_pcvar_num(gActiveCvar, 0)
 }
 
@@ -164,6 +188,7 @@ public plugin_end()
 public client_disconnected(id, bool:drop, message[], maxlen)
 {
 	gWatch[id] = false
+	if (gBlockView[id]) { gBlockView[id] = false; gBlockViewers--; }
 	scan_release_camera()
 	if (id == gBot && !gFinishing)
 	{
@@ -222,6 +247,14 @@ public command_scan(const id, const level, const cid)
 	{
 		if (!scan_set_watch(id, bool:str_to_num(option))) console_print(id, "[ANPC] Scout camera unavailable.")
 	}
+	else if (equal(action, "blocks") && id && is_user_connected(id))
+	{
+		new bool:enabled = str_to_num(option) != 0
+		if (enabled != gBlockView[id]) gBlockViewers += enabled ? 1 : -1
+		gBlockView[id] = enabled
+		gNextBlockDraw = 0.0
+		console_print(id, "[ANPC] Analyzed floor blocks: %d (blue squares).", enabled)
+	}
 	else scan_status(id)
 	return PLUGIN_HANDLED
 }
@@ -237,6 +270,8 @@ stock bool:scan_start(const bool:reset)
 	gCapacityHalt = gSaveRequested = gSeedSettling = false
 	gAbortRequested = false
 	gLoadPhase = gLoadNode = gLoadSeed = 0
+	gParentNode = gParentLink = 0
+	gParentsReady = false
 	set_pcvar_num(gActiveCvar, 1)
 	for (new i = 0; i < sizeof gHooks; i++) EnableHookChain(gHooks[i])
 	arrayset(gMask, 0, sizeof gMask)
@@ -245,12 +280,20 @@ stock bool:scan_start(const bool:reset)
 	arrayset(gExploreParent, -1, sizeof gExploreParent)
 	arrayset(gParentClosed, false, sizeof gParentClosed)
 	arrayset(gSeedRejected, false, sizeof gSeedRejected)
+	scan_blocks_reset()
+	scan_plan_reset()
+	gPlanEpoch = 0
+	arrayset(gPlanStamp, 0, sizeof gPlanStamp)
+	arrayset(gPlanClosed, 0, sizeof gPlanClosed)
+	arrayset(gPlanBlockedUntil, 0, sizeof gPlanBlockedUntil)
+	gPlanBlockedCursor = 0
 	gKnownCount = gLinks = gWalks = gJumps = gDrops = gClimbs = gFailures = 0
 	gHazards = gWarps = gUnsupported = gCapacitySkips = gSeedEpisodes = 0
 	gSeedCount = gSeedCursor = gSurveyCursor = 0
 	gCurrent = gSource = gGoalNode = gRouteGoal = gHeading = gSeedAnchor = -1
 	gSenseNode = -1
 	gSweeps = gKnownSkips = gReturnTrials = gLongTrials = 0
+	gFrontierSkips = gCostSelections = 0
 	gExploreDistance = gTravelDistance = 0.0
 	gGraphEpoch = 1
 	gSelectCursor = -1
@@ -267,6 +310,7 @@ stock bool:scan_start(const bool:reset)
 	gCheckpointTime = gStarted+gCheckpointInterval
 	gNextDrive = gLastDrive = gStarted
 	gNextBeam = 0.0
+	gNextBlockDraw = 0.0
 	gMemoryLoaded = false
 	scan_init_survey()
 	scan_collect_seeds()
@@ -343,6 +387,7 @@ public mapper_frame()
 	}
 	scan_update_camera()
 	scan_show_look(now)
+	scan_show_blocks(now)
 	if (gStage == ANPC_SCAN_PAUSED) return FMRES_IGNORED
 	if (gStage == ANPC_SCAN_SAVE) { scan_save_step(); return FMRES_IGNORED; }
 	for (new operation = 0; operation < SCAN_FRAME_OPERATIONS && scan_work_available(); operation++)
@@ -352,12 +397,15 @@ public mapper_frame()
 			case ANPC_SCAN_SEED: scan_seed_step()
 			case ANPC_SCAN_SELECT: scan_select_step()
 			case ANPC_SCAN_ROUTE: { scan_route_step(); break; }
-			case ANPC_SCAN_PROBE: scan_probe_step()
+			case ANPC_SCAN_PROBE: { scan_probe_step(); if (gProbe == PROBE_KNOWN_PATH) break; }
 			default: break
 		}
 		if (!gActive || gStage == ANPC_SCAN_MOVE || gStage == ANPC_SCAN_SAVE) break
 		if (gStage == ANPC_SCAN_SEED && gSeedSettling) break
 	}
+	// Classify visited floor blocks before spending spare budget on remote seeds.
+	if (gActive && gLoadPhase == 2 && (gStage == ANPC_SCAN_SELECT || gStage == ANPC_SCAN_MOVE || gStage == ANPC_SCAN_ROUTE))
+		for (new block = 0; block < 8 && scan_work_available(); block++) if (!scan_block_background()) break
 	// Discover disconnected regions while the scout moves, using only spare budget.
 	if (gActive && (gStage == ANPC_SCAN_SELECT || gStage == ANPC_SCAN_MOVE || gStage == ANPC_SCAN_ROUTE))
 		for (new cell = 0; cell < 8 && !gSurveyDone && scan_work_available(); cell++) scan_survey_step()
@@ -458,15 +506,66 @@ stock scan_show_look(const Float:now)
 	message_end()
 }
 
+stock scan_show_blocks(const Float:now)
+{
+	if (!gBlockViewers || !gBeamSprite || now < gNextBlockDraw || !scan_work_available()) return
+	gNextBlockDraw = now+0.5/float(gBlockViewers)
+	new viewer
+	for (new checked = 0; checked < MaxClients; checked++)
+	{
+		gBlockViewerCursor = gBlockViewerCursor%MaxClients+1
+		if (gBlockView[gBlockViewerCursor] && is_user_connected(gBlockViewerCursor)) { viewer = gBlockViewerCursor; break; }
+	}
+	if (!viewer) return
+	new Float:feet[3], Float:point[3], selected[12], count
+	anpc_entity_feet(gBot, feet)
+	for (new x = -3; x <= 3 && count < sizeof selected; x++)
+	{
+		for (new y = -3; y <= 3 && count < sizeof selected; y++)
+		{
+			anpc_copy_vec(feet, point)
+			point[0] += float(x)*32.0
+			point[1] += float(y)*32.0
+			new block = scan_block_open_at(point), bool:duplicate
+			if (block < 0) continue
+			for (new old = 0; old < count; old++) if (selected[old] == block) { duplicate = true; break; }
+			if (!duplicate) selected[count++] = block
+		}
+	}
+	for (new index = 0; index < count && scan_work_available(); index++)
+	{
+		new block = selected[index], Float:size = SCAN_BLOCK_SIZE[gBlock[block][BL_LEVEL]], Float:corner[4][3]
+		for (new side = 0; side < 4; side++)
+		{
+			corner[side][0] = float(gBlock[block][BL_X])*size+((side == 1 || side == 2) ? size : 0.0)
+			corner[side][1] = float(gBlock[block][BL_Y])*size+(side >= 2 ? size : 0.0)
+			corner[side][2] = gBlock[block][BL_Z]+2.0
+		}
+		for (new side = 0; side < 4; side++)
+		{
+			engfunc(EngFunc_MessageBegin, MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, SCAN_ZERO, viewer)
+			write_byte(TE_BEAMPOINTS)
+			for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, corner[side][axis])
+			for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, corner[(side+1)%4][axis])
+			write_short(gBeamSprite)
+			write_byte(0); write_byte(0); write_byte(10); write_byte(2); write_byte(0)
+			write_byte(64); write_byte(144); write_byte(255); write_byte(150); write_byte(0)
+			message_end()
+		}
+	}
+}
+
 stock scan_status(const id)
 {
 	new pending
-	for (new node = 0; node < gKnownCount; node++) if (scan_frontier_weight(node)) pending++
-	console_print(id, "[ANPC] Mapper active=%d stage=%d bot=%d nodes=%d/%d links=%d pending=%d", gActive, gStage, gBot, gKnownCount, ANPC_MAX_NODES, gLinks, pending)
+	// Count cached work; asking for status must not classify every map direction.
+	for (new node = 0; node < gKnownCount; node++) if (scan_frontier_weight(node,false)) pending++
+	console_print(id, "[ANPC] Mapper active=%d stage=%d bot=%d nodes=%d/%d links=%d pending-estimate=%d", gActive, gStage, gBot, gKnownCount, ANPC_MAX_NODES, gLinks, pending)
 	console_print(id, "[ANPC] Verified walk=%d jump=%d drop=%d ladder=%d | failures=%d hazards=%d warps=%d unsupported=%d link-limit=%d", gWalks,gJumps,gDrops,gClimbs,gFailures,gHazards,gWarps,gUnsupported,gCapacitySkips)
 	console_print(id, "[ANPC] Seeds %d/%d episodes=%d | survey %d/%d | elapsed %.1f min | last checkpoint saved=%d", gSeedCursor,gSeedCount,gSeedEpisodes,gSurveyCursor,gSurveyTotal,(get_gametime()-gStarted)/60.0,gSaved)
 	console_print(id, "[ANPC] Resumed memory=%d | trace/frame limit=%d | cooperative budget=%.2f ms",gMemoryLoaded,gTraceLimit,gBudgetMs)
 	console_print(id, "[ANPC] Sweeps=%d known-direction skips=%d long walks=%d deferred returns=%d | distance: explore=%.0f travel/return=%.0f",gSweeps,gKnownSkips,gLongTrials,gReturnTrials,gExploreDistance,gTravelDistance)
+	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d/%d | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d overlay-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,SCAN_MAX_BLOCKS,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
 	if (scan_bot_valid())
 	{
 		new Float:feet[3]

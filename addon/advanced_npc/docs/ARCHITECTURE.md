@@ -8,11 +8,19 @@ A entidade base é `info_target`, com classname próprio `anpc_actor`. `rg_creat
 
 O grafo é carregado uma vez por mapa. Coordenadas de nós e spawns representam os **pés**, em unidades GoldSrc. Posição central da entidade é calculada de acordo com o hull em pé ou agachado.
 
-`advanced_npc_mapper` é um consumidor/editor separado. Usa um fake client temporário, comandos de jogador e hooks ReAPI para explorar e observar saltos reais. O BSP fornece limites para amostragem; hulls e piso propõem trajetos, e o movimento valida conexões. A exploração usa leituras de alcance, tangentes de paredes altas, prioridade por espaço desconhecido, percursos terrestres longos e verificação adiada do retorno pela árvore de descoberta. A memória `ANPC_SCAN 2` preserva essa árvore; sensores são reconstruídos ao retomar. O core ZPN permanece independente. As partes internas são `mapper_world.inc`, `mapper_exploration.inc`, `mapper_motion.inc` e `mapper_storage.inc`, nas includes externas configuradas pelo projeto.
+`advanced_npc_mapper` é um consumidor/editor separado. Usa um fake client temporário, comandos de jogador e hooks ReAPI para explorar e observar saltos reais. O BSP fornece limites para amostragem; hulls e piso propõem trajetos, e o movimento valida conexões. A exploração usa leituras de alcance, tangentes de paredes altas, prioridade por espaço desconhecido, percursos terrestres longos e verificação adiada do retorno pela árvore de descoberta. A memória `ANPC_SCAN 2` preserva essa árvore; sensores e cobertura geométrica são reconstruídos ao retomar. O core ZPN permanece independente.
+
+As partes internas são `mapper_world.inc` (geometria/episódios/provas), `mapper_coverage.inc` (blocos e tentativas interiores redundantes), `mapper_exploration.inc` (sensores e direções), `mapper_frontiers.inc` (seleção por custo), `mapper_motion.inc` (fake client e provas físicas) e `mapper_storage.inc` (memória/checkpoints), nas includes externas configuradas pelo projeto.
+
+A cobertura é uma tabela espacial de quadrados alinhados em 256/128/64/32 unidades, com spans de altura independentes e subdivisão sob demanda na âncora. Testes de piso estático e faixas de hull sobrepostas classificam interiores planos; volumes sensíveis e geometrias irregulares conservam a análise por nós. Máscaras de cobertura derivadas não entram no journal nem criam arestas. Os callbacks de obstáculo usados pelo mapper invalidam essa camada; a reconstrução é incremental.
+
+A seleção usa Dijkstra com heap e stamps de geração sobre as arestas direcionadas já comprovadas. O custo pondera distância e movimentos, e a utilidade considera direções pendentes e visitas. Uma fronteira alcançável precede a manutenção de ligações inversas, que continua obrigatoriamente física. O limite inferior da pontuação encerra cedo buscas com um vencedor garantido pelo modelo de custo. O A* do provedor segue responsável pela rota efetiva.
 
 Durante o scan, uma sessão de edição exclusiva bloqueia outros escritores e a criação de NPCs. Revisões e invalidações são publicadas no início/final da sessão, em vez de a cada ponto. Fronteiras, buscas A* e registros de checkpoint são processados por etapas. O forward de frame e os hooks de movimento/toque do explorador ficam ativos apenas durante a sessão. Consulte `AUTOMAPPER.md` para memória, prova de passagem e limites de custo.
 
 O comando `watch` usa uma única entidade de câmera invisível e não sólida, compartilhada entre os observadores, na posição dos olhos e com os ângulos completos do fake client. Um hook de `AddToFullPack` oculta o corpo do scout somente para esses clientes. A entidade e o hook existem apenas enquanto houver observadores; a direção do modelo de jogador continua sendo atualizada pela física, com `fixangle` liberado antes de `RunPlayerMove`.
+
+O desenho opcional `blocks` consulta apenas blocos abertos próximos, usando beams do sprite já precacheado. Não cria entidades nem traces, e distribui as atualizações entre os administradores que o habilitam.
 
 ## Percepção e escolha de alvo
 

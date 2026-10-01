@@ -16,11 +16,17 @@ A compilação foi executada por solicitação explícita do usuário. Os seis b
 
 ## Scanner: validação manual
 
-A revisão de exploração contínua altera o mapper e as quatro includes internas, incluindo a nova `mapper_exploration.inc`. Essa revisão não foi compilada nem executada no HLDS; as compilações acima pertencem às revisões anteriores. Recompile o mapper manualmente com as includes atualizadas antes destes testes. O formato da memória agora é `ANPC_SCAN 2`; memórias anteriores são descartadas, preservando o `.nav`.
+A revisão atual altera o mapper e as seis includes internas, incluindo `mapper_coverage.inc` e `mapper_frontiers.inc`. Essa revisão não foi compilada nem executada no HLDS; as compilações acima pertencem às revisões anteriores. Recompile o mapper manualmente com as includes externas atualizadas antes destes testes. O formato da memória permanece `ANPC_SCAN 2`, com assinatura de política `blocks-frontiers-1`; memórias da política anterior são descartadas, preservando o `.nav`.
 
-A conferência estática desta revisão passou para as cinco fontes Pawn: delimitadores, funções e variáveis referenciadas, natives próprios, 46 chamadas com formatos/argumentos, sete campos do registro de nó `ANPC_SCAN 2` e protocolo do beam com trace separado. A propriedade angular do ajuste de parede foi conferida em 288.008 combinações de setor/ângulo. Esses checks não executam a máquina de estados nem a física do HLDS e não substituem a compilação e os testes abaixo. A correção de rotação do corpo e da câmera `watch` também aguarda compilação e validação no servidor.
+A conferência estática passou para as sete fontes Pawn: delimitadores, funções e variáveis referenciadas, natives próprios, 49 chamadas com formatos/argumentos, sete campos do registro de nó `ANPC_SCAN 2` e protocolo do beam com trace separado. A propriedade angular do ajuste de parede foi conferida em 288.008 combinações de setor/ângulo.
 
-Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os seis plugins na ordem do manifesto e use `anpc_scan start new`. Observe a posição e os contadores com `anpc_scan status`; pelo cliente de um administrador, use `anpc_scan watch 1` e `anpc_nav_show 1`.
+Uma conferência auxiliar em Python comparou modelos dos algoritmos com referências independentes: 5.512 segmentos em precisão float32 contra interseções racionais exatas da grade, e 2.000 grafos direcionados contra cálculo completo dos menores custos e da pontuação de fronteiras. Passaram os casos de coordenadas negativas/grandes, direções quase alinhadas a um eixo, cantos, bordas da grade, limite de travessia, decrease-key do heap e parada antecipada. Também foram conferidos spans sobrepostos, rejeição de blocos pendentes/obsoletos, sobreposição das faixas de hull, ausência de mutação de grafo e exclusão da cobertura do journal.
+
+A preparação de retornos em grafos existentes passou por mais 1.000 grafos direcionados, comparando os antecessores escolhidos com o conjunto de arestas de entrada elegíveis. Foram preservados antecessores existentes, tentativas encerradas e nós desabilitados; IDs estritamente menores impediram ciclos. A fonte dessa preparação usa apenas consultas de grafo, sem gravar inversas presumidas.
+
+Esses checks verificam propriedades matemáticas e referências nas fontes; não executam Pawn, a máquina de estados nem a física do HLDS, e não substituem a compilação e os testes abaixo. Corpo, câmera, beam, cobertura e seleção precisam de validação no servidor.
+
+Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os seis plugins na ordem do manifesto e use `anpc_scan start new`. Observe a posição e os contadores com `anpc_scan status`; pelo cliente de um administrador, use `anpc_scan watch 1`, `anpc_scan blocks 1` e `anpc_nav_show 1`.
 
 | Cenário | Resultado esperado |
 | --- | --- |
@@ -33,10 +39,24 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | `anpc_scan_beam 1`, em pé/agachado/escada e `watch` | Laser verde parte dos olhos, acompanha yaw/pitch reais e termina em obstáculo; leituras do planejamento permanecem independentes |
 | `anpc_scan_beam 0` ou encerrar o scan | Sem novos beams; último efeito expira em 0,2 segundo |
 | Corredor aberto longo | Percursos de até três espaçamentos, nós intermediários e continuidade; nenhuma volta automática após cada segmento |
-| Regiões e ramificações abertas | Prioridade por espaço desconhecido; retorno ao antecessor após explorar a fronteira local; A* para regiões com trabalho pendente |
+| Sala plana larga | Blocos azuis em interiores livres; nós intermediários continuam no grafo, mas não iniciam novas caminhadas inteiramente dentro da cobertura |
+| Parede corta um bloco de 256 unidades | Subdivisão sob demanda até 32; interior livre pode ser aproveitado, borda irregular mantém testes por nó |
+| Destino conhecido com uma célula desconhecida no caminho | Não dispensar o trajeto só por conhecer o destino |
+| Linha diagonal toca uma quina desconhecida ou segue uma borda da grade | Preservar os lados ainda desconhecidos; nenhum salto da consulta de cobertura por cima deles |
+| Coordenadas negativas e grandes | Blocos coerentes, sem repetição por erro de arredondamento nem espera infinita na consulta de segmento |
+| Térreo e plataforma/andar no mesmo XY | Coberturas de altura independentes; plataforma acessível e outro piso continuam sendo procurados |
+| Regiões e ramificações abertas | Amostras desconhecidas precedem continuidade; fronteiras alcançáveis precedem manutenção das voltas; A* para regiões com trabalho pendente |
+| Ponto conhecido perto do scout e saída nova ao fundo | Alvo mantém alcance até a fronteira distante, sem virar outra volta curta ao ponto próximo |
+| Região perto em linha reta, mas com desvio longo no grafo | Destino comparado por custo direcionado, trabalho restante e visitas |
+| Trecho da borda para um interior plano com rota curta existente | Pode dispensar a caminhada redundante; nenhuma nova ligação no grafo |
+| Mesmo trecho sem rota, ou com desvio além do limite | Mantém a tentativa física para conectar a região ou descobrir um atalho útil |
+| Dois administradores usam `blocks 1`; um desliga ou desconecta | Desenho independente por cliente; contagem de observadores coerente; efeitos antigos expiram |
+| Blocos durante pausa | Desenho pode continuar sem explorar; `blocks 0` interrompe novas mensagens |
 | Corredor inclinado com parede alta | Direção adaptada à tangente quando cabe no setor; nenhum avanço que atravesse a parede |
 | Saída com conexão já comprovada | Incremento de `known-direction skips`; nenhuma nova tentativa da mesma conexão |
 | Antecessor com conexão inversa existente | Retorno marcado como resolvido; deslocamento ao antecessor só quando o planejamento precisar dele |
+| `.nav` existente com ligações de ida, sem journal correspondente | Preparação incremental de voltas para nós sem antecessor; blocos não dispensam sua prova física |
+| Grafo existente com ciclos, nós desabilitados ou retornos já encerrados | Antecessores adotados sempre têm ID menor; nós desabilitados e tentativas encerradas não são reagendados |
 | Queda cuja volta não funciona | Volta rejeitada uma vez, preservando apenas as ligações fisicamente verificadas |
 | Sétima saída com volta pendente | Última vaga reservada à tentativa de retorno, respeitando oito saídas por nó |
 | Parede ou quina | Ausência de conexões que cortem sólidos |
@@ -48,7 +68,8 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Queda segura | Saída pela borda; `E` com flag `2`, velocidade de arquivo zerada |
 | Queda com dano ou além do limite | Tentativa rejeitada, sem conexão que exija invulnerabilidade |
 | `func_ladder` | Subida/descida física, nós de escada, sem voo fora do volume |
-| Porta comum/quebrável | Callbacks originais; conexão após travessia efetiva |
+| Porta comum/quebrável | Callbacks originais; cobertura invalidada e reconstruída; conexão após travessia efetiva |
+| Escada, trigger, botão ou plataforma móvel junto a bloco | Área sensível conserva análise detalhada; não vira interior plano resolvido |
 | Elevador, botão encadeado, teleporte ou `trigger_push` | Nenhuma conexão artificial representando a ação não implementada |
 | Área separada descoberta pela amostragem | Novo episódio, sem aresta entre a posição antiga e a relocação |
 | Editar/criar NPC durante scan | Mutação/criação bloqueada; desenho do grafo permanece disponível |
@@ -64,10 +85,12 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | Desligar no meio de um `.tmp` | Último checkpoint confirmado preservado |
 | Alterar física global durante a sessão | Salva os segmentos provados e encerra |
 | Atingir 4.096 nós ou oito saídas | Sem escrita fora dos arrays; limites informados e grafo parcial salvo |
+| Limite de blocos ou excesso de volumes sensíveis/escadas | Sem escrita fora dos arrays nem cobertura presumida; exploração detalhada preservada e limite informado |
+| `status` em grafo grande | Consulta resultados em cache, sem refazer todos os trajetos geométricos; `pending-estimate` pode diminuir com a análise seguinte |
 
 Confira também `addons/amxmodx/logs/` e o `<mapa>.scan.txt`. Teste um NPC consumindo o `.nav` gerado: física de fake client e física do perfil de NPC precisam funcionar no mapa real. Os contadores mostram atividades/tentativas, sem certificar cobertura integral do BSP.
 
-Para comparar a exploração, use o mesmo BSP, parâmetros, posição inicial e orçamento de CPU. Observe tempo até esgotar candidatos, nós/conexões, regiões cobertas e as distâncias `explore` e `travel/return`. Um tempo menor com áreas ausentes não representa melhora de cobertura. A medição de ganho e a validação dos saltos/escadas continuam dependendo do servidor real.
+Para comparar a exploração, use o mesmo BSP, parâmetros, posição inicial e orçamento de CPU. Observe tempo até esgotar candidatos, nós/conexões, regiões cobertas e as distâncias `explore` e `travel/return`, junto com `pruned bearings`, `skipped interior trials` e `cost-ranked targets`. Um tempo menor com áreas ausentes não representa melhora de cobertura. A medição de ganho e a validação dos saltos/escadas continuam dependendo do servidor real. A escolha das técnicas e suas limitações estão em [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md).
 
 Para repetir os testes do importador, a partir da raiz do projeto:
 
