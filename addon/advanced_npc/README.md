@@ -1,4 +1,4 @@
-# Advanced NPC 1.3
+# Advanced NPC 1.4
 
 NPCs por entidade para CS 1.6, com navegação A*, animações, percepção e combate. O `anpc_mapper.sma` cria de um a oito fake clients temporários, configurados por `anpc_scan_bots`, para explorar o mapa e gerar a navegação pelo próprio servidor. Esse modo usa AMXX, ReAPI, Fakemeta e Hamsandwich; não exige YaPB, Python nem um módulo próprio em C++.
 
@@ -31,7 +31,7 @@ Preencha `AMXX_COMPILER`, `AMXX_INCLUDE_DIR` e `ANPC_INCLUDE_DIR` com os caminho
 3. Copie `configs/advanced_npc.cfg` para `cstrike/addons/amxmodx/configs/advanced_npc/advanced_npc.cfg`. Os arquivos de mapa ficam na subpasta `maps/`.
 4. Instale o modelo `models/player/zpn_z_default/zpn_z_default.mdl` já usado pelo projeto para o tipo de NPC padrão. O explorador usa um modelo de jogador do CS.
 
-As includes permanecem em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de `AMXX_INCLUDE_DIR` indicada em `LOCAL.md`, incluindo `navigation_areas.inc` e `navigation_portals.inc`. Edite-as nesse diretório externo, sem duplicá-las no repositório. Recompile os consumidores alterados junto com o provedor para usar as consultas de áreas e a assinatura atual de `anpc_nav_find_near`.
+As includes permanecem em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de `AMXX_INCLUDE_DIR` indicada em `LOCAL.md`, incluindo `navigation_areas.inc` e `navigation_portals.inc`. Edite-as nesse diretório externo, sem duplicá-las no repositório. Recompile manualmente os seis plugins com essas includes e carregue os binários juntos. A revisão inclui a consulta `anpc_nav_near_candidates`, adjacência dinâmica e o formato `ANPC_NAV 4`.
 
 `core/zpn_main.sma` permanece sem integração do scanner. Faça a geração em uma sessão de manutenção, sem modos de jogo ou outros plugins controlando a equipe, a classe ou a vida do bot.
 
@@ -47,7 +47,7 @@ anpc_scan start new
 anpc_scan status
 ```
 
-Aguarde a remoção dos NPCs antes de iniciar. `start new` começa um grafo vazio em memória. A navegação anterior só é substituída ao salvar um checkpoint, com backup `.bak`. Esta revisão usa `ANPC_NAV 3`: gere novamente mapas antigos ou reimporte seus grafos YaPB com o importador atualizado. Use `start new` para medir a nova geração de áreas sem os pontos anteriores. Checkpoints preservam IDs de exploração; quando o scan esgota os candidatos, remove amostras comuns do interior certificado e gera portais nas bordas compartilhadas. Saltos, escadas e trechos irregulares mantêm suas âncoras.
+Aguarde a remoção dos NPCs antes de iniciar. `start new` começa um grafo vazio em memória. A navegação anterior só é substituída ao salvar um checkpoint, com backup `.bak`. Esta revisão usa `ANPC_NAV 4`: gere novamente mapas antigos ou reimporte seus grafos YaPB com o importador atualizado. Use `start new` para medir a nova geração de áreas sem os pontos anteriores. Checkpoints preservam IDs de exploração; quando o scan esgota os candidatos, remove amostras comuns do interior certificado e gera portais nas bordas compartilhadas. Saltos, escadas e trechos irregulares mantêm suas âncoras.
 
 Cada explorador tem movimento, sondagens e rota próprios. Sementes afastadas e reservas de fronteiras distribuem o trabalho; todos alimentam o mesmo grafo. O mapper usa as vagas disponíveis, mantendo uma livre para o administrador. O padrão é um explorador; a quantidade é capturada ao iniciar. Desvios com apoio validado e o filtro de colisão entre scouts evitam bloqueios e impedem que um sirva de chão para outro.
 
@@ -75,8 +75,8 @@ anpc_scan start
 
 O próprio plugin grava `maps/<mapa>.nav`, `maps/<mapa>.scan` e `maps/<mapa>.scan.txt` dentro de `configs/advanced_npc/`. O `.nav` já é o arquivo consumido pelos NPCs. A memória `.scan` só é reutilizada se mapa, BSP, arquivo `.nav`, parâmetros físicos e política de exploração corresponderem.
 
-Veja [o funcionamento e os limites do explorador](docs/AUTOMAPPER.md), [a análise das técnicas de cobertura](docs/MAPPING_STRATEGY.md), [o editor de navegação](docs/NAVIGATION.md), [a API](docs/API.md) e [os cenários para teste manual](docs/TESTING.md).
+Veja [a análise e as melhorias desta revisão](docs/SCAN_REVIEW.md), [o funcionamento e os limites do explorador](docs/AUTOMAPPER.md), [a análise das técnicas de cobertura](docs/MAPPING_STRATEGY.md), [o editor de navegação](docs/NAVIGATION.md), [a API](docs/API.md) e [os cenários para teste manual](docs/TESTING.md).
 
-Esta revisão precisa de compilação manual de `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma`, com as includes externas atualizadas. Os binários existentes pertencem a revisões anteriores. As conferências de fontes e do importador estão em `docs/TESTING.md`; compilação e validação no HLDS ficam para o usuário.
+Os binários existentes pertencem a revisões anteriores. A suíte de 60 testes Python e a conferência estrutural de 27 fontes Pawn passaram; compilação manual e validação no HLDS ficam para o usuário, conforme [TESTING.md](docs/TESTING.md). O orçamento de geometria continua compartilhado; o ganho de tempo e o custo adicional da física dos jogadores precisam ser medidos no servidor.
 
-A alteração para vários exploradores exige recompilar manualmente `anpc_mapper.sma` com as includes externas atuais, incluindo `mapper_team.inc`. O orçamento de geometria continua compartilhado; o ganho de tempo e o custo adicional da física dos jogadores precisam ser medidos no servidor.
+Alinhamentos mantêm uma âncora fixa e o prazo original da tentativa. Rotas conhecidas dispensam novas amostras periódicas e podem encurtar trechos com cobertura contínua. Blocos, sementes, escadas, volumes e arestas físicas usam `Array:`; heaps e tabelas densas de busca continuam indexados diretamente. O `.nav` permanece textual, com um rodapé obrigatório de contagens que detecta gravações truncadas.

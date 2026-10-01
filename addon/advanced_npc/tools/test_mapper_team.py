@@ -57,7 +57,7 @@ def assignments(source, values):
     source = re.sub(r'\b(\w+)\+\+', r'\1 += 1', source)
     source = '\n'.join(part.strip() for part in source.split(';') if part.strip())
     tree = ast.parse(source, mode='exec')
-    allowed = (ast.Module, ast.Assign, ast.AugAssign, ast.Name, ast.Load,
+    allowed = (ast.Module, ast.Expr, ast.Assign, ast.AugAssign, ast.Name, ast.Load,
                ast.Store, ast.Subscript, ast.Constant, ast.Call, ast.BinOp,
                ast.Add, ast.Sub, ast.BitAnd, ast.BitOr, ast.LShift, ast.UnaryOp,
                ast.USub)
@@ -159,6 +159,7 @@ class MapperTeamContractTests(unittest.TestCase):
         values = {'gWorker': 1, 'gSeedIndex': [8, 2, 5],
                   'gSeeds': [{'used': True} for _ in range(10)],
                   'SEED_USED': 'used', 'gSeedCursor': 9, 'min': min}
+        values['ArraySetCell'] = lambda store, item, value, field: store[item].__setitem__(field, value)
         values['seed'] = eval(seed_expression, {'__builtins__': {}}, values)
         assignments(block, values)
         self.assertEqual(values['gSeedCursor'], 2)

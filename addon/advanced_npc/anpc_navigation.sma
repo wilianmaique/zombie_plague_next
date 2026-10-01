@@ -10,13 +10,14 @@
 
 new Float:gNodeOrigin[ANPC_MAX_NODES][3], Float:gNodeRadius[ANPC_MAX_NODES]
 new gNodeFlags[ANPC_MAX_NODES], gLinkCount[ANPC_MAX_NODES]
-new gLinkTo[ANPC_MAX_NODES][ANPC_MAX_LINKS], gLinkFlags[ANPC_MAX_NODES][ANPC_MAX_LINKS]
-new Float:gLinkVelocity[ANPC_MAX_NODES][ANPC_MAX_LINKS][3]
-new Float:gLinkCost[ANPC_MAX_NODES][ANPC_MAX_LINKS], Float:gLinkBlocked[ANPC_MAX_NODES][ANPC_MAX_LINKS]
+enum _:NavLink { NL_TO, NL_FLAGS, Float:NL_VELOCITY[3], Float:NL_COST, Float:NL_BLOCKED }
+new Array:gNodeLinks[ANPC_MAX_NODES]
 new gBucketHead[ANPC_HASH_BUCKETS], gBucketNext[ANPC_MAX_NODES]
 #define NAV_NODE_AREAS 8
 #define NAV_BLOCKED_PAIRS 128
-#define NAV_NEIGHBOR_STRIDE (ANPC_MAX_NODES*NAV_NODE_AREAS+2)
+#define NAV_EXPLICIT_STRIDE ANPC_MAX_NODES
+#define NAV_BUCKET_STRIDE (ANPC_MAX_NODES+2)
+#define NAV_NEIGHBOR_STRIDE (9*NAV_BUCKET_STRIDE)
 
 new Float:gAreaNormal[ANPC_MAX_AREAS][3]
 new gAreaNodeHead[ANPC_MAX_AREAS], gNodeAreaCount[ANPC_MAX_NODES]
@@ -60,6 +61,7 @@ public plugin_natives()
 	register_native("anpc_nav_editing", "native_editing")
 	register_native("anpc_nav_reset", "native_reset")
 	register_native("anpc_nav_find_near", "native_find_near")
+	register_native("anpc_nav_near_candidates", "native_near_candidates")
 	register_native("anpc_nav_node", "native_node")
 	register_native("anpc_nav_area_count", "native_area_count")
 	register_native("anpc_nav_area", "native_area")
@@ -137,6 +139,7 @@ public plugin_end()
 		gRouteOwner[route] = 0
 		ArrayDestroy(gRoutePath[route])
 	}
+	for (new node = 0; node < ANPC_MAX_NODES; node++) if (gNodeLinks[node]) ArrayDestroy(gNodeLinks[node])
 	ArrayDestroy(gLadders)
 	free_tr2(gTrace)
 	gTrace = 0
@@ -153,15 +156,19 @@ public bool:native_begin_edit(const plugin)
 	gEditOwner = plugin+1
 	gEditDirty = false
 	nav_invalidate()
+	// Editing always uses spatial enumeration. A pending cursor cannot switch
+	// between membership-list and bucket encodings when a certificate changes.
+	gRegionsReady = false
 	return true
 }
 
 public bool:native_end_edit(const plugin)
 {
 	if (!gTrace || gEditOwner != plugin+1) return false
-	if (!gRegionsReady) nav_build_area_membership()
+	new bool:membership_changed = !gRegionsReady
+	if (membership_changed) nav_build_area_membership()
 	gEditOwner = 0
-	if (gEditDirty) nav_invalidate()
+	if (gEditDirty || membership_changed) nav_invalidate()
 	gEditDirty = false
 	return true
 }
@@ -191,6 +198,18 @@ public bool:native_node()
 	set_param_byref(3, gNodeFlags[node])
 	set_float_byref(4, gNodeRadius[node])
 	return true
+}
+
+public native_near_candidates()
+{
+	new Float:feet[3], Float:radius = get_param_f(2), Float:height = get_param_f(3), nodes[ANPC_NEAR_CANDIDATES]
+	get_array_f(1,feet,3)
+	arrayset(nodes,-1,sizeof nodes)
+	new count
+	if (gTrace && anpc_finite(radius,512.0) && radius >= 1.0 && anpc_finite(height,512.0) && height >= 0.0)
+		count = nav_near_candidates(feet,radius,height,nodes,get_param(5))
+	set_array(4,nodes,sizeof nodes)
+	return count
 }
 
 public native_area_count() { return gAreaCount; }
@@ -261,12 +280,14 @@ public bool:native_link()
 	if (from == to) return false
 	if (link >= 0)
 	{
-		if (gLinkBlocked[from][link] > get_gametime()) return false
-		set_param_byref(3,gLinkFlags[from][link])
-		set_array_f(4,gLinkVelocity[from][link],3)
+		new data[NavLink]
+		ArrayGetArray(gNodeLinks[from],link,data)
+		if (data[NL_BLOCKED] > get_gametime()) return false
+		set_param_byref(3,data[NL_FLAGS])
+		set_array_f(4,data[NL_VELOCITY],3)
 		return true
 	}
-	if (!gRegionsReady || nav_common_area(from,to) < 0 || nav_pair_blocked(from,to,get_gametime())) return false
+	if (nav_common_area(from,to) < 0 || nav_pair_blocked(from,to,get_gametime())) return false
 	new Float:zero[3]
 	set_param_byref(3,0); set_array_f(4,zero,3)
 	return true
@@ -278,8 +299,8 @@ public bool:native_block_link(const plugin)
 	new from = get_param(1), to = get_param(2), link = nav_find_link(from,to)
 	if (from == to) return false
 	new Float:until = get_gametime()+floatclamp(get_param_f(3),0.1,10.0)
-	if (link >= 0) { gLinkBlocked[from][link] = until; return true; }
-	if (!gRegionsReady || nav_common_area(from,to) < 0) return false
+	if (link >= 0) { ArraySetCell(gNodeLinks[from],link,until,NL_BLOCKED); return true; }
+	if (nav_common_area(from,to) < 0) return false
 	new slot = nav_pair_slot(from,to)
 	gPairBlockedFrom[slot] = from; gPairBlockedTo[slot] = to; gPairBlockedUntil[slot] = until
 	return true
@@ -316,9 +337,11 @@ public bool:native_link_at()
 {
 	new node = get_param(1), link = get_param(2)
 	if (!nav_valid_node(node) || !(0 <= link < gLinkCount[node])) return false
-	set_param_byref(3, gLinkTo[node][link])
-	set_param_byref(4, gLinkFlags[node][link])
-	set_array_f(5, gLinkVelocity[node][link], 3)
+	new data[NavLink]
+	ArrayGetArray(gNodeLinks[node],link,data)
+	set_param_byref(3,data[NL_TO])
+	set_param_byref(4,data[NL_FLAGS])
+	set_array_f(5,data[NL_VELOCITY],3)
 	return true
 }
 
@@ -356,7 +379,8 @@ public bool:native_set_flags(const plugin)
 	new node = get_param(1), flags = get_param(2)
 	if (!nav_valid_node(node) || (flags & ~ANPC_NODE_FLAGS)) return false
 	gNodeFlags[node] = flags
-	nav_build_area_membership()
+	if (gEditOwner) gRegionsReady = false
+	else nav_build_area_membership()
 	nav_changed()
 	return true
 }
@@ -374,14 +398,15 @@ public bool:native_connect(const plugin)
 public bool:native_disconnect(const plugin)
 {
 	if (!nav_edit_allowed(plugin)) return false
-	new from = get_param(1), link = nav_find_link(from, get_param(2))
+	new from = get_param(1), link = nav_find_link(from,get_param(2))
 	if (link < 0) return false
-	new last = --gLinkCount[from]
-	gLinkTo[from][link] = gLinkTo[from][last]
-	gLinkFlags[from][link] = gLinkFlags[from][last]
-	gLinkCost[from][link] = gLinkCost[from][last]
-	gLinkBlocked[from][link] = gLinkBlocked[from][last]
-	anpc_copy_vec(gLinkVelocity[from][last], gLinkVelocity[from][link])
+	new last = --gLinkCount[from], data[NavLink]
+	if (link != last)
+	{
+		ArrayGetArray(gNodeLinks[from],last,data)
+		ArraySetArray(gNodeLinks[from],link,data)
+	}
+	ArrayResize(gNodeLinks[from],last)
 	nav_changed()
 	return true
 }

@@ -14,8 +14,6 @@
 #define SCAN_MAX_BOTS 8
 #define SCAN_DIRECTIONS 10
 #define SCAN_DONE ((1<<SCAN_DIRECTIONS)-1)
-#define SCAN_MAX_SEEDS 512
-#define SCAN_MAX_LADDERS 128
 #define SCAN_TASK_AUTO 8160
 #define SCAN_FRAME_OPERATIONS 96
 #define SCAN_SENSE_REACH 3.0
@@ -23,12 +21,10 @@
 #define SCAN_ANCHOR_REUSE 0.75
 #define SCAN_GROUND_SAMPLES 16
 #define SCAN_BLOCK_LEVELS 4
-#define SCAN_MAX_BLOCKS (ANPC_MAX_AREAS*8)
 #define SCAN_BLOCK_BUCKETS 4096
-#define SCAN_MAX_VOLUMES 256
 #define SCAN_PLAN_BLOCKED 64
 
-enum _:ScanSeed { Float:SEED_FEET[3], SEED_FLAGS, bool:SEED_USED }
+enum _:ScanSeed { Float:SEED_FEET[3], SEED_FLAGS, bool:SEED_USED, SEED_NEXT }
 enum _:ScanLadder { LADDER_ENTITY, Float:LADDER_MINS[3], Float:LADDER_MAXS[3] }
 enum _:ScanVolume { VOLUME_ENTITY, VOLUME_TYPE, Float:VOLUME_MINS[3], Float:VOLUME_MAXS[3] }
 enum ScanBlockStatus { SCAN_BLOCK_PENDING, SCAN_BLOCK_OPEN, SCAN_BLOCK_DETAIL }
@@ -57,10 +53,12 @@ new ScanPurpose:gPurpose[SCAN_MAX_BOTS], ScanMotion:gMotion[SCAN_MAX_BOTS], Scan
 new gMask[ANPC_MAX_NODES], gVisits[ANPC_MAX_NODES], gUnreachable[SCAN_MAX_BOTS][ANPC_MAX_NODES]
 new gExploreParent[ANPC_MAX_NODES], bool:gParentClosed[ANPC_MAX_NODES], bool:gSeedRejected[ANPC_MAX_NODES]
 new Float:gKnown[ANPC_MAX_NODES][3], gKnownFlags[ANPC_MAX_NODES], gKnownCount
-new gSeeds[SCAN_MAX_SEEDS][ScanSeed], gSeedCount, gSeedCursor, gSeedEpisodes
-new gLadder[SCAN_MAX_LADDERS][ScanLadder], gLadderCount
-new gVolumes[SCAN_MAX_VOLUMES][ScanVolume], gVolumeCount, bool:gVolumeOverflow
-new gBlock[SCAN_MAX_BLOCKS][ScanBlock], gBlockHead[SCAN_BLOCK_BUCKETS], gBlockCount, gBlockCursor, gBlockEpoch, gBlockGeometry
+new Array:gSeeds, gSeedCount, gSeedCursor, gSeedEpisodes
+new gSeedHead[SCAN_BLOCK_BUCKETS]
+new Array:gLadder, gLadderCount
+new Array:gVolumes, gVolumeCount
+new Array:gBlock
+new gBlockHead[SCAN_BLOCK_BUCKETS], gBlockCount, gBlockCursor, gBlockEpoch, gBlockGeometry
 new gNodeBlock[ANPC_MAX_NODES], gBlockMask[ANPC_MAX_NODES], gBlockMaskEpoch[ANPC_MAX_NODES], gInteriorMask[ANPC_MAX_NODES], bool:gNodeLadder[ANPC_MAX_NODES]
 new gBlockOpen, gBlockDetail, gBlockSkips, gBlockLimit, gFrontierSkips, gCostSelections
 new gBlockReject[BLOCK_REJECT_COUNT], gBlockCrouchRetry
@@ -77,13 +75,15 @@ new Float:gProbeGoal[SCAN_MAX_BOTS][3], Float:gLandingNear[SCAN_MAX_BOTS], Float
 new Float:gJumpOrigin[SCAN_MAX_BOTS][3], gTakeoffRetry[SCAN_MAX_BOTS]
 new gRoute[SCAN_MAX_BOTS], gRouteGoal[SCAN_MAX_BOTS], gRouteCursor[SCAN_MAX_BOTS], gSelectCursor[SCAN_MAX_BOTS]
 new gPlanStart[SCAN_MAX_BOTS], gPlanEpoch[SCAN_MAX_BOTS], gPlanGraphEpoch[SCAN_MAX_BOTS], gPlanCurrent[SCAN_MAX_BOTS], gPlanHeapSize[SCAN_MAX_BOTS]
+new gPlanNeighbor[SCAN_MAX_BOTS], gPlanCoverageEpoch[SCAN_MAX_BOTS]
 new gPlanHeap[SCAN_MAX_BOTS][ANPC_MAX_NODES], gPlanPosition[SCAN_MAX_BOTS][ANPC_MAX_NODES], gPlanStamp[SCAN_MAX_BOTS][ANPC_MAX_NODES], gPlanClosed[SCAN_MAX_BOTS][ANPC_MAX_NODES]
 new Float:gPlanDistance[SCAN_MAX_BOTS][ANPC_MAX_NODES], gPlanBest[SCAN_MAX_BOTS], gPlanBestWork[SCAN_MAX_BOTS], gPlanReturn[SCAN_MAX_BOTS], Float:gPlanScore[SCAN_MAX_BOTS], Float:gPlanReturnCost[SCAN_MAX_BOTS]
 new gPlanBlockedFrom[SCAN_PLAN_BLOCKED], gPlanBlockedTo[SCAN_PLAN_BLOCKED], Float:gPlanBlockedUntil[SCAN_PLAN_BLOCKED], gPlanBlockedCursor
-new gGraphEpoch, gLinks, gWalks, gJumps, gDrops, gClimbs, gFailures, gHazards, gWarps, gUnsupported, gCapacitySkips
+new gGraphEpoch, gLinks, gWalks, gJumps, gDrops, gClimbs, gFailures, gHazards, gWarps, gUnsupported
 new gTraces, gTraceLimit, gAuto, gSurveyEnabled, gRestart, gSaveRecords
 new Float:gSpacing, Float:gSpeed, Float:gGravity, Float:gDropLimit, Float:gBudgetMs, Float:gCheckpointInterval
 new Float:gNextDrive[SCAN_MAX_BOTS], Float:gLastDrive[SCAN_MAX_BOTS], Float:gStarted, Float:gDeadline[SCAN_MAX_BOTS], Float:gProgressTime[SCAN_MAX_BOTS], Float:gBestDistance[SCAN_MAX_BOTS]
+new bool:gAligning[SCAN_MAX_BOTS], gAlignments, gRouteShortcuts, gAnchorReuses
 new Float:gCheckpointTime, Float:gFrameStart, Float:gNextUse[SCAN_MAX_BOTS], Float:gStableSince[SCAN_MAX_BOTS]
 new Float:gSourceFeet[SCAN_MAX_BOTS][3], Float:gGoalFeet[SCAN_MAX_BOTS][3], Float:gRunupFeet[SCAN_MAX_BOTS][3], Float:gArcPrevious[SCAN_MAX_BOTS][3]
 new Float:gFlightTime[SCAN_MAX_BOTS], Float:gJumpSpeed = 268.32816, Float:gLaunchVelocity[SCAN_MAX_BOTS][3], Float:gExpectedVelocity[SCAN_MAX_BOTS][3]
@@ -177,6 +177,10 @@ public plugin_init()
 	gStartForward = CreateMultiForward("anpc_scan_started", ET_IGNORE, FP_CELL)
 	gFinishForward = CreateMultiForward("anpc_scan_finished", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL, FP_CELL)
 	gEdgeForward = CreateMultiForward("anpc_scan_edge_verified", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
+	gSeeds = ArrayCreate(ScanSeed,64)
+	gLadder = ArrayCreate(ScanLadder,16)
+	gVolumes = ArrayCreate(ScanVolume,32)
+	gBlock = ArrayCreate(ScanBlock,256)
 	gTrace = create_tr2()
 	gBeamTrace = create_tr2()
 	rh_get_mapname(gMap, charsmax(gMap), MNT_TRUE)
@@ -207,6 +211,10 @@ public plugin_end()
 	if (gActive) scan_finish(false, "map shutdown")
 	if (gTrace) free_tr2(gTrace)
 	if (gBeamTrace) free_tr2(gBeamTrace)
+	ArrayDestroy(gSeeds)
+	ArrayDestroy(gLadder)
+	ArrayDestroy(gVolumes)
+	ArrayDestroy(gBlock)
 	DestroyForward(gStartForward)
 	DestroyForward(gFinishForward)
 	DestroyForward(gEdgeForward)
@@ -327,13 +335,16 @@ stock bool:scan_start(const bool:reset)
 	arrayset(gPlanBlockedUntil,0,sizeof gPlanBlockedUntil)
 	gPlanBlockedCursor = 0
 	gKnownCount = gLinks = gWalks = gJumps = gDrops = gClimbs = gFailures = 0
-	gHazards = gWarps = gUnsupported = gCapacitySkips = gSeedEpisodes = 0
+	gHazards = gWarps = gUnsupported = gSeedEpisodes = 0
+	ArrayClear(gSeeds)
 	gSeedCount = gSeedCursor = gSurveyCursor = 0
 	gSweeps = gKnownSkips = gReturnTrials = gLongTrials = 0
 	gFrontierSkips = gCostSelections = 0
 	gAreaNodesSkipped = gAreaReturns = gLandingTrials = 0
+	gAlignments = gRouteShortcuts = gAnchorReuses = 0
 	gExploreDistance = gTravelDistance = 0.0
 	gGraphEpoch = 1
+	arrayset(gSeedHead,-1,sizeof gSeedHead)
 	gSpacing = gConfig[SCAN_CFG_SPACING]
 	gSpeed = gConfig[SCAN_CFG_SPEED]
 	gGravity = gConfig[SCAN_CFG_GRAVITY]
@@ -630,12 +641,14 @@ stock scan_show_blocks(const Float:now)
 	}
 	for (new index = 0; index < count && scan_work_available(); index++)
 	{
-		new block = selected[index], Float:size = SCAN_BLOCK_SIZE[gBlock[block][BL_LEVEL]], Float:corner[4][3]
+		new block = selected[index], data[ScanBlock], Float:corner[4][3]
+		ArrayGetArray(gBlock,block,data)
+		new Float:size = SCAN_BLOCK_SIZE[data[BL_LEVEL]]
 		for (new side = 0; side < 4; side++)
 		{
-			corner[side][0] = float(gBlock[block][BL_X])*size+((side == 1 || side == 2) ? size : 0.0)
-			corner[side][1] = float(gBlock[block][BL_Y])*size+(side >= 2 ? size : 0.0)
-			corner[side][2] = scan_block_height(block,corner[side][0],corner[side][1])+2.0
+			corner[side][0] = float(data[BL_X])*size+((side == 1 || side == 2) ? size : 0.0)
+			corner[side][1] = float(data[BL_Y])*size+(side >= 2 ? size : 0.0)
+			corner[side][2] = scan_block_plane_height(data,corner[side][0],corner[side][1])+2.0
 		}
 		for (new side = 0; side < 4; side++)
 		{
@@ -657,17 +670,18 @@ stock scan_status(const id)
 	// Count cached work; asking for status must not classify every map direction.
 	for (new node = 0; node < gKnownCount; node++) if (scan_frontier_weight(node,false)) pending++
 	console_print(id, "[ANPC] Mapper active=%d stage=%d bots=%d nodes=%d/%d links=%d pending-estimate=%d", gActive, gSessionStage, gBotCount, gKnownCount, ANPC_MAX_NODES, gLinks, pending)
-	console_print(id, "[ANPC] Verified walk=%d jump=%d drop=%d ladder=%d | failures=%d hazards=%d warps=%d unsupported=%d link-limit=%d", gWalks,gJumps,gDrops,gClimbs,gFailures,gHazards,gWarps,gUnsupported,gCapacitySkips)
+	console_print(id, "[ANPC] Verified walk=%d jump=%d drop=%d ladder=%d | failures=%d hazards=%d warps=%d unsupported=%d", gWalks,gJumps,gDrops,gClimbs,gFailures,gHazards,gWarps,gUnsupported)
 	console_print(id, "[ANPC] Seeds %d/%d episodes=%d | survey %d/%d | elapsed %.1f min | last checkpoint saved=%d", scan_used_seeds(),gSeedCount,gSeedEpisodes,gSurveyCursor,gSurveyTotal,(get_gametime()-gStarted)/60.0,gSaved)
 	console_print(id, "[ANPC] Resumed memory=%d | trace/frame limit=%d | cooperative budget=%.2f ms",gMemoryLoaded,gTraceLimit,gBudgetMs)
 	console_print(id, "[ANPC] Sweeps=%d known-direction skips=%d long walks=%d deferred returns=%d | distance: explore=%.0f travel/return=%.0f",gSweeps,gKnownSkips,gLongTrials,gReturnTrials,gExploreDistance,gTravelDistance)
-	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d/%d | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d coverage-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,SCAN_MAX_BLOCKS,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
+	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d (dynamic) | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d coverage-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
 	console_print(id, "[ANPC] Area rejections: floor=%d plane=%d hull=%d sensitive=%d capacity=%d | crouch retries=%d",gBlockReject[BLOCK_FLOOR],gBlockReject[BLOCK_PLANE],gBlockReject[BLOCK_HULL],gBlockReject[BLOCK_VOLUME],gBlockReject[BLOCK_CAPACITY],gBlockCrouchRetry)
 	console_print(id, "[ANPC] Floor probe failures: support=%d solid-start=%d non-world=%d height=%d",gBlockFloorReject[FLOOR_SUPPORT],gBlockFloorReject[FLOOR_SOLID],gBlockFloorReject[FLOOR_ENTITY],gBlockFloorReject[FLOOR_HEIGHT])
 	console_print(id, "[ANPC] Survey: enabled=%d valid-BSP-bounds=%d step=%.0f",gSurveyEnabled,gSurveyValid,gSurveyStep)
 	console_print(id, "[ANPC] Navigation areas=%d | suppressed node samples=%d symmetric floor returns=%d local landings=%d",anpc_nav_area_count(),gAreaNodesSkipped,gAreaReturns,gLandingTrials)
 	console_print(id, "[ANPC] Finalization: removed interior samples=%d generated portals=%d portal capacity skips=%d",gPrunedNodes,gPortals,gPortalLimit)
 	console_print(id, "[ANPC] Retained area revalidation: phase=%d source areas=%d/%d",gRestoreAreaPhase,gRestoreAreaCursor,gRestoreAreaCount)
+	console_print(id,"[ANPC] Reused anchors=%d bounded alignments=%d certified route shortcuts=%d",gAnchorReuses,gAlignments,gRouteShortcuts)
 	console_print(id,"[ANPC] Scouts=%d | safe lateral commands=%d | shared trace/CPU limits are not multiplied",gBotCount,gAvoidances)
 	for (new scout = 0; scout < gBotCount; scout++)
 	{

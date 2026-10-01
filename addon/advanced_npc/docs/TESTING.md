@@ -1,5 +1,38 @@
 # Verificação e testes
 
+## Revisão 1.4: alinhamento, cobertura e estruturas — 01/10/2026
+
+Os 60 testes Python passaram, incluindo regressões da tolerância XY/altura, prazo de alinhamento, ausência de amostras em rotas conhecidas, janela física de falta de movimento, busca espacial de mais de 800 sementes e integridade de `ANPC_NAV 4`. O teste espacial compara candidatos com uma varredura independente em coordenadas negativas, bordas de células, pisos sobrepostos e colisões de hash. A suíte também valida arquivos com onze saídas em um nó, rodapé ausente, contagens incorretas, aresta duplicada e registros depois do rodapé.
+
+O verificador estrutural leu 27 fontes Pawn dos seis plugins e das includes externas: delimitadores, aridade de chamadas do projeto, parâmetros reservados, argumentos de formato e globais. Os testes de condições Pawn usam expressões extraídas das fontes e doubles; o verificador de NAV é uma implementação independente em Python. Nenhum deles executa a máquina de estados Pawn ou a física do servidor, nem substitui verificação de tipos pelo compilador. Não houve compilação, execução no HLDS ou medição de FPS nesta revisão.
+
+Recompile manualmente os seis plugins com as includes atuais de `ANPC_INCLUDE_DIR`. Carregue os binários juntos. Use `anpc_scan start new` para regenerar o mapa, ou reimporte YaPB com o importador atualizado: somente `ANPC_NAV 4` é aceito. O journal continua `ANPC_SCAN 2`, com política `planar-regions-team-2`.
+
+```powershell
+rtk proxy python -B -m unittest discover -s addon/advanced_npc/tools -p "test_*.py"
+rtk proxy python -B addon/advanced_npc/tools/check_pawn_sources.py
+rtk proxy python -B addon/advanced_npc/tools/check_nav_file.py "CAMINHO_DO_MAPA/de_dust2.nav" --bsp "CAMINHO_DO_SERVIDOR/cstrike/maps/de_dust2.bsp"
+```
+
+| Teste manual | Resultado esperado |
+| --- | --- |
+| Scan longo no local das imagens, primeiro com um scout e depois quatro | Alinhamento termina ou falha pelo prazo; não alterna a origem nem renova indefinidamente a tentativa |
+| Chegada com deslocamento XY menor que 12 e diferença Z menor que 12, mas distância 3D maior que 12 | Usa uma única regra de chegada, sem repetir alinhamento pela diferença entre métricas |
+| Circular por uma sala já certificada e viajar entre fronteiras distantes | Rotas usam a conectividade da área antes do fim; viagem não acrescenta amostras periódicas |
+| Ponto mais próximo separado por parede e outro candidato acessível | Reutiliza uma âncora após prova do acesso real e do segmento desde a origem, sem ligação através da parede |
+| Atalhos em rampa, porta agachada, portal, decolagem e chegada precisa | Mantém hull, apoio contínuo, postura e paradas exigidas por transições |
+| NPC imóvel, com alvo móvel ou mudanças frequentes de waypoint | Janela física alcança recuperação; esperas de busca/ataque não são contadas como segundos de movimento |
+| Nó com mais de oito ligações físicas válidas | Guarda, consulta, salva e recarrega todas as saídas sem truncar em oito |
+| Mapa/cenário com mais de 512 sementes, 128 escadas ou 256 volumes sensíveis | Arrays crescem; áreas externas a volumes reais continuam classificadas sem desativação global por cache |
+| Pausa/checkpoint e retomada com sementes fora de ordem e outra quantidade de scouts | Reconstrói o índice de sementes; devolve a semente própria e preserva o trabalho compartilhado |
+| Conclusão com amostras removidas e nós preservados com várias saídas | Compactação remapeia destinos e conserva handles; reload produz o mesmo grafo final |
+| Cópia do `.nav` cortada entre registros ou no meio de uma linha | Rejeita o arquivo inteiro; só a gravação completa com contagens correspondentes é carregada |
+| Buraco, parede, andares sobrepostos, caixa e volume móvel | Nenhum atalho é aceito apenas pela proximidade XY; geometria sensível mantém análise detalhada |
+
+Compare versões usando o mesmo BSP, configurações, perfil físico e quantidade de scouts, sempre com `start new`. Registre tempo, distâncias de exploração/viagem, nós antes/depois da compactação, áreas, reutilizações, alinhamentos, atalhos e CPU/FPS do HLDS. As reservas estáticas removidas são calculadas pelas declarações; ganho de tempo/FPS precisa dessa medição. [SCAN_REVIEW.md](SCAN_REVIEW.md) registra achados, escolhas e técnicas avaliadas.
+
+Os itens abaixo preservam o histórico das revisões anteriores; instruções de instalação e formato vigentes estão nesta seção.
+
 ## Equipe de exploradores — 01/10/2026
 
 `anpc_scan_bots` permite 1 a 8 scouts, com padrão 1. Esta alteração exige recompilação manual de `anpc_mapper.sma` com todas as includes externas atuais, incluindo `mapper_team.inc` e `advanced_npc_mapper.inc`. O Codex não executou o compilador, os plugins no HLDS nem mediu aceleração/FPS.
@@ -35,7 +68,7 @@ Compare tempo até conclusão e cobertura com o mesmo BSP, perfil, survey e orç
 
 ## Revisão 1.3: áreas e portais — 01/10/2026
 
-Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma` com as includes externas atuais, inclusive a nova `navigation_portals.inc`. Carregue os quatro juntos. O formato é `ANPC_NAV 3` e a política do journal `ANPC_SCAN 2` é `planar-regions-1`. Não houve compilação, execução dos plugins no HLDS ou medição de FPS.
+Na revisão 1.3, o formato era `ANPC_NAV 3` e a política do journal `ANPC_SCAN 2` era `planar-regions-1`. Esses arquivos e binários foram substituídos pela revisão 1.4; os resultados abaixo pertencem à análise anterior, sem execução no HLDS ou medição de FPS.
 
 - Conferência estática de 26 fontes Pawn: includes/globais, chamadas próprias e formatos/argumentos. Nenhum compilador foi invocado.
 - 28 testes Python passaram: 11 do importador atualizado, 10 de geometria sobre BSPs sintéticos e sete das condições Pawn de fronteira com natives AMXX. Cobrem plano inclinado, coordenadas negativas, teto baixo, postura, buraco entre extremos válidos, parede/subdivisão e separação de pisos. Os hulls sintéticos são comparados com interseções analíticas independentes. As condições extraídas das includes são avaliadas com doubles dos contratos nativos, sem executar Pawn ou compilar plugins; os sete testes dependem das includes configuradas em `LOCAL.md` e são pulados quando elas não estão disponíveis.

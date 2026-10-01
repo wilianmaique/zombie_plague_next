@@ -31,7 +31,7 @@ Pontos com `Button`, `Lift` e `DoubleJump` ficam desabilitados. Essas ações de
 
 ## Referência para de_dust2
 
-O [grafo de_dust2 do YaPB](https://github.com/yapb/graph/blob/19b802d42fbdadabd3205fb767c8ea59d976a7de/graph/de_dust2.graph) pode ser importado com o BSP exato do servidor. O importador atual gera `ANPC_NAV 3`; grafos YaPB fornecem pontos e conexões, sem áreas certificadas. Para obter áreas e portais, execute o mapper no servidor. O BSP e arquivos `.nav` gerados não são distribuídos no projeto.
+O [grafo de_dust2 do YaPB](https://github.com/yapb/graph/blob/19b802d42fbdadabd3205fb767c8ea59d976a7de/graph/de_dust2.graph) pode ser importado com o BSP exato do servidor. O importador atual gera `ANPC_NAV 4`; grafos YaPB fornecem pontos e conexões, sem áreas certificadas. Para obter áreas e portais, execute o mapper no servidor. O BSP e arquivos `.nav` gerados não são distribuídos no projeto.
 
 ## Editor de mapa
 
@@ -70,7 +70,7 @@ O desenho continua ao morrer ou entrar em spectator, sem precisar repetir o coma
 | `anpc_nav_show 0|1` | Nós, ligações e retângulos à frente da câmera; desenho limitado ao admin, inclusive morto/spec |
 | `anpc_nav_record 0|1` | Gravação de trechos terrestres válidos |
 
-Uma conexão é direcionada. Para caminhar também na volta, crie `to -> from`. Quedas e saltos podem ser viáveis em apenas um sentido. O máximo é oito arestas físicas por nó. Conexões WALK implícitas entre âncoras da mesma área não consomem essas vagas.
+Uma conexão é direcionada. Para caminhar também na volta, crie `to -> from`. Quedas e saltos podem ser viáveis em apenas um sentido. Arestas físicas ficam em um `Array:` por nó, criado somente quando necessário, sem a antiga restrição de oito saídas. Não há destinos duplicados nem ligações para o próprio nó; a capacidade natural é o número de outros nós existentes. Caminhada implícita entre âncoras da mesma área dispensa armazenar todas essas arestas.
 
 Flags de nó: `1` agachado, `2` escada, `4` desabilitado, `8` portal; podem ser somadas. Raio deve ficar entre 8 e 64. O seguidor limita tolerância de avanço a 24 unidades e a quatro unidades nos portais ou antes de uma saída de salto/queda. Para posições precisas, prefira raio 8.
 
@@ -79,13 +79,14 @@ Flags de nó: `1` agachado, `2` escada, `4` desabilitado, `8` portal; podem ser 
 A ordem é nós, áreas opcionais e conexões. IDs de nós e de áreas são sequenciais a partir de zero em contagens independentes. Coordenadas representam os pés, com decimais; `NaN`, infinitos, índices fora dos limites e registros desconhecidos são rejeitados.
 
 ```text
-ANPC_NAV 3 "nome_do_mapa" tamanho_do_bsp md5_do_bsp
+ANPC_NAV 4 "nome_do_mapa" tamanho_do_bsp md5_do_bsp
 N id x y z raio flags
 A id min_x min_y max_x max_y z_em_min_xy normal_x normal_y normal_z flags
 E origem destino flags vx vy vz
+END quantidade_de_nos quantidade_de_areas quantidade_de_arestas
 ```
 
-O header contém cinco campos, `N` e `E` sete campos e `A` onze. O MD5 tem 32 caracteres hexadecimais minúsculos. Linhas vazias e comentários começando com `;` ou `#` são aceitos. O provedor aceita somente a versão atual; arquivos antigos devem ser gerados ou importados novamente.
+O header contém cinco campos, `N` e `E` sete campos, `A` onze e `END` quatro. O rodapé é obrigatório e suas contagens devem corresponder aos registros anteriores. Depois dele só são aceitos comentários e linhas vazias. Um arquivo truncado no meio de um registro ou na fronteira entre registros é rejeitado integralmente. O MD5 tem 32 caracteres hexadecimais minúsculos. Linhas vazias e comentários começando com `;` ou `#` são aceitos. O provedor aceita somente a versão atual; arquivos antigos devem ser gerados ou importados novamente.
 
 Cada `A` descreve uma região convexa de piso estático, horizontal ou inclinado: lados de 32 a 256 unidades dentro de uma célula espacial de 256, normal unitária com `z >= 0,7` e flags `0` ou `1` (agachamento). `z_em_min_xy` é a altura dos pés em `(min_x,min_y)`; nos outros pontos, `z = z_em_min_xy - ((x-min_x)·normal_x + (y-min_y)·normal_y)/normal_z`. Não se trata da altura da superfície visível do brush: o hull determina o plano de apoio dos pés. Limites incluem bordas compartilhadas, com tolerância XY de 0,01 e Z de uma unidade. Pisos sobrepostos ficam separados pelo plano. Há até 4.096 áreas.
 
@@ -93,7 +94,17 @@ Uma borda compartilhada de pelo menos 16 unidades e planos de apoio contínuos a
 
 Velocidade da aresta fica zerada para caminhada/descida. No salto, uma referência zero solicita cálculo pelo perfil. A referência define uma preferência de tempo quando viável; o núcleo sempre calcula o lançamento usando a gravidade atual e verifica o arco.
 
-O loader valida estrutura, mapa, tamanho, MD5 e limites. A geometria das ligações importadas é verificada durante o deslocamento; esse arquivo não contém um certificado de viabilidade física de cada aresta.
+O gravador verifica cada escrita e o flush antes de promover o temporário com backup. O loader valida estrutura, rodapé, mapa, tamanho, MD5 e limites. A geometria das ligações importadas é verificada durante o deslocamento; esse arquivo não contém um certificado de viabilidade física de cada aresta.
+
+A extensão `.nav` identifica o formato textual próprio do projeto. JSON continua adequado ao relatório do importador, mas não substitui o grafo por uma suposição de velocidade; veja [a decisão de armazenamento](SCAN_REVIEW.md#etapa-4-armazenamento-e-json).
+
+Para verificar um arquivo sem carregar o servidor ou compilar:
+
+```powershell
+rtk proxy python -B addon/advanced_npc/tools/check_nav_file.py "CAMINHO_DO_SERVIDOR/cstrike/addons/amxmodx/configs/advanced_npc/maps/de_dust2.nav" --bsp "CAMINHO_DO_SERVIDOR/cstrike/maps/de_dust2.bsp"
+```
+
+O verificador produz um resumo JSON e rejeita inconsistências estruturais; não simula colisões nem comprova a execução das ligações importadas.
 
 ## Spawns
 

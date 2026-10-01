@@ -51,3 +51,15 @@ ReAPI atende criação, remoção, leitura/escrita de variáveis e rodada. Fakem
 - [Recast heightfield](https://recastnav.com/structrcHeightfield.html): grade de spans de altura usada na construção de regiões caminháveis.
 
 Essas fontes orientam a camada adaptativa de cobertura e a seleção por fronteiras/custo. O mapper mantém seu grafo e as provas físicas próprias, sem importar código dessas bibliotecas nem resultados de desempenho de robôs para o HLDS. Veja [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md) para a comparação e a decisão de implementação.
+
+## Arrays e JSON — revisão 1.4, 01/10/2026
+
+A pesquisa inicial em `https://amxx-api.csrevo.com/search.json?q=ArrayGetCell` não retornou conteúdo acessível nesta sessão. As assinaturas foram conferidas em `cellarray.inc`, `file.inc` e `json.inc` da instalação configurada em `LOCAL.md`, e comparadas com a referência oficial AMXX:
+
+- [ArrayCreate](https://www.amxmodx.org/api/cellarray/ArrayCreate): tamanho do registro e reserva inicial; reserva não cria itens válidos e a estrutura cresce.
+- [ArrayGetArray](https://www.amxmodx.org/api/cellarray/ArrayGetArray) e [ArraySetArray](https://www.amxmodx.org/api/cellarray/ArraySetArray): transferência de registros entre Pawn e o armazenamento dinâmico.
+- [ArrayGetCell](https://www.amxmodx.org/api/cellarray/ArrayGetCell) e [ArraySetCell](https://www.amxmodx.org/api/cellarray/ArraySetCell): o argumento `block` seleciona a célula dentro do registro; usado para flags, ligação e estados isolados.
+- [json_parse](https://www.amxmodx.org/api/json/json_parse): parse de texto/arquivo em uma chamada, retornando uma árvore com handle que precisa ser liberado.
+- [fflush](https://www.amxmodx.org/api/file/fflush): zero indica sucesso; a promoção do temporário exige flush bem-sucedido.
+
+Conclusão de projeto, sem benchmark: mover registros esparsos para `Array:` remove reservas/caches artificiais, mas não torna acesso por native automaticamente mais rápido que arrays densos. JSON pode servir a ferramentas externas; trocar o grafo textual por uma árvore JSON não comprova aceleração e perderia o contrato atual de escrita incremental se fosse serializado em uma chamada. Mantém-se `ANPC_NAV 4`, com integridade de contagens e processamento de registros por etapas no mapper. A análise completa está em [SCAN_REVIEW.md](SCAN_REVIEW.md).

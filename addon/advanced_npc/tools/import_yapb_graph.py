@@ -24,7 +24,7 @@ GRAPH_VERSION = 2
 GRAPH_OPTION = 1 << 3
 EXTENSION_OPTION = 1 << 6
 MAX_NODES = 4096
-MAX_LINKS = 8
+YAPB_LINKS = 8
 NODE_SIZE = 220
 HEADER = struct.Struct("<6i")
 LINK = struct.Struct("<3fiHh")
@@ -158,7 +158,7 @@ def parse_graph(data: bytes) -> Graph:
         graph.nodes.append(Node(index, feet, max(8.0, min(24.0, radius)), flags))
     for source in range(count):
         destinations = set()
-        for link_index in range(MAX_LINKS):
+        for link_index in range(YAPB_LINKS):
             vx, vy, vz, distance, original_flags, destination = LINK.unpack_from(raw, source * NODE_SIZE + 56 + link_index * LINK.size)
             if destination == -1:
                 continue
@@ -229,13 +229,14 @@ def navigation_text(graph: Graph, map_name: str, bsp_size: int, bsp_hash: str) -
         raise GraphError("Invalid BSP MD5 digest")
     if graph.bsp_size is not None and graph.bsp_size != bsp_size:
         raise GraphError(f"Graph BSP size {graph.bsp_size} does not match the supplied map {bsp_size}")
-    lines = [f'ANPC_NAV 3 "{map_name}" {bsp_size} {bsp_hash}']
+    lines = [f'ANPC_NAV 4 "{map_name}" {bsp_size} {bsp_hash}']
     for node in graph.nodes:
         x, y, z = node.feet
         lines.append(f"N {node.index} {x:.4f} {y:.4f} {z:.4f} {node.radius:.2f} {node.flags}")
     for edge in graph.edges:
         vx, vy, vz = edge.velocity
         lines.append(f"E {edge.source} {edge.destination} {edge.flags} {vx:.4f} {vy:.4f} {vz:.4f}")
+    lines.append(f"END {len(graph.nodes)} 0 {len(graph.edges)}")
     return "\n".join(lines) + "\n"
 
 
