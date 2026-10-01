@@ -23,6 +23,11 @@ enum _:Actor
 	Float:ACT_LAST_THINK, Float:ACT_NEXT_SENSE, Float:ACT_NEXT_REPATH,
 	Float:ACT_LAST_SEEN, Float:ACT_LAST_KNOWN[3], Float:ACT_WINDUP_END,
 	Float:ACT_NEXT_ATTACK, Float:ACT_DEATH_TIME, Float:ACT_NEXT_USE,
+	Float:ACT_ATTACK_END, bool:ACT_ATTACK_STRUCK,
+	Float:ACT_ANIM_TIME, Float:ACT_ANIM_SAMPLE, Float:ACT_ANIM_ORIGIN[3], Float:ACT_ANIM_SCALE,
+	Float:ACT_MOVE_VELOCITY[3],
+	Float:ACT_APPROACH_UNTIL, Float:ACT_APPROACH_TARGET[3], Float:ACT_APPROACH_GOAL[3], bool:ACT_APPROACH_VALID,
+	ACT_APPROACH_MASK, ACT_APPROACH_INDEX, Float:ACT_APPROACH_YAW, Float:ACT_APPROACH_LEVEL, bool:ACT_APPROACH_BASE,
 	Float:ACT_NEXT_JUMP_PROBE,
 	Float:ACT_PROGRESS_TIME, Float:ACT_RECOVER_UNTIL, Float:ACT_OBSTACLE_WAIT,
 	Float:ACT_KNOCKBACK_UNTIL, Float:ACT_LAST_HIT,
@@ -34,7 +39,7 @@ enum _:Actor
 	ACT_AGGRESSOR, ACT_AGGRESSOR_USERID
 }
 
-enum _:AnimationData { ANIM_SEQUENCE, Float:ANIM_RATE, bool:ANIM_LOOP, bool:ANIM_VALID }
+enum _:AnimationData { ANIM_SEQUENCE, Float:ANIM_RATE, Float:ANIM_GROUND_SPEED, bool:ANIM_LOOP, bool:ANIM_VALID }
 enum _:CoreForwards { FW_TARGET, FW_SPAWN, FW_STATE, FW_DAMAGE_PRE, FW_DAMAGE_POST, FW_ATTACK_PRE, FW_ATTACK_POST, FW_DEATH, FW_REMOVE }
 
 new gActor[ANPC_MAX_ACTORS][Actor], gProfile[ANPC_MAX_TYPES][AnpcProfile]
@@ -43,6 +48,7 @@ new gTypeName[ANPC_MAX_TYPES][48], gTypeModel[ANPC_MAX_TYPES][128], gTypeOwner[A
 new bool:gTypeReady[ANPC_MAX_TYPES], bool:gTypesLocked, bool:gRegistrationOpen, bool:gUnloading
 new gTypeCount, gActorCount, gSerial, gTrace, gForwards[CoreForwards], gCapacity
 new Float:gThinkInterval, Float:gCorpseTime, Float:gRepathInterval, Float:gSampleTime, Float:gStepSize
+new Float:gLocalJumpTime, gLocalJumpTrials
 new gPlayers[32], gPlayerCount, gPlayerUserid[33]
 new Float:gPlayerFeet[33][3], Float:gPlayerOrigin[33][3], Float:gPlayerVelocity[33][3]
 new Float:gPlayerGroundFeet[33][3], bool:gPlayerGroundValid[33]
@@ -297,7 +303,7 @@ public native_create()
 	set_entvar(entity, var_max_health, gProfile[type][ANPC_HEALTH])
 	set_entvar(entity, var_gravity, gProfile[type][ANPC_GRAVITY])
 	set_entvar(entity, var_friction, 1.0)
-	if (!engfunc(EngFunc_DropToFloor, entity)) { rg_remove_entity(entity); anpc_nav_close(route); return 0; }
+	if (engfunc(EngFunc_DropToFloor, entity) != 1) { rg_remove_entity(entity); anpc_nav_close(route); return 0; }
 	angles[1] = yaw
 	set_entvar(entity, var_angles, angles)
 	set_entvar(entity, var_iuser4, ANPC_MARKER)
@@ -365,7 +371,7 @@ public npc_think(const entity)
 	gActor[slot][ACT_LAST_THINK] = now
 	if (gActor[slot][ACT_STATE] == ANPC_DEAD)
 	{
-		npc_animate(slot, dt)
+		npc_animate(slot, now)
 		if (now >= gActor[slot][ACT_DEATH_TIME]) { npc_destroy(slot); return; }
 		set_entvar(entity, var_nextthink, now+0.1)
 		return
@@ -382,7 +388,7 @@ public npc_think(const entity)
 		if (!npc_live(slot)) return
 		gActor[slot][ACT_NEXT_SENSE] = now+gProfile[gActor[slot][ACT_TYPE]][ANPC_SENSE_INTERVAL]
 	}
-	if (gActor[slot][ACT_STATE] == ANPC_ATTACK) npc_attack_impact(slot, now)
+	if (gActor[slot][ACT_STATE] == ANPC_ATTACK) npc_attack_impact(slot, dt, now)
 	else if (gActor[slot][ACT_TARGET] && npc_target_current(slot)) npc_hunt(slot, dt, now)
 	else
 	{
@@ -393,6 +399,6 @@ public npc_think(const entity)
 		npc_animation(slot, ANPC_ANIM_IDLE)
 	}
 	if (!npc_live(slot)) return
-	npc_animate(slot, dt)
+	npc_animate(slot, now)
 	set_entvar(entity, var_nextthink, now + (gActor[slot][ACT_TARGET] || gActor[slot][ACT_STATE] == ANPC_ATTACK ? gThinkInterval : 0.2))
 }

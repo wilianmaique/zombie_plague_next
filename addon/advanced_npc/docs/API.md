@@ -4,7 +4,7 @@ As includes do projeto ficam em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de
 
 ## Tipos
 
-Registre cada tipo em `plugin_precache()`, seguindo `anpc_zombie_default.sma` como exemplo. Defina um `profile[AnpcProfile]`, chame `anpc_register_type()` e registre os sete slots de animação por **label**. O núcleo lê o descriptor studio v10 do modelo, obtendo sequência, FPS e quantidade de frames. Índices de outro modelo não precisam ser copiados.
+Registre cada tipo em `plugin_precache()`, seguindo `anpc_zombie_default.sma` como exemplo. Defina um `profile[AnpcProfile]`, chame `anpc_register_type()` e registre os sete slots de animação por **label**. O núcleo lê o descriptor studio v10 do modelo, obtendo sequência, FPS, quantidade de frames, flag de repetição e deslocamento linear da sequência. Índices de outro modelo não precisam ser copiados.
 
 O perfil é copiado e fica imutável durante o mapa. O modelo é precacheado nessa fase. Tipos incompletos ficam desabilitados. Novos tipos entram por outro plugin, sem adicionar condições específicas de classe ao núcleo.
 
@@ -15,7 +15,7 @@ O perfil é copiado e fica imutável durante o mapa. O modelo é precacheado nes
 | `ANPC_GRAVITY` | Multiplicador entre 0,1 e 2 |
 | `ANPC_DAMAGE` | 1 a 10.000 |
 | `ANPC_ATTACK_RANGE` | 32 a 112, medido até a superfície atingida pelo trace |
-| `ANPC_ATTACK_COOLDOWN` | 0,2 a 10 s |
+| `ANPC_ATTACK_COOLDOWN` | 0,2 a 10 s; duração mínima do ciclo entre inícios de golpes |
 | `ANPC_ATTACK_WINDUP` | Pelo menos 0,05 s, menor que o cooldown |
 | `ANPC_HEAD_MULTIPLIER` | 1 a 10 |
 | `ANPC_KNOCKBACK` | 0 a 5; velocidade final recebe um limite |
@@ -27,6 +27,8 @@ O perfil é copiado e fica imutável durante o mapa. O modelo é precacheado nes
 | `ANPC_FACTION` | Neutra 0, zumbi 1, humana 2; outros ids podem ser definidos por uma integração |
 | `ANPC_BLOOD_COLOR` | Valor do motor; o zumbi usa 110 |
 | `ANPC_GLOBAL_HUNT` | 1 para rastreamento global; 0 para visão/memória |
+
+O ciclo de ataque dura `max(ANPC_ATTACK_COOLDOWN, ANPC_ATTACK_WINDUP + 0.1)` segundos, incluindo pelo menos 0,1 s de recuperação após o impacto. A sequência completa é ajustada a esse tempo, e o impacto ocorre uma única vez na preparação configurada. A posição não recebe comandos de caminhada durante o ciclo. Enquanto o alvo continuar alcançável, a espera pelo próximo golpe conserva o repouso e a orientação. A animação de corrida usa velocidade observada e, quando o modelo fornece esse dado, sua velocidade linear nominal. Sequências de ataque/morte são tratadas como execuções únicas, mesmo com flag de repetição no MDL.
 
 ## Entidades
 

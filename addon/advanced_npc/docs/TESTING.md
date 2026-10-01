@@ -1,5 +1,27 @@
 # Verificação e testes
 
+## Revisão 1.7.0: combate, animação e desenho — 01/10/2026
+
+Passaram **192 testes Python** e a conferência estrutural de **27 fontes Pawn**, sem compilar. `test_combat_animation.py` acrescenta **42 casos**; as 150 regressões anteriores continuam passando. Executa funções das includes instaladas com colisão por slabs, dados studio v10 e doubles de natives. O interpretador agora aceita argumentos padrão declarados nas funções. Isso não executa bytecode AMXX, nem valida todas as regras de tipos/células, interpolação do cliente ou física HLDS.
+
+Os casos conferem impacto único e reentrada, permanência no ciclo, perda de alcance, bloqueio/filtro/remoção e troca de `userid` durante o forward; contato sobre cobertura baixa, parede, outro NPC e breakable; relógio de animação sem delta anterior à troca, velocidade observada, velocidade nominal do MDL, pose abaixada parada, ataque em túnel, loop do modelo e morte; região de ataque sobre mureta, cache, exclusões finitas e alternativas próximas aguardando replanejamento; salto com trajetória real das funções instaladas, bloqueio por parede, piso ausente, capacidade e orçamento; previsão por deslocamento e recusa de agachamento motivado só pela multidão; leitura do modelo padrão e descriptors inválidos; capacidade/serialização da fila do visualizador, lotes, FPS baixo, desconexão, câmera sem pontos, área próxima sem âncoras e permanência do HUD.
+
+Recompile manualmente os seis plugins com as includes externas atualizadas e carregue-os juntos. Esta revisão conserva `ANPC_NAV 4`, `ANPC_SCAN 3` e a política de scan; o mapa já salvo pode ser usado. A análise está em [COMBAT_REVIEW.md](COMBAT_REVIEW.md). Os testes abaixo ainda precisam de execução no servidor:
+
+| Cenário manual | Resultado esperado |
+| --- | --- |
+| NPC espera A* ou cede passagem | Repouso em pé ou pose abaixada compatível; sem corrida acelerada imóvel |
+| Jogador parado ao alcance por vários golpes | Um impacto por ciclo; NPC orientado ao alvo, sem retomar o avanço no impacto |
+| Jogador afasta-se durante o golpe | Golpe perdido sem dano tardio; retoma perseguição após recuperação |
+| Jogador sobre mureta baixa | Aproxima-se de posição apoiada que permita contato, sem exigir o topo quando há golpe possível |
+| Parede alta ou NPC entre atacante e jogador | O contato não atravessa o obstáculo; crowd steering conserva colisão e apoio |
+| Candidato de ataque mais próximo desconectado | Tenta outras amostras antes de rejeitar o alvo; respeita intervalo de replanejamento |
+| Caixa próxima, dentro do limite do salto | Salto local somente com apoio na chegada e trajetória livre; teto/parede bloqueiam arcos inválidos |
+| `anpc_nav_show 1` com várias áreas/NPCs, câmera de espectador e durante scan | Seleção renova; fila drena com lotes limitados e HUD persistente; sem erro de índice/datagrama no log |
+| Desligar desenho ou desconectar/reutilizar a vaga | Nenhum beam novo daquela fila; efeitos anteriores expiram; jogador novo começa com desenho desligado |
+
+Não foi medido FPS/custo de traces/tráfego nem confirmada a aparência das animações no cliente. Observe especialmente o ataque do modelo padrão com flag de repetição, a postura na saída de teto baixo e o tempo de reação em corredores ocupados.
+
 ## Revisão 1.6.0: postura, perseguição livre e BSP — 01/10/2026
 
 Passaram **150 testes Python** e a conferência estrutural de **27 fontes Pawn**, sem compilar. `test_adaptive_navigation.py` acrescenta 43 regressões de funções instaladas, usando o interpretador estrito `pawn_test_runtime.py` com doubles de motor/arquivo. Não executa bytecode, física HLDS nem todas as regras de tipos/células Pawn. As 107 regressões anteriores continuam passando.
@@ -185,10 +207,10 @@ Foram conferidos os delimitadores da fonte, os campos de `TE_BEAMPOINTS`, as gua
 
 | Cenário | Resultado esperado |
 | --- | --- |
-| Ativar `anpc_nav_show 1` com nós à frente e atrás | Apenas nós no cone frontal; largura atual 10, ligações acima do piso e até oito retângulos azuis selecionados independentemente dos pontos |
+| Ativar `anpc_nav_show 1` com nós à frente e atrás | Apenas nós no cone frontal; largura atual 10, ligações acima do piso e até quatro retângulos azuis selecionados independentemente dos pontos |
 | Girar 180 graus sem andar | Seleção acompanha a nova direção na atualização seguinte, em até 0,2 segundo |
 | Olhar para cima/baixo ou agachar | Filtro acompanha pitch e posição dos olhos, sem inverter a direção |
-| Mais de 32 nós à frente, com IDs em ordem diferente das distâncias | Os 32 nós mais próximos da câmera ocupam o limite; HUD/destaque correspondem ao primeiro |
+| Mais de oito nós à frente, com IDs em ordem diferente das distâncias | Os oito nós mais próximos da câmera ocupam o limite; HUD/destaque correspondem ao primeiro |
 | Morrer, entrar em spectator e depois renascer com o desenho ligado | Desenho continua e troca a referência de visão automaticamente |
 | Spectator em câmera livre longe do corpo | Usa a câmera atual, sem desenhar apenas perto da posição da morte |
 | Spectator em primeira pessoa; observado olha para o lado oposto ao admin | Usa os olhos e a direção do jogador observado; mensagens continuam somente para o admin |

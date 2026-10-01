@@ -1,5 +1,17 @@
 # Referências e decisões de API
 
+## Combate e desenho — revisão 1.7, 01/10/2026
+
+- [Renderer studio do SDK da Valve](https://github.com/ValveSoftware/halflife/blob/master/cl_dll/StudioModelRenderer.cpp): estima frame a partir de `animtime`, `framerate`, FPS e flag de repetição, além de interpolar modelos `MOVETYPE_STEP`. O core conserva relógio consistente e impede repetição prevista de execuções únicas.
+- [GetSequenceInfo](https://github.com/ValveSoftware/halflife/blob/master/dlls/animation.cpp) e [studio v10](https://github.com/ValveSoftware/halflife/blob/master/engine/studio.h): quantidade de frames, flags e deslocamento linear usados para cadência nominal. O modelo padrão instalado foi lido como fixture binária; seu ataque de faca tem flag de repetição.
+- [Datagramas no ReHLDS](https://github.com/rehlds/ReHLDS/blob/master/rehlds/engine/sv_main.cpp): descarte de dados não confiáveis quando excedem o espaço disponível. A fila do visualizador reduz a rajada anterior; o motivo de desaparecimento em jogo ainda requer logs/medição.
+- [DropToFloor no ReHLDS](https://github.com/rehlds/ReHLDS/blob/master/rehlds/engine/pr_cmds.cpp): -1 para all-solid, 0 sem contato e 1 para piso encontrado. A criação aceita somente 1.
+- [dtPathCorridor](https://recastnav.com/classdtPathCorridor.html): ajuste de corredor/posição durante o movimento, como referência conceitual para separar percurso global, aproximação e ações locais. Não foi adicionada dependência Detour.
+
+A pesquisa inicial de `message_begin` na API indicada pelo projeto não retornou conteúdo acessível. As assinaturas e o tempo de permanência do HUD foram conferidos nas includes locais `amxmodx.inc`, `file.inc` e `fakemeta_const.inc`, preservando os módulos já usados. [COMBAT_REVIEW.md](COMBAT_REVIEW.md) explica a implementação e seus limites.
+
+## Ambiente e consultas iniciais
+
 Consultas realizadas em 30/09/2026. Foram examinadas as includes locais do servidor configurado em `.vscode/settings.json`: AMXX 1.10 e ReAPI 5.26.0.338. A referência disponibilizada pelo projeto também indexava ReAPI 5.29.0.358. As interfaces empregadas existem nas includes locais e foram comparadas com a documentação e/ou fonte do provedor.
 
 ## YaPB

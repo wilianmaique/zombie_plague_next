@@ -85,6 +85,10 @@ Estados: `IDLE`, `HUNT`, `ATTACK`, `RECOVER`, `DEAD`.
 
 O ataque guarda o jogador e seu `userid`, aguarda a preparação e repete filtros, alcance e trace no impacto. A bridge impede atingir alguém que se tornou zumbi durante a preparação. A chamada de dano usa `ExecuteHamB(Ham_TakeDamage)`, mantendo o fluxo de dano de jogador do ReGameDLL e os hooks de outros plugins.
 
+A recuperação do golpe mantém `ATTACK` até concluir `max(cooldown, windup + 0.1)`. Um marcador impede repetir o impacto, inclusive por reentrada de forwards; o `userid` é conferido outra vez após o forward anterior ao dano. Esperas de combate não comandam avanço contra o jogador. A animação tem relógio próprio e seleciona corrida/repouso com velocidade observada. Um hull abaixado parado usa pose abaixada congelada; ataques/morte com flag de repetição no modelo não recebem extrapolação de ciclo no cliente.
+
+Alvos sobre muretas podem gerar um destino de ataque apoiado ao redor do hull, dentre oito amostras com contato possível. A* valida o corredor até a posição selecionada; candidatos que falham são excluídos antes de tentar o próximo. Um salto local para elevação próxima exige apoio, hull, perfil e trajetória completos; há duas provas por frame, com intervalo por ator. A previsão de outros NPCs apoiados usa deslocamento real, porque a caminhada por `WalkMove` não conserva velocidade física. Consulte [COMBAT_REVIEW.md](COMBAT_REVIEW.md) para condições, custos e validação.
+
 No NPC, o `TraceAttack` original conserva `AddMultiDamage`, tiros múltiplos e penetração; o hook ajusta dano de cabeça. `BloodColor` devolve o sangue do perfil. O núcleo controla `TakeDamage` porque `CBaseEntity::Killed` removeria imediatamente a entidade base, impedindo a animação de morte e o ciclo de vida do NPC.
 
 Remoção pública é diferida. Morte torna a entidade invulnerável e não sólida, cancela a rota e exibe a animação antes de liberar o slot. O restart da rodada remove os NPCs anteriores. A liberação externa de um edict também devolve a rota e o slot.

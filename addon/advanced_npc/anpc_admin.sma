@@ -8,11 +8,13 @@
 #include "advanced_npc/advanced_npc_navigation"
 #include "advanced_npc/math"
 
-#define TASK_SHOW 7800
 #define TASK_RECORD 7900
-#define NAV_SHOW_NODES 32
-#define NAV_SHOW_LINKS 32
-#define NAV_SHOW_AREAS 8
+#define NAV_SHOW_NODES 8
+#define NAV_SHOW_LINKS 8
+#define NAV_SHOW_AREAS 4
+#define NAV_SHOW_BEAMS (NAV_SHOW_NODES + NAV_SHOW_LINKS + NAV_SHOW_AREAS*4)
+#define NAV_SHOW_BATCH 4
+#define NAV_SHOW_INTERVAL 0.5
 #define NAV_SHOW_RANGE 5000.0
 #define NAV_SHOW_CONE_COS 0.5
 #define NAV_SHOW_BEAM_WIDTH 10
@@ -22,6 +24,9 @@
 new gTrace, gBeamSprite, gAutoSpawn, gRecorder, gRecordedNode = -1
 new gMap[64], gBspSize, gSpawnPath[256], gBspHash[33]
 new bool:gShow[33]
+enum _:NavShowBeam { Float:SHOW_FROM[3], Float:SHOW_TO[3], SHOW_RED, SHOW_GREEN, SHOW_BLUE }
+new gShowBeam[33][NAV_SHOW_BEAMS][NavShowBeam], gShowCount[33], gShowCursor[33]
+new Float:gNextShow[33], Float:gNextBeamBatch
 new xMsgSyncANPC
 
 public plugin_precache()
@@ -47,6 +52,7 @@ public plugin_init()
 	register_concmd("anpc_spawns_save", "command_spawns_save", ADMIN_RCON, "Save live NPC positions as this map's spawn points")
 	register_concmd("anpc_spawns_load", "command_spawns_load", ADMIN_RCON, "Spawn saved points; requires no existing NPCs")
 	RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "round_freeze_end_post", true)
+	register_forward(FM_StartFrame,"nav_show_frame")
 	bind_pcvar_num(create_cvar("anpc_auto_spawn", "0", FCVAR_NONE, "Spawn saved map points after freeze time", true, 0.0, true, 1.0), gAutoSpawn)
 	gTrace = create_tr2()
 	rh_get_mapname(gMap, charsmax(gMap), MNT_TRUE)
@@ -79,8 +85,9 @@ public plugin_end()
 
 public client_disconnected(id)
 {
-	remove_task(TASK_SHOW+id)
 	gShow[id] = false
+	gShowCount[id] = gShowCursor[id] = 0
+	gNextShow[id] = 0.0
 	if (gRecorder == id) { remove_task(TASK_RECORD); gRecorder = 0; gRecordedNode = -1; }
 }
 
@@ -316,21 +323,57 @@ public command_nav_show(const id, const level, const cid)
 	new value[16]
 	read_argv(1, value, charsmax(value))
 	gShow[id] = bool:str_to_num(value)
-	remove_task(TASK_SHOW+id)
-	if (gShow[id]) set_task_ex(0.2, "show_nodes", TASK_SHOW+id, .flags = SetTask_Repeat)
+	gShowCount[id] = gShowCursor[id] = 0
+	gNextShow[id] = 0.0
 	return PLUGIN_HANDLED
 }
 
 stock admin_beam(const id, const Float:from[3], const Float:to[3], const red, const green, const blue = 40)
 {
+	if (gShowCount[id] >= NAV_SHOW_BEAMS) return
+	new index = gShowCount[id]++
+	anpc_copy_vec(from,gShowBeam[id][index][SHOW_FROM])
+	anpc_copy_vec(to,gShowBeam[id][index][SHOW_TO])
+	gShowBeam[id][index][SHOW_RED] = red
+	gShowBeam[id][index][SHOW_GREEN] = green
+	gShowBeam[id][index][SHOW_BLUE] = blue
+}
+
+stock admin_send_beam(const id, const index)
+{
 	message_begin(MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, _, id)
 	write_byte(TE_BEAMPOINTS)
-	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, from[axis])
-	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord, to[axis])
+	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord,gShowBeam[id][index][SHOW_FROM+axis])
+	for (new axis = 0; axis < 3; axis++) engfunc(EngFunc_WriteCoord,gShowBeam[id][index][SHOW_TO+axis])
 	write_short(gBeamSprite)
 	write_byte(0); write_byte(0); write_byte(6); write_byte(NAV_SHOW_BEAM_WIDTH); write_byte(0)
-	write_byte(red); write_byte(green); write_byte(blue); write_byte(170); write_byte(0)
+	write_byte(gShowBeam[id][index][SHOW_RED]); write_byte(gShowBeam[id][index][SHOW_GREEN]); write_byte(gShowBeam[id][index][SHOW_BLUE]); write_byte(170); write_byte(0)
 	message_end()
+}
+
+public nav_show_frame()
+{
+	new Float:now = get_gametime()
+	if (now < gNextBeamBatch) return FMRES_IGNORED
+	gNextBeamBatch = now+0.05
+	// Keep a bounded per-viewer batch out of the large unreliable datagram
+	// bursts. No repeating task can disappear and leave the toggle enabled.
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!gShow[id] || !is_user_connected(id)) continue
+		if (gShowCursor[id] >= gShowCount[id] && now >= gNextShow[id])
+		{
+			gShowCursor[id] = gShowCount[id] = 0
+			show_nodes(id)
+			gNextShow[id] = now+NAV_SHOW_INTERVAL
+		}
+		for (new batch = 0; batch < NAV_SHOW_BATCH && gShowCursor[id] < gShowCount[id]; batch++)
+		{
+			admin_send_beam(id,gShowCursor[id])
+			gShowCursor[id]++
+		}
+	}
+	return FMRES_IGNORED
 }
 
 stock admin_nav_view(const id, Float:eye[3], Float:direction[3])
@@ -387,9 +430,8 @@ stock bool:admin_nav_in_view(const Float:eye[3], const Float:direction[3], const
 	return depth > 0.0 && depth*depth >= distance_sq*NAV_SHOW_CONE_COS*NAV_SHOW_CONE_COS
 }
 
-public show_nodes(const task)
+stock show_nodes(const id)
 {
-	new id = task-TASK_SHOW
 	if (!is_user_connected(id) || !gShow[id]) return
 	new Float:eye[3], Float:direction[3], Float:point[3], Float:top[3], Float:radius, Float:distance_sq
 	new nodes[NAV_SHOW_NODES], Float:distances[NAV_SHOW_NODES], flags, shown, links_shown, count = anpc_nav_count()
@@ -422,10 +464,10 @@ public show_nodes(const task)
 		new Float:mins[3], Float:maxs[3], Float:normal[3], area_flags
 		if (!anpc_nav_area(area,mins,maxs,normal,area_flags)) continue
 		new bool:visible, Float:closest = NAV_SHOW_RANGE*NAV_SHOW_RANGE
-		for (new sample = 0; sample < 5; sample++)
+		for (new sample = 0; sample < 6; sample++)
 		{
-			point[0] = sample == 4 ? (mins[0]+maxs[0])*0.5 : sample%2 ? maxs[0] : mins[0]
-			point[1] = sample == 4 ? (mins[1]+maxs[1])*0.5 : sample/2 ? maxs[1] : mins[1]
+			point[0] = sample == 5 ? floatclamp(eye[0]+direction[0]*128.0,mins[0],maxs[0]) : sample == 4 ? (mins[0]+maxs[0])*0.5 : sample%2 ? maxs[0] : mins[0]
+			point[1] = sample == 5 ? floatclamp(eye[1]+direction[1]*128.0,mins[1],maxs[1]) : sample == 4 ? (mins[1]+maxs[1])*0.5 : sample/2 ? maxs[1] : mins[1]
 			point[2] = mins[2]-((point[0]-mins[0])*normal[0]+(point[1]-mins[1])*normal[1])/normal[2]
 			if (admin_nav_in_view(eye,direction,point,distance_sq)) { visible = true; closest = floatmin(closest,distance_sq); }
 		}
@@ -472,7 +514,7 @@ public show_nodes(const task)
 		}
 	}
 
-	set_hudmessage(0, 255, 255, 0.7, 0.4, 0, 0.0, 0.0, 0.2, 0.2)
+	set_hudmessage(0, 255, 255, 0.7, 0.4, 0, 0.0, 0.65, 0.05, 0.05)
 	ShowSyncHudMsg(id, xMsgSyncANPC, "ANPC: nearest anchor %d^n%s %d^nareas %d/%d",nearest,anpc_nav_editing() ? "scan samples" : "anchors",count,areas_shown,anpc_nav_area_count())
 }
 

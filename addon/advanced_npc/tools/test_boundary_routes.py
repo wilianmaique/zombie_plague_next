@@ -638,12 +638,14 @@ class PursuitFixture:
                   'PATH_VERSION', 'PATH_CURSOR', 'JUMP_CURSOR', 'NEXT_JUMP_PROBE', 'PROGRESS_VALID',
                   'DIRECT_UNTIL', 'DIRECT_OK', 'DIRECT_CROUCH', 'NEXT_REPATH', 'FROM_NODE', 'TO_NODE',
                   'LAST_SEEN', 'WAIT_DOOR', 'OBSTACLE_WAIT', 'YIELD_UNTIL',
-                  'NEXT_ATTACK', 'KNOCKBACK_UNTIL', 'RECOVER_UNTIL', 'PATH_AREA', 'WALK_DUCK', 'NEXT_POSTURE_QUERY')
+                  'NEXT_ATTACK', 'KNOCKBACK_UNTIL', 'RECOVER_UNTIL', 'PATH_AREA', 'WALK_DUCK', 'NEXT_POSTURE_QUERY', 'APPROACH_VALID')
         self.values = v = {'ACT_'+field: i for i, field in enumerate(fields)}
         end = len(fields)
         v['ACT_DIRECT_GOAL'], v['ACT_LAST_KNOWN'] = slice(end, end+3), slice(end+3, end+6)
         v['ACT_PATH_DESTINATION'] = slice(end+6, end+9)
-        v.update(gActor=[[0]*(end+9)], gProfile=[[31, 1, 100.]], ANPC_CAPABILITIES=0, ANPC_GLOBAL_HUNT=1,
+        v['ACT_MOVE_VELOCITY'] = slice(end+9, end+12)
+        v.update(gActor=[[0]*(end+12)], gProfile=[[31, 1, 100., 72.]], ANPC_CAPABILITIES=0, ANPC_GLOBAL_HUNT=1,
+                 ANPC_ATTACK_RANGE=3, gStepSize=18.,
                  ANPC_SPEED=2, ANPC_CAP_CROUCH=1, ANPC_CAP_LADDER=4,
                  ANPC_NODE_CROUCH=1, ANPC_NODE_LADDER=2, ANPC_NODE_DISABLED=4, ANPC_NODE_PORTAL=8,
                  ANPC_LINK_JUMP=1, ANPC_LINK_DROP=2, ANPC_INVALID_NODE=-1, ANPC_ATTACK=2, ANPC_HUNT=1, ANPC_RECOVER=3,
@@ -692,6 +694,7 @@ class PursuitFixture:
         runtime.bind('anpc_nav_walkable', proof)
         runtime.bind('npc_move', lambda *args: self.moves.append((args[0], tuple(args[1]), *args[2:])))
         runtime.bind('npc_obstacle', lambda *args: 0)
+        runtime.bind('npc_try_local_jump', lambda *args: False)
         runtime.bind('npc_progress', lambda *args: self.progress.append(args))
         runtime.bind('npc_live', lambda slot: True)
         runtime.bind('npc_clear_route', lambda slot: self.cancels.append(slot))
@@ -701,7 +704,7 @@ class PursuitFixture:
                      out.put(self.fraction) if out is not None else 0, (2,))
         runtime.bind('anpc_distance_2d', lambda a, b: math.dist(a[:2], b[:2]))
         runtime.load((includes()/'perception.inc').read_text(encoding='utf-8-sig'), (
-            'npc_goal_feet', 'npc_direct_segment', 'npc_walk_probe', 'npc_chase_direct', 'npc_ladder_segment', 'npc_follow_route', 'npc_hunt'))
+            'npc_goal_feet', 'npc_direct_segment', 'npc_walk_probe', 'npc_chase_direct', 'npc_ladder_segment', 'npc_melee_goal', 'npc_follow_route', 'npc_hunt'))
 
 
 class PursuitTests(unittest.TestCase):

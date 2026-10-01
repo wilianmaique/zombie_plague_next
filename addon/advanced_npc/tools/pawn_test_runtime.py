@@ -174,10 +174,15 @@ class PawnRuntime:
             parameters = split_top(declaration[1]) if declaration[1].strip() else []
             labels = [re.search(r'(?:const\s+)?&?(?:\w+:)?(\w+)', p)[1] for p in parameters]
             references = [i for i, p in enumerate(parameters) if '&' in p]
+            defaults = [p.split('=', 1)[1].strip() if '=' in p else None for p in parameters]
             tree = Parser(body(source, name)).block()
 
-            def call(*args, labels=labels, tree=tree):
-                assert len(args) == len(labels), (labels, args)
+            def call(*args, labels=labels, defaults=defaults, tree=tree):
+                assert len(args) <= len(labels), (labels, args)
+                args = list(args)
+                for default in defaults[len(args):]:
+                    assert default is not None, (labels, args)
+                    args.append(self.value(default, Scope(self.values, {})))
                 scope = Scope(self.values, dict(zip(labels, args)))
                 try:
                     self.execute(tree, scope)

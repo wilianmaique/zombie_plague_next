@@ -102,7 +102,7 @@ O modo `watch` acompanha a posição dos olhos e os ângulos completos do scout,
 
 Os estados numéricos individuais são `0` desligado, `1` preparando episódio, `2` escolhendo fronteira, `3` aguardando/seguindo rota, `4` analisando geometria, `5` movendo, `6` pausado, `7` salvando e `8` candidatos esgotados. O estado da sessão mostra preparação compartilhada (`1`), exploração (`2`), pausa (`6`), gravação (`7`) ou encerramento (`0`/`8`). `status` lista também entidade, estado, âncora, reserva e posição de cada scout.
 
-Use `anpc_nav_show 1` para desenhar as âncoras e os contornos azuis de até oito retângulos visíveis, selecionados independentemente dos pontos. A edição manual e a criação de NPCs ficam bloqueadas enquanto o scanner mantém a edição exclusiva. O gravador manual ativo é encerrado ao começar a análise.
+Use `anpc_nav_show 1` para desenhar as âncoras e os contornos azuis de até quatro retângulos visíveis, selecionados independentemente dos pontos. O envio usa uma fila limitada por frame; [NAVIGATION.md](NAVIGATION.md) descreve a cadência. A edição manual e a criação de NPCs ficam bloqueadas enquanto o scanner mantém a edição exclusiva. O gravador manual ativo é encerrado ao começar a análise.
 
 Com `anpc_scan_beam 1` (padrão), lasers verdes saem dos olhos dos scouts e acompanham seus ângulos reais de visão, incluindo a inclinação nas escadas. Cada linha termina no primeiro sólido/jogador encontrado ou em 1.024 unidades. O desenho alterna entre exploradores, até dez atualizações por segundo no total, usando somente o orçamento restante. `anpc_scan_beam 0` desliga o efeito. O laser representa o olhar do bot, não todas as direções da varredura geométrica.
 
