@@ -5,7 +5,7 @@
 Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma` com as includes externas atuais, inclusive a nova `navigation_portals.inc`. Carregue os quatro juntos. O formato é `ANPC_NAV 3` e a política do journal `ANPC_SCAN 2` é `planar-regions-1`. Não houve compilação, execução dos plugins no HLDS ou medição de FPS.
 
 - Conferência estática de 26 fontes Pawn: includes/globais, chamadas próprias e formatos/argumentos. Nenhum compilador foi invocado.
-- 21 testes Python passaram: 11 do importador atualizado e 10 de geometria sobre BSPs sintéticos. Cobrem plano inclinado, coordenadas negativas, teto baixo, postura, buraco entre extremos válidos, parede/subdivisão e separação de pisos. Os hulls sintéticos são comparados com interseções analíticas independentes.
+- 28 testes Python passaram: 11 do importador atualizado, 10 de geometria sobre BSPs sintéticos e sete das condições Pawn de fronteira com natives AMXX. Cobrem plano inclinado, coordenadas negativas, teto baixo, postura, buraco entre extremos válidos, parede/subdivisão e separação de pisos. Os hulls sintéticos são comparados com interseções analíticas independentes. As condições extraídas das includes são avaliadas com doubles dos contratos nativos, sem executar Pawn ou compilar plugins; os sete testes dependem das includes configuradas em `LOCAL.md` e são pulados quando elas não estão disponíveis.
 - O verificador offline leu o BSP local `de_dust2`, MD5 `74d6d81b4b818b691fafd2e56a5ae362`. Entre 623 sementes de superfícies caminháveis, 125 tinham inclinação rejeitada pela regra horizontal anterior. O modelo encontrou 573 blocos válidos inclinados. O teste inclui somente a geometria estática: não executa Pawn, não inclui entidades/plugins e não mede a quantidade de áreas/portais que o scan real produzirá após união.
 
 ```powershell
@@ -28,6 +28,10 @@ python -B addon/advanced_npc/tools/check_nav_regions.py "CAMINHO_DO_SERVIDOR/cst
 | Saltos, quedas, escadas, caixa quebrada e bloqueio temporário de passagem | Mantém ações físicas, precisão e busca alternativa; não atravessa sólidos |
 
 As verificações geométricas e de fonte não substituem esses testes de execução.
+
+O status enviado pelo usuário após 14 minutos mostrou 647 nós, 26.690 blocos rejeitados exclusivamente por piso, zero áreas e `survey 0/0`. A fonte do AMXX confirmou dois erros na integração: `get_tr2(..., TR_pHit)` retorna `FM_NULLENT` (-1) para worldspawn por meio de `FNullEnt`; `fread(..., BLOCK_INT)` retorna quatro bytes, enquanto `fread_blocks` retorna a quantidade de blocos. As comparações anteriores com índice zero e leitura de um elemento impediam a aprovação de áreas e a inicialização dos limites do BSP. As consultas de parede do mapper usavam o mesmo índice incorreto e também foram corrigidas.
+
+Essa correção exige recompilação manual somente de `anpc_mapper.sma`, com `mapper_coverage.inc`, `mapper_world.inc`, `mapper_exploration.inc` e `mapper_storage.inc` atuais. Não altera o formato de arquivo nem APIs. Recarregue o plugin/mapa para reler o BSP; `anpc_scan start new` permite avaliar a geração corrigida sem as tentativas já encerradas. Confira áreas abertas, `Floor probe failures` e `Survey: enabled=1 valid-BSP-bounds=1`. O total da varredura depende das dimensões do BSP e `anpc_scan_survey`; quando habilitada com limites válidos, deve ser maior que zero. Falhas de piso ainda são esperadas perto de paredes, degraus, buracos e entidades. Não houve nova compilação nem validação em execução dessa correção.
 
 ## Histórico das revisões anteriores em 30/09/2026
 

@@ -33,6 +33,7 @@ enum _:ScanVolume { VOLUME_ENTITY, VOLUME_TYPE, Float:VOLUME_MINS[3], Float:VOLU
 enum ScanBlockStatus { SCAN_BLOCK_PENDING, SCAN_BLOCK_OPEN, SCAN_BLOCK_DETAIL }
 enum _:ScanBlock { BL_X, BL_Y, BL_LEVEL, Float:BL_FEET[3], Float:BL_NORMAL[3], BL_FLAGS, BL_SOURCE_FLAGS, BL_NODE, BL_SAMPLE, BL_PHASE, BL_CHILD, BL_NEXT, BL_GEOMETRY, bool:BL_SENSITIVE, ScanBlockStatus:BL_STATUS }
 enum _:ScanBlockReject { BLOCK_FLOOR, BLOCK_PLANE, BLOCK_HULL, BLOCK_VOLUME, BLOCK_CAPACITY, BLOCK_REJECT_COUNT }
+enum _:ScanFloorReject { FLOOR_SUPPORT, FLOOR_SOLID, FLOOR_ENTITY, FLOOR_HEIGHT, FLOOR_REJECT_COUNT }
 enum ScanPurpose { SCAN_FRONTIER, SCAN_RETURN, SCAN_TRAVEL }
 enum ScanMotion { SCAN_WALK, SCAN_JUMP, SCAN_DROP, SCAN_LADDER }
 enum ScanProbe { PROBE_GROUND, PROBE_LEDGE, PROBE_LANDING, PROBE_FLOOR, PROBE_HULL, PROBE_OBSTACLE, PROBE_TAKEOFF, PROBE_ARC, PROBE_RUNUP, PROBE_INTERIOR, PROBE_KNOWN_PATH }
@@ -55,6 +56,7 @@ new gBlock[SCAN_MAX_BLOCKS][ScanBlock], gBlockHead[SCAN_BLOCK_BUCKETS], gBlockCo
 new gNodeBlock[ANPC_MAX_NODES], gBlockMask[ANPC_MAX_NODES], gBlockMaskEpoch[ANPC_MAX_NODES], gInteriorMask[ANPC_MAX_NODES], bool:gNodeLadder[ANPC_MAX_NODES]
 new gBlockOpen, gBlockDetail, gBlockSkips, gBlockLimit, gFrontierSkips, gCostSelections
 new gBlockReject[BLOCK_REJECT_COUNT], gBlockCrouchRetry
+new gBlockFloorReject[FLOOR_REJECT_COUNT]
 new gRestoreAreaCount, gRestoreAreaCursor, gRestoreAreaPhase
 new gCompactMap[ANPC_MAX_NODES], gCompactOriginal, gCompactCursor, gPrunedNodes, gPortals, gPortalLimit
 new gCurrent = -1, gSource = -1, gGoalNode = -1, gDirection, gRangeIndex, gHeading = -1, gSeedAnchor = -1
@@ -612,6 +614,8 @@ stock scan_status(const id)
 	console_print(id, "[ANPC] Sweeps=%d known-direction skips=%d long walks=%d deferred returns=%d | distance: explore=%.0f travel/return=%.0f",gSweeps,gKnownSkips,gLongTrials,gReturnTrials,gExploreDistance,gTravelDistance)
 	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d/%d | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d coverage-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,SCAN_MAX_BLOCKS,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
 	console_print(id, "[ANPC] Area rejections: floor=%d plane=%d hull=%d sensitive=%d capacity=%d | crouch retries=%d",gBlockReject[BLOCK_FLOOR],gBlockReject[BLOCK_PLANE],gBlockReject[BLOCK_HULL],gBlockReject[BLOCK_VOLUME],gBlockReject[BLOCK_CAPACITY],gBlockCrouchRetry)
+	console_print(id, "[ANPC] Floor probe failures: support=%d solid-start=%d non-world=%d height=%d",gBlockFloorReject[FLOOR_SUPPORT],gBlockFloorReject[FLOOR_SOLID],gBlockFloorReject[FLOOR_ENTITY],gBlockFloorReject[FLOOR_HEIGHT])
+	console_print(id, "[ANPC] Survey: enabled=%d valid-BSP-bounds=%d step=%.0f",gSurveyEnabled,gSurveyValid,gSurveyStep)
 	console_print(id, "[ANPC] Navigation areas=%d | suppressed node samples=%d symmetric floor returns=%d local landings=%d",anpc_nav_area_count(),gAreaNodesSkipped,gAreaReturns,gLandingTrials)
 	console_print(id, "[ANPC] Finalization: removed interior samples=%d generated portals=%d portal capacity skips=%d",gPrunedNodes,gPortals,gPortalLimit)
 	console_print(id, "[ANPC] Retained area revalidation: phase=%d source areas=%d/%d",gRestoreAreaPhase,gRestoreAreaCursor,gRestoreAreaCount)

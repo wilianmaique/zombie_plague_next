@@ -36,6 +36,8 @@ A compactação remapeia também os IDs do journal; antecessores removidos ficam
 
 `anpc_scan status` e `<mapa>.scan.txt` informam áreas abertas e rejeições por piso, plano, hull, volume sensível ou capacidade. Esses contadores explicam `areas 0/0`; uma rampa uniforme ou um teto baixo válido não deve ser rejeitado pela regra antiga de piso horizontal/raio elevado. Consultas geométricas de áreas não dispensam colisão atual nem validam automaticamente saltos e escadas.
 
+`Floor probe failures` detalha as consultas recusadas: `support` indica ausência de apoio válido, `solid-start` um hull inicialmente dentro de sólido, `non-world` apoio em uma entidade e `height` afastamento do piso previsto. Contam consultas, inclusive as duas posturas e provas de trechos conhecidos, não blocos únicos. Um contato válido com worldspawn aparece como `FM_NULLENT` (-1) no Fakemeta; fração e normal distinguem apoio real de uma consulta sem contato. `Survey: enabled` e `valid-BSP-bounds` distinguem varredura desligada de limites do BSP indisponíveis.
+
 ## Movimento e provas de passagem
 
 `EngFunc_RunPlayerMove` envia comandos de jogador ao motor. O plugin controla direção, velocidade solicitada e botões; colisão, gravidade, degraus, agachamento e contato com escadas são executados pela física do jogo. Não injeta velocidade para fazer um salto nem usa noclip para validar uma rota.
