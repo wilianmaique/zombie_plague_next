@@ -65,6 +65,7 @@ new gBlockReject[BLOCK_REJECT_COUNT], gBlockCrouchRetry
 new gBlockFloorReject[FLOOR_REJECT_COUNT]
 new gRestoreAreaCount, gRestoreAreaCursor, gRestoreAreaPhase
 new gCompactMap[ANPC_MAX_NODES], gCompactOriginal, gCompactCursor, gPrunedNodes, gPortals, gPortalLimit
+new gCompactKeep[ANPC_MAX_NODES], gCompactBlocks, gCompactBlockCount, gCompactRemoved, gCompactPortals
 new gCurrent[SCAN_MAX_BOTS], gSource[SCAN_MAX_BOTS], gGoalNode[SCAN_MAX_BOTS], gDirection[SCAN_MAX_BOTS], gRangeIndex[SCAN_MAX_BOTS], gHeading[SCAN_MAX_BOTS], gSeedAnchor[SCAN_MAX_BOTS]
 new gSenseNode[SCAN_MAX_BOTS], gSenseBlockEpoch[SCAN_MAX_BOTS], gSenseCursor[SCAN_MAX_BOTS], gSenseTarget[SCAN_MAX_BOTS][8], gSenseGain[SCAN_MAX_BOTS][8], bool:gSenseWall[SCAN_MAX_BOTS][8]
 new Float:gSenseDistance[SCAN_MAX_BOTS][8], Float:gSenseScore[SCAN_MAX_BOTS][8], Float:gFrontierRange[SCAN_MAX_BOTS]

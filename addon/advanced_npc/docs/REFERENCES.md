@@ -49,6 +49,7 @@ ReAPI atende criação, remoção, leitura/escrita de variáveis e rodada. Fakem
 - [Geração de áreas da Valve](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/server/nav_generate.cpp): regiões retangulares, conexões nas bordas e união preservando a forma convexa. Referência conceitual para os portais do projeto.
 - [Configuração geométrica do Recast](https://recastnav.com/structrcConfig.html): raio, altura e inclinação do agente precisam entrar na construção de áreas.
 - [Recast heightfield](https://recastnav.com/structrcHeightfield.html): grade de spans de altura usada na construção de regiões caminháveis.
+- [Consulta de navegação Detour](https://recastnav.com/classdtNavMeshQuery.html): distinguir posição acessível, corredor de regiões e movimento ao destino; referência conceitual da busca entre posições e conectores, sem dependência ou código Detour no projeto.
 
 Essas fontes orientam a camada adaptativa de cobertura e a seleção por fronteiras/custo. O mapper mantém seu grafo e as provas físicas próprias, sem importar código dessas bibliotecas nem resultados de desempenho de robôs para o HLDS. Veja [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md) para a comparação e a decisão de implementação.
 

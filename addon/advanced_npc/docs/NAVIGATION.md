@@ -53,7 +53,7 @@ anpc_nav_show 0
 
 O gravador cobre trechos efetivamente percorridos. Para completar a cobertura, percorra ramificações, conecte segmentos e teste a rota de cada região importante. Saltos, quedas e escadas verticais são ligações explícitas.
 
-`anpc_nav_show 1` acompanha a câmera e atualiza a cada 0,2 segundo. Seleciona até 32 âncoras no cone frontal de 120 graus, a até 5.000 unidades, e até 32 arestas físicas. Até oito áreas são selecionadas independentemente dos pontos e desenhadas em azul, acompanhando a inclinação do piso. Portais têm marcadores azuis. Durante o scan, amostras comuns já cobertas deixam de ocupar o desenho; o HUD identifica a contagem total como `scan samples`, pois esses IDs temporários continuam necessários ao journal. Após a conclusão automática, mostra `anchors`. `areas X/Y` significa áreas desenhadas/áreas existentes; `0/Y` pode ser apenas ausência de áreas no campo de visão, enquanto `0/0` indica nenhuma área aprovada.
+`anpc_nav_show 1` acompanha a câmera e atualiza a cada 0,2 segundo. Seleciona até 32 âncoras no cone frontal de 120 graus, a até 5.000 unidades, e até 32 arestas físicas. Até oito áreas são selecionadas independentemente dos pontos e desenhadas em azul, acompanhando a inclinação do piso. Portais têm marcadores azuis. Caminhadas comuns inteiramente cobertas deixam de aparecer como beams internos; saltos/quedas e escadas continuam explícitos. Durante o scan, amostras comuns já cobertas deixam de ocupar o desenho. O HUD usa `scan samples`: pontos necessários às fronteiras/posições dos scouts ainda podem existir, mas cada checkpoint congelado remove os interiores resolvidos. Após a conclusão automática, mostra `anchors`. `areas X/Y` significa áreas desenhadas/áreas existentes; `0/Y` pode ser apenas ausência de áreas no campo de visão, enquanto `0/0` indica nenhuma área aprovada.
 
 O desenho continua ao morrer ou entrar em spectator, sem precisar repetir o comando. Em câmera livre, usa a posição e os ângulos do administrador; em primeira pessoa, usa os olhos e a direção do jogador acompanhado. Câmeras de entidade criadas com `SetView`, como as do addon de câmera do projeto, usam a própria posição e os próprios ângulos. Nas câmeras de perseguição, usa o alvo acompanhado e aproxima o recuo padrão de 112 unidades com trace contra o mapa; a posição exata, uma distância de perseguição personalizada, o autodirector e o overview são calculados pelo cliente e não estão disponíveis nessa consulta do servidor. Primeira pessoa e câmera livre são os modos indicados para conferir o grafo em spectator.
 
@@ -73,6 +73,8 @@ O desenho continua ao morrer ou entrar em spectator, sem precisar repetir o coma
 Uma conexão é direcionada. Para caminhar também na volta, crie `to -> from`. Quedas e saltos podem ser viáveis em apenas um sentido. Arestas físicas ficam em um `Array:` por nó, criado somente quando necessário, sem a antiga restrição de oito saídas. Não há destinos duplicados nem ligações para o próprio nó; a capacidade natural é o número de outros nós existentes. Caminhada implícita entre âncoras da mesma área dispensa armazenar todas essas arestas.
 
 Flags de nó: `1` agachado, `2` escada, `4` desabilitado, `8` portal; podem ser somadas. Raio deve ficar entre 8 e 64. O seguidor limita tolerância de avanço a 24 unidades e a quatro unidades nos portais ou antes de uma saída de salto/queda. Para posições precisas, prefira raio 8.
+
+Raio 8 define tolerância de movimento, sem impedir compactação de uma caminhada comum coberta. Âncoras de salto/queda, escada e transições sem saída planar mantêm seus pontos físicos, mesmo dentro de um retângulo. Âncoras temporárias de exploração desaparecem quando seu trabalho termina e ocorre outro checkpoint/conclusão. As áreas representam caminhada livre; esses pontos representam ações e fronteiras que a área sozinha não descreve.
 
 ## Formato atual `.nav`
 
@@ -115,7 +117,7 @@ ANPC_SPAWNS 1 "nome_do_mapa" tamanho_do_bsp md5_do_bsp
 S "zombie_default" x y z yaw
 ```
 
-O tipo é persistido pelo nome, para independência da ordem de registro. Todos os registros são validados antes do primeiro spawn. Cada criação ainda pode falhar por hull ocupado, ausência de âncora ou capacidade; o log identifica o ponto.
+O tipo é persistido pelo nome, para independência da ordem de registro. Todos os registros são validados antes do primeiro spawn. Cada criação ainda pode falhar por hull ocupado, ausência de área/âncora acessível ou capacidade; o log identifica o ponto.
 
 `anpc_auto_spawn 1` usa esses pontos após o freeze time. Com a bridge, os NPCs aguardam jogadores elegíveis e o início efetivo da rodada ZPN.
 

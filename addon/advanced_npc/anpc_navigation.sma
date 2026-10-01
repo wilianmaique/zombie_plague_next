@@ -25,6 +25,8 @@ new gNodeArea[ANPC_MAX_NODES][NAV_NODE_AREAS], gNodeAreaNext[ANPC_MAX_NODES][NAV
 new bool:gRegionsReady, gRegionPhase, gRegionCursor, gRegionLink, gRegionOriginal, gRegionKept, gRegionPortals, gRegionEdges
 new gRegionBucket, gRegionNeighbor, bool:gRegionKeep[ANPC_MAX_NODES], gRegionMap[ANPC_MAX_NODES]
 new gRegionPortalLimit
+enum _:NavRegionEdge { RE_FROM, RE_TO, RE_FLAGS, Float:RE_VELOCITY[3], Float:RE_FROM_FEET[3], Float:RE_TO_FEET[3], RE_FROM_FLAGS, RE_TO_FLAGS }
+new Array:gRegionTransitions, gRegionNeeded
 new gPairBlockedFrom[NAV_BLOCKED_PAIRS], gPairBlockedTo[NAV_BLOCKED_PAIRS], Float:gPairBlockedUntil[NAV_BLOCKED_PAIRS]
 new gJobCurrent[ANPC_SEARCH_JOBS], gJobNeighborCursor[ANPC_SEARCH_JOBS]
 new Float:gAreaMins[ANPC_MAX_AREAS][3], Float:gAreaMaxs[ANPC_MAX_AREAS][3]
@@ -39,6 +41,15 @@ new gRouteOwner[ANPC_MAX_ACTORS], gRouteGeneration[ANPC_MAX_ACTORS]
 new AnpcPathStatus:gRouteStatus[ANPC_MAX_ACTORS]
 new gRouteStart[ANPC_MAX_ACTORS], gRouteGoal[ANPC_MAX_ACTORS], gRouteCaps[ANPC_MAX_ACTORS]
 new Array:gRoutePath[ANPC_MAX_ACTORS]
+new bool:gRoutePosition[ANPC_MAX_ACTORS], gRoutePathRevision[ANPC_MAX_ACTORS]
+new Float:gRouteOrigin[ANPC_MAX_ACTORS][3], Float:gRouteDestination[ANPC_MAX_ACTORS][3]
+new gRouteActor[ANPC_MAX_ACTORS], gRouteTarget[ANPC_MAX_ACTORS]
+#define NAV_ATTACH_CANDIDATES (ANPC_NEAR_CANDIDATES*2)
+new gJobAttachSide[ANPC_SEARCH_JOBS], gJobAttachCursor[ANPC_SEARCH_JOBS]
+new gJobCandidates[ANPC_SEARCH_JOBS][2][NAV_ATTACH_CANDIDATES], gJobCandidateCount[ANPC_SEARCH_JOBS][2]
+new gJobAnchor[ANPC_SEARCH_JOBS][2][ANPC_NEAR_CANDIDATES], gJobAnchorCount[ANPC_SEARCH_JOBS][2]
+new Float:gJobAnchorCost[ANPC_SEARCH_JOBS][2][ANPC_NEAR_CANDIDATES]
+new gJobBestGoal[ANPC_SEARCH_JOBS], Float:gJobBestCost[ANPC_SEARCH_JOBS], gAttachBudget
 new gJobRoute[ANPC_SEARCH_JOBS], gJobEpoch[ANPC_SEARCH_JOBS], gHeapSize[ANPC_SEARCH_JOBS]
 new gStamp[ANPC_SEARCH_JOBS][ANPC_MAX_NODES], gClosed[ANPC_SEARCH_JOBS][ANPC_MAX_NODES]
 new gParent[ANPC_SEARCH_JOBS][ANPC_MAX_NODES], gHeapPos[ANPC_SEARCH_JOBS][ANPC_MAX_NODES]
@@ -82,7 +93,9 @@ public plugin_natives()
 	register_native("anpc_nav_close", "native_close")
 	register_native("anpc_nav_cancel", "native_cancel")
 	register_native("anpc_nav_request", "native_request")
+	register_native("anpc_nav_request_to", "native_request_to")
 	register_native("anpc_nav_status", "native_status")
+	register_native("anpc_nav_path_revision", "native_path_revision")
 	register_native("anpc_nav_path_size", "native_path_size")
 	register_native("anpc_nav_path_node", "native_path_node")
 	register_native("anpc_nav_add", "native_add")
@@ -140,6 +153,7 @@ public plugin_end()
 		ArrayDestroy(gRoutePath[route])
 	}
 	for (new node = 0; node < ANPC_MAX_NODES; node++) if (gNodeLinks[node]) ArrayDestroy(gNodeLinks[node])
+	if (gRegionTransitions) ArrayDestroy(gRegionTransitions)
 	ArrayDestroy(gLadders)
 	free_tr2(gTrace)
 	gTrace = 0
@@ -319,11 +333,17 @@ public AnpcNeighborStatus:native_neighbor_next()
 public native_area_finish_step(const plugin)
 {
 	if (!gTrace || gEditOwner != plugin+1) return -1
+	if (!gRegionPhase)
+	{
+		nav_region_begin()
+		get_array(1,gRegionKeep,ANPC_MAX_NODES)
+	}
 	if (!nav_region_step()) return 0
-	set_array(1,gRegionMap,ANPC_MAX_NODES)
-	set_param_byref(2,gRegionOriginal-gRegionKept); set_param_byref(3,gRegionPortals)
-	set_param_byref(4,gRegionEdges)
-	set_param_byref(5,gRegionPortalLimit)
+	set_array(2,gRegionMap,ANPC_MAX_NODES)
+	set_param_byref(3,gRegionOriginal-gRegionKept); set_param_byref(4,gRegionPortals)
+	set_param_byref(5,gRegionEdges)
+	set_param_byref(6,gRegionPortalLimit)
+	gRegionPhase = 0
 	return 1
 }
 
@@ -347,8 +367,14 @@ public bool:native_link_at()
 
 public native_ladder()
 {
-	new Float:feet[3], Float:mins[3], Float:maxs[3]
+	new Float:feet[3]
 	get_array_f(1, feet, 3)
+	return nav_ladder_at(feet)
+}
+
+stock nav_ladder_at(const Float:feet[3])
+{
+	new Float:mins[3], Float:maxs[3]
 	for (new i = 0, count = ArraySize(gLadders); i < count; i++)
 	{
 		new entity = ArrayGetCell(gLadders, i)

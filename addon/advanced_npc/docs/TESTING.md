@@ -1,5 +1,38 @@
 # Verificação e testes
 
+## Revisão 1.5: fronteiras das áreas e perseguição — 01/10/2026
+
+Passaram **93 testes Python** e a conferência estrutural de **27 fontes Pawn**, sem compilar. Os 33 novos testes em `test_boundary_routes.py` usam `pawn_test_runtime.py` para interpretar o controle de fluxo de funções selecionadas das fontes instaladas, com doubles determinísticos de arrays, grafo e colisão. O interpretador rejeita sintaxe não suportada: não é compilador, máquina virtual AMXX nem simulador HLDS, e não confere todas as regras de tipos/aritmética Pawn. Os demais testes mantêm as verificações independentes de arquivos/geometria e condições de fonte.
+
+As novas regressões cobrem compactação repetida, raio 8 comum, portais absorvidos, ligação dirigida nas bordas, rampas, pisos sobrepostos, preservação de salto e capacidade sem desconexão. Também exercitam a busca entre múltiplos extremos, custo dos conectores, prova orientada ao alvo, orçamento compartilhado, publicação sem apagar o caminho anterior, pedido entre IDs após pedido entre posições, remapeamento de checkpoint sem nós, perseguição final distante, espera por porta, destino durante pulo/escada, troca de rota sem voltar ao início ou dispensar decolagem, consumo de resultado antes do próximo pedido e espera de passagem respeitada. Trinta grafos dirigidos aleatórios comparam o custo do A* da fonte com Dijkstra independente.
+
+Recompile manualmente os seis plugins com as includes atuais de `ANPC_INCLUDE_DIR` e carregue-os juntos. A API de finalização mudou e o core utiliza novas natives de posição/revisão do caminho. `ANPC_NAV 4` e `ANPC_SCAN 2` permanecem; a política do journal é `boundary-regions-team-3`. Use `anpc_scan start new` para avaliar o novo grafo sem amostras anteriores.
+
+```powershell
+rtk proxy python -B -m unittest discover -s addon/advanced_npc/tools -p "test_*.py"
+rtk proxy python -B addon/advanced_npc/tools/check_pawn_sources.py
+rtk proxy python -B addon/advanced_npc/tools/check_nav_file.py "CAMINHO_DO_MAPA/de_dust2.nav" --bsp "CAMINHO_DO_SERVIDOR/cstrike/maps/de_dust2.bsp"
+```
+
+| Teste manual atual | Resultado esperado |
+| --- | --- |
+| Sala certificada antes/depois de `save`, `stop` e checkpoint automático | Interiores resolvidos removidos; travessias WALK nas bordas, sem beams verdes internos comuns |
+| Checkpoint incompleto com quatro scouts, depois pausa/retomada | Fronteiras pendentes e posições necessárias conservadas; IDs, blocos e journal coerentes; sem referências antigas |
+| Compactar novamente e recarregar o mesmo grafo | Sem recriar grupos interiores nem perder as direções físicas; portais de uniões antigas retirados |
+| Área isolada sem nós; salto/queda/escada dentro de área | Perseguição local na primeira; coordenadas e ações físicas preservadas nas demais |
+| Jogador atravessa uma porta e continua andando fora da visão | Renovar entradas/saídas pelo custo da rota; usar a porta comum quando necessário; executar conector final |
+| Âncora mais próxima desconectada ou atrás de parede | Outra âncora acessível pode completar a busca; nenhuma ligação atravessa a parede |
+| Última âncora a 300 unidades do jogador em piso livre | Andar até o alvo com apoio/hull verificados, sem recalcular eternamente a mesma lista |
+| Jogador se move durante busca; NPC já avançou pela rota anterior | Continua caminhando enquanto aguarda; nova rota parte da posição atual; não reinicia continuamente o pedido |
+| Jogador corre além de um salto; resultado chega após o intervalo de replanejamento | Consome o resultado pronto antes do próximo pedido; decolagem não fica sempre em espera |
+| Jogador pula e depois pousa em outro piso; sobe uma escada | Durante o pulo, manter último apoio; atualizar ao pousar; escada usa altura real e volume comum |
+| Vários NPCs frente a frente em corredor largo e estreito | Desvio com apoio; lado estável; um cede passagem pelo serial; topologia não bloqueada pela multidão |
+| Desvio junto a buraco, caixa, teto baixo ou outro andar | Nenhum passo sem apoio/hull; agachamento quando permitido; sem atalhos por XY ou teleporte |
+
+Esses cenários ainda precisam de execução no servidor. Não foram medidos CPU/FPS, tempos de busca, cobertura final ou sucesso físico dos saltos; os doubles verificam decisões, sem demonstrar que o motor executa cada travessia. Compare o mesmo BSP, perfil, orçamento e quantidade de scouts, registrando também âncoras removidas/portais e custo com 4, 12 e 24 NPCs.
+
+As seções abaixo são histórico; a instalação, os formatos e o comportamento vigentes estão nesta seção e em [SCAN_REVIEW.md](SCAN_REVIEW.md).
+
 ## Revisão 1.4: alinhamento, cobertura e estruturas — 01/10/2026
 
 Os 60 testes Python passaram, incluindo regressões da tolerância XY/altura, prazo de alinhamento, ausência de amostras em rotas conhecidas, janela física de falta de movimento, busca espacial de mais de 800 sementes e integridade de `ANPC_NAV 4`. O teste espacial compara candidatos com uma varredura independente em coordenadas negativas, bordas de células, pisos sobrepostos e colisões de hash. A suíte também valida arquivos com onze saídas em um nó, rodapé ausente, contagens incorretas, aresta duplicada e registros depois do rodapé.

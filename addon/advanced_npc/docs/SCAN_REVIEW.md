@@ -1,8 +1,36 @@
-# Revisão do scan, movimento e armazenamento — 1.4
+# Revisão do scan, movimento e armazenamento — 1.5
 
-As alterações atacam três problemas encontrados nas fontes: alinhamento que podia mudar de âncora e renovar a tentativa, planejamento que ignorava a conectividade das áreas durante o scan e reservas fixas que limitavam dados esparsos. A implementação foi dividida nas etapas abaixo. Compilação e execução no HLDS permanecem manuais, conforme as instruções do projeto.
+Esta revisão retira amostras redundantes dos interiores certificados, usa posições reais e múltiplas entradas/saídas para perseguição, conserva movimento durante o planejamento e verifica os desvios entre NPCs. Mantém as correções anteriores de alinhamento, cobertura e estruturas esparsas descritas abaixo. Compilação e execução no HLDS permanecem manuais, conforme as instruções do projeto.
 
-As imagens mostram 1.597 amostras e 489 áreas, com apenas algumas áreas desenhadas perto da câmera. Isso não significa que existam só cinco ou oito áreas utilizáveis: o primeiro número do HUD é a seleção visível. Também não permite identificar sozinho a causa exata da imobilidade. Os achados abaixo vêm do código; a confirmação no local das imagens precisa do teste no servidor.
+A imagem desta solicitação mostra 551 amostras e `areas 8/85`: oito áreas desenhadas de 85 existentes. Beams comuns dentro dos retângulos eram redundantes para representar o chão livre. A causa da perseguição interrompida foi investigada nas fontes; a imagem sozinha não confirma o comportamento físico de uma porta ou de um NPC.
+
+## Compactação em checkpoints e âncoras nas bordas
+
+O finalizador anterior protegia pontos comuns de raio 8 e ambos os extremos de toda conexão que saísse de uma área. Esses extremos podiam continuar no interior; a compactação ainda só ocorria ao esgotar o scan. Ocultar pontos no debug não resolvia o grafo salvo.
+
+Agora cada checkpoint, `save`, `stop` e conclusão congela toda a equipe antes de compactar. A conexão WALK interna é representada pela área. Uma conexão WALK entre regiões conserva a direção e passa a usar a interseção do trajeto com as bordas, com Z calculado pelo plano de apoio. Retira também raio 8 comum e portais absorvidos pela união de retângulos. Portais compartilhados exigem borda de pelo menos 16 unidades e apoio contínuo; contato por quina não conecta regiões.
+
+Há exceções necessárias: saltos/quedas mantêm decolagem, chegada e referência de velocidade; escadas mantêm contatos reais; uma transição sem saída planar não recebe um portal interior inventado. Nós desabilitados também são conservados. Em um scan incompleto, fronteiras ainda úteis e posições necessárias à retomada têm proteção explícita; essa proteção termina junto com a exploração. Retângulos descrevem caminhada livre, sem representar sozinhos essas ações ou trabalho desconhecido.
+
+O mapper remapeia journal, antecessores, nós atuais e proprietários de blocos com os scouts congelados. Cancela rotas/reservas, invalida caches de cobertura/inacessibilidade e reinicia seleções a partir dos IDs novos. O caso sem nós tem uma inicialização única, evitando repetir a limpeza do cursor. Novas âncoras de borda podem receber exploração pendente. Se uma reserva conservadora de substitutos ultrapassa a capacidade, preserva o grafo original completo: esse caso é informado, sem apagar uma travessia já provada.
+
+O debug omite beams WALK totalmente cobertos desde que a área é certificada. A retirada real dos pontos ocorre na próxima gravação congelada; o padrão de checkpoint é 60 segundos. Assim, o desenho e os dados usados pela exploração têm funções distintas e o journal permanece consistente.
+
+## Perseguição entre posições e execução até o alvo
+
+A seleção antiga podia usar uma única âncora próxima desconectada, ignorar outra entrada útil e rejeitar o jogador ao acabar a lista de nós. Requisições também apagavam o caminho anterior. Um destino móvel podia provocar paradas durante buscas e manter um salto sempre atrás de outro pedido pendente.
+
+`anpc_nav_request_to` valida até oito âncoras de cada extremo, examinando até dezesseis candidatos da área/índice espacial a até 512 unidades. Prova origem→âncora e âncora→destino, respeitando agachamento, apoio e escada real. A fase divide até quatro candidatos por frame entre as buscas. A* começa em todas as origens aceitas, inclui os conectores e só termina quando a fila não pode melhorar o custo completo. A garantia de menor custo vale para esse grafo e candidatos validados, sem prometer o menor trajeto geométrico de todo o mapa.
+
+O caminho publicado continua legível durante a substituição pendente. Mudança de área ou deslocamento de pelo menos 48 unidades agenda outra busca pelo intervalo configurado; um pedido em andamento não é cancelado a cada movimento. `path_revision` identifica a publicação atômica. O seguidor tenta se conectar a pontos WALK adiante a partir dos pés atuais, sem dispensar uma decolagem ou escada. Cada resultado recém-publicado recebe movimento antes de outro pedido, evitando adiar uma ação aérea indefinidamente.
+
+Chegar à última âncora percorre o conector até o jogador após nova prova de hull/apoio, inclusive quando ele fica a mais de 192 unidades em um grafo espaçado. Uma porta fechada recebe tratamento do obstáculo e espera limitada, seguido de renovação da rota. O alvo não é rejeitado apenas por terminar o caminho. A mesma escada admite aproximação final com volume comum e hull livre. Durante um pulo do jogador, a perseguição conserva seu último apoio; ao pousar atualiza o destino, e escadas conservam a altura real.
+
+## Desvio entre NPCs e obstáculos reais
+
+O núcleo examina NPCs à frente na mesma faixa de altura, antecipa sua posição por 0,15 s e mantém o lado de desvio por 0,4 s. Passadas laterais/recuos exigem chão, hull incluindo atores e `WalkMove`; não há deslocamento de navegação por alteração da origem. Em passagem estreita, o serial maior cede por 0,15 s e essa espera interrompe também o fallback de agachamento/desvio. Atalhos pela área mantêm a postura necessária; uma passagem baixa pode ser tentada agachada pelo perfil permitido.
+
+Colisões de jogadores/NPCs não bloqueiam a topologia para os demais. Bloqueios do mundo reconhecem também `FM_NULLENT` (-1), permitindo recuperação e indisponibilidade temporária da aresta correta. Saltos mantêm aproximação precisa, solução de arco, gravidade e colisão já existentes; iniciar nova ação aérea ou entrada em escada aguarda a publicação da substituição.
 
 ## Etapa 1: alinhamento e falta de progresso
 
@@ -43,7 +71,7 @@ Não se aumentou o espaçamento indiscriminadamente: isso esconderia saídas est
 
 A sessão de edição cancela buscas anteriores e mantém a enumeração espacial desde o início, inclusive com grafo carregado. Ao voltar às associações finais, cancela os pedidos da sessão. Assim, um cursor pendente não muda de interpretação entre lista de associação e buckets após a primeira área acrescentada.
 
-Amostras já existentes não são removidas no meio da sessão. Reservas, rotas, antecessores, buscas e journal referenciam seus IDs; apagar/remapear enquanto os scouts trabalham exigiria parar e atualizar todos esses estados. A revisão reduz novas amostras redundantes e permite usar a área imediatamente. Na conclusão, a compactação existente remove interiores dispensáveis e conserva transições, antes de gerar os portais. Checkpoints incompletos mantêm IDs estáveis.
+Enquanto os scouts trabalham, amostras existentes conservam IDs. A compactação descrita acima ocorre nos checkpoints com a equipe congelada, remapeando os estados antes de retomar. A área continua utilizável imediatamente durante a exploração; fronteiras pendentes mantêm seus pontos até serem resolvidas.
 
 Pontos próximos podem ser necessários em decolagens, chegadas, cristas, mudança de postura, escadas ou lados distintos de um obstáculo. Proximidade visual não autoriza unir esses pontos.
 
@@ -88,7 +116,7 @@ END quantidade_de_nos quantidade_de_areas quantidade_de_arestas
 
 O rodapé obrigatório rejeita truncamento tanto dentro de uma linha quanto entre registros completos. As contagens precisam corresponder ao conteúdo. Registros depois do rodapé são recusados; comentários e linhas vazias continuam permitidos. Cada escrita e o flush são conferidos antes do commit do temporário com backup. O gravador do provedor preserva seis decimais de coordenadas, planos e velocidades.
 
-O importador YaPB produz o mesmo formato. `check_nav_file.py` permite validação estrutural independente, com conferência opcional do nome/tamanho/MD5 do BSP. Arquivos anteriores precisam ser gerados novamente ou reimportados; não foi acrescentada compatibilidade com formatos antigos. A política do journal passa a `planar-regions-team-2`; sua estrutura permanece `ANPC_SCAN 2`.
+O importador YaPB produz o mesmo formato. `check_nav_file.py` permite validação estrutural independente, com conferência opcional do nome/tamanho/MD5 do BSP. Arquivos anteriores precisam ser gerados novamente ou reimportados; não foi acrescentada compatibilidade com formatos antigos. A política do journal é `boundary-regions-team-3`; sua estrutura permanece `ANPC_SCAN 2`.
 
 ## Técnicas avaliadas
 
@@ -101,7 +129,7 @@ O importador YaPB produz o mesmo formato. `check_nav_file.py` permite validaçã
 | Índice espacial para deduplicar sementes | Aplicado junto da fila dinâmica |
 | Navmesh completa no estilo Recast | Não incorporada: exige outro processamento de geometria/polígonos e integração com movimentos/scripts GoldSrc; não é uma native AMXX/ReAPI disponível para substituir o mapper |
 | Parse completo do BSP para aprovar o chão | Não usado como certificado único: ignora entidades e alterações do mundo; BSP continua fonte de limites e ferramenta de diagnóstico offline |
-| Remover todas as âncoras dentro de áreas durante o scan | Adiado: exige remapear simultaneamente todos os estados dos scouts e journal; redução de novas amostras evita esse custo |
+| Compactar interiores durante o scan | Aplicado em checkpoints congelados, com remapeamento dos estados e proteção das fronteiras/ações físicas necessárias |
 | `Array:` em todas as variáveis | Recusado: limitações e padrões de acesso distintos; arrays densos continuam apropriados ao planejador |
 | JSON como otimização presumida | Recusado sem medição; integridade e escrita incremental foram melhoradas no `.nav` |
 | Navegação hierárquica entre clusters maiores | Possível evolução se profiling mostrar busca dominante; falta benchmark que justifique outro nível de cache e invalidação agora |
@@ -123,6 +151,6 @@ navigation_areas.inc          navigation_graph.inc
 navigation_portals.inc
 ```
 
-Passaram **60 testes Python** e a conferência estrutural de **27 fontes Pawn**. A suíte cobre condições reais extraídas do código com doubles, geometria sintética e integridade de arquivos por implementação independente. Não houve compilação nem execução da máquina de estados Pawn/HLDS. Não se mediu aceleração, cobertura final, memória real ou FPS. Os cenários e comandos manuais estão em [TESTING.md](TESTING.md).
+Passaram **93 testes Python** e a conferência estrutural de **27 fontes Pawn**. Os 33 novos testes interpretam controle de fluxo de funções selecionadas das fontes instaladas, com doubles determinísticos; a busca é comparada com Dijkstra independente em trinta grafos dirigidos. Exercitam compactação, capacidade, remapeamento, publicação, conectores finais, portas, pulos/escadas e substituição sem dispensar decolagem. Os demais verificam condições, geometria e integridade de arquivos. Não houve compilação, execução de bytecode AMXX/HLDS ou medição de aceleração, cobertura final, memória real e FPS. Os cenários e comandos manuais estão em [TESTING.md](TESTING.md).
 
 Para instalar: recompile manualmente os seis plugins com as includes atuais, carregue os binários juntos e use `anpc_scan start new` para comparar sem amostras antigas. Confirme primeiro o caso de imobilidade das imagens; depois examine passagens agachadas, saltos, escadas, buracos, pisos sobrepostos, pausas e compactação. Compare um e quatro scouts sob o mesmo orçamento e BSP, registrando contadores e custo do servidor.

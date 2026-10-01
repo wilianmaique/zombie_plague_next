@@ -15,7 +15,8 @@ enum _:Actor
 	ACT_ENTITY, ACT_SERIAL, ACT_TYPE, ACT_ROUTE,
 	AnpcState:ACT_STATE,
 	ACT_TARGET, ACT_TARGET_USERID, ACT_ATTACK_VICTIM, ACT_ATTACK_USERID,
-	ACT_PATH_CURSOR, ACT_PATH_GOAL, ACT_FROM_NODE, ACT_TO_NODE, ACT_REVISION,
+	ACT_PATH_CURSOR, ACT_PATH_VERSION, ACT_PATH_AREA, ACT_FROM_NODE, ACT_TO_NODE, ACT_REVISION,
+	Float:ACT_PATH_DESTINATION[3],
 	ACT_JUMP_CURSOR, ACT_LADDER, ACT_RECOVERIES, ACT_SENSE_CURSOR, ACT_WAIT_DOOR,
 	bool:ACT_REMOVE, bool:ACT_CROUCHED,
 	AnpcAnimation:ACT_ANIMATION,
@@ -25,9 +26,10 @@ enum _:Actor
 	Float:ACT_NEXT_JUMP_PROBE,
 	Float:ACT_PROGRESS_TIME, Float:ACT_RECOVER_UNTIL, Float:ACT_OBSTACLE_WAIT,
 	Float:ACT_KNOCKBACK_UNTIL, Float:ACT_LAST_HIT,
-	Float:ACT_DIRECT_UNTIL, Float:ACT_DIRECT_GOAL[3], bool:ACT_DIRECT_OK,
+	Float:ACT_DIRECT_UNTIL, Float:ACT_DIRECT_GOAL[3], bool:ACT_DIRECT_OK, bool:ACT_DIRECT_CROUCH,
 	Float:ACT_PROGRESS_DISTANCE, Float:ACT_PROGRESS_GOAL[3], bool:ACT_PROGRESS_VALID,
 	Float:ACT_MOTION_TIME, Float:ACT_MOTION_STALL, Float:ACT_MOTION_ORIGIN[3], bool:ACT_MOTION_VALID,
+	ACT_AVOID_SIDE, Float:ACT_AVOID_UNTIL, Float:ACT_YIELD_UNTIL,
 	ACT_AGGRESSOR, ACT_AGGRESSOR_USERID
 }
 
@@ -42,8 +44,7 @@ new gTypeCount, gActorCount, gSerial, gTrace, gForwards[CoreForwards], gCapacity
 new Float:gThinkInterval, Float:gCorpseTime, Float:gRepathInterval, Float:gSampleTime, Float:gStepSize
 new gPlayers[32], gPlayerCount, gPlayerUserid[33]
 new Float:gPlayerFeet[33][3], Float:gPlayerOrigin[33][3], Float:gPlayerVelocity[33][3]
-new gPlayerNode[ANPC_MAX_TYPES][33], gPlayerNodeRevision[ANPC_MAX_TYPES][33]
-new Float:gPlayerNodeTime[ANPC_MAX_TYPES][33], Float:gPlayerNodeOrigin[ANPC_MAX_TYPES][33][3]
+new Float:gPlayerGroundFeet[33][3], bool:gPlayerGroundValid[33]
 new Float:gRejectUntil[ANPC_MAX_ACTORS][33]
 
 new const Float:STAND_MINS[3] = {-16.0, -16.0, -36.0}
@@ -306,7 +307,7 @@ public native_create()
 	gActor[slot][ACT_TYPE] = type
 	gActor[slot][ACT_ROUTE] = route
 	gActor[slot][ACT_CROUCHED] = duck
-	gActor[slot][ACT_PATH_GOAL] = ANPC_INVALID_NODE
+	gActor[slot][ACT_PATH_AREA] = -1
 	gActor[slot][ACT_FROM_NODE] = ANPC_INVALID_NODE
 	gActor[slot][ACT_TO_NODE] = ANPC_INVALID_NODE
 	gActor[slot][ACT_JUMP_CURSOR] = -1

@@ -462,6 +462,9 @@ public show_nodes(const task)
 		{
 			new to, link_flags, destination_flags, Float:destination[3], Float:velocity[3]
 			if (!anpc_nav_link_at(node, link, to, link_flags, velocity) || !anpc_nav_node(to, destination, destination_flags, radius)) continue
+			new Float:source[3]
+			anpc_copy_vec(point,source); source[2] -= NAV_SHOW_LIFT
+			if (!link_flags && !((flags | destination_flags) & ANPC_NODE_LADDER) && anpc_nav_area_segment(source,destination)) continue
 			if (!admin_nav_in_view(eye, direction, destination, distance_sq)) continue
 			destination[2] += NAV_SHOW_LIFT
 			admin_beam(id, point, destination, link_flags ? 220 : 40, 100)
