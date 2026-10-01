@@ -16,15 +16,17 @@ A compilação foi executada por solicitação explícita do usuário. Os seis b
 
 ## Scanner: validação manual
 
-A revisão atual altera o mapper e as seis includes internas, incluindo `mapper_coverage.inc` e `mapper_frontiers.inc`. Essa revisão não foi compilada nem executada no HLDS; as compilações acima pertencem às revisões anteriores. Recompile o mapper manualmente com as includes externas atualizadas antes destes testes. O formato da memória permanece `ANPC_SCAN 2`, com assinatura de política `blocks-frontiers-1`; memórias da política anterior são descartadas, preservando o `.nav`.
+A revisão atual altera mapper, provedor de navegação e núcleo, com a include compartilhada `ground.inc` e as includes internas externas configuradas no projeto. Essa revisão não foi compilada nem executada no HLDS; as compilações acima pertencem às revisões anteriores. Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma` e `anpc_core.sma` com as includes atualizadas antes destes testes. O formato da memória permanece `ANPC_SCAN 2`, com assinatura de política `blocks-frontiers-ramps-1`; memórias da política anterior são descartadas, preservando o `.nav`.
 
-A conferência estática passou para as sete fontes Pawn: delimitadores, funções e variáveis referenciadas, natives próprios, 49 chamadas com formatos/argumentos, sete campos do registro de nó `ANPC_SCAN 2` e protocolo do beam com trace separado. A propriedade angular do ajuste de parede foi conferida em 288.008 combinações de setor/ângulo.
+A conferência estática do mapper passou para as oito fontes Pawn, incluindo `ground.inc`: delimitadores, funções e variáveis referenciadas, natives próprios, 49 chamadas com formatos/argumentos, sete campos do registro de nó `ANPC_SCAN 2` e protocolo do beam com trace separado. A propriedade angular do ajuste de parede foi conferida em 288.008 combinações de setor/ângulo. Também foram conferidos delimitadores, globais e quantidades de argumentos das chamadas próprias nos três consumidores de terreno: mapper, navegação e núcleo.
 
 Uma conferência auxiliar em Python comparou modelos dos algoritmos com referências independentes: 5.512 segmentos em precisão float32 contra interseções racionais exatas da grade, e 2.000 grafos direcionados contra cálculo completo dos menores custos e da pontuação de fronteiras. Passaram os casos de coordenadas negativas/grandes, direções quase alinhadas a um eixo, cantos, bordas da grade, limite de travessia, decrease-key do heap e parada antecipada. Também foram conferidos spans sobrepostos, rejeição de blocos pendentes/obsoletos, sobreposição das faixas de hull, ausência de mutação de grafo e exclusão da cobertura do journal.
 
 A preparação de retornos em grafos existentes passou por mais 1.000 grafos direcionados, comparando os antecessores escolhidos com o conjunto de arestas de entrada elegíveis. Foram preservados antecessores existentes, tentativas encerradas e nós desabilitados; IDs estritamente menores impediram ciclos. A fonte dessa preparação usa apenas consultas de grafo, sem gravar inversas presumidas.
 
 Esses checks verificam propriedades matemáticas e referências nas fontes; não executam Pawn, a máquina de estados nem a física do HLDS, e não substituem a compilação e os testes abaixo. Corpo, câmera, beam, cobertura e seleção precisam de validação no servidor.
+
+A revisão de rampas passou por modelos auxiliares com 12.000 planos/orientações, comparando a altura de apoio com o máximo dos quatro cantos do footprint, e 5.000 combinações de velocidade/intervalo, verificando a distância acumulada das passadas. Foram conferidos 15 cenários de terreno: rampas longas/subida/descida, limite de inclinação, degraus de 18/24 unidades, parede, buraco largo, tetos em pé/agachado, cristas e elevação triangular. Incluem a necessidade de preservar uma âncora na crista, a elevação parcial sob teto, a diferença do teste de cantos em rampas diagonais e a limpeza da flag temporária sem alterar outras flags. São modelos de geometria e conferências de fonte; não medem velocidade/FPS e não reproduzem integralmente a física ou os callbacks do motor.
 
 Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os seis plugins na ordem do manifesto e use `anpc_scan start new`. Observe a posição e os contadores com `anpc_scan status`; pelo cliente de um administrador, use `anpc_scan watch 1`, `anpc_scan blocks 1` e `anpc_nav_show 1`.
 
@@ -39,6 +41,12 @@ Prepare uma sessão sem NPCs nem plugins controlando o fake client. Carregue os 
 | `anpc_scan_beam 1`, em pé/agachado/escada e `watch` | Laser verde parte dos olhos, acompanha yaw/pitch reais e termina em obstáculo; leituras do planejamento permanecem independentes |
 | `anpc_scan_beam 0` ou encerrar o scan | Sem novos beams; último efeito expira em 0,2 segundo |
 | Corredor aberto longo | Percursos de até três espaçamentos, nós intermediários e continuidade; nenhuma volta automática após cada segmento |
+| Rampa longa que permite andar sem saltar, nas duas direções | Apoios medidos pelo hull, alvos longos e ausência de saltos/agachamento apenas por causa da inclinação; subida total pode superar um degrau/salto |
+| Rampa uniforme com grande variação de Z | Nós pelo espaçamento XY, sem gerar outro nó a cada 14 unidades de subida; arestas só após travessia real |
+| Entrada/saída da rampa, crista ou elevação estreita | Âncora antes da mudança importante do piso; ligações não cortam a elevação por dentro |
+| Rampa sob teto que exige agachamento | Usar o hull agachado e a folga disponível, sem exigir uma elevação inteira de 18 unidades nem atravessar o teto |
+| Rampa termina numa parede, buraco ou degrau alto | Avançar apenas pelo trecho apoiado, preservando a análise posterior do obstáculo; nenhum apoio presumido além da borda |
+| Laser e `watch` numa subida/descida | Pitch acompanha a altura do destino e o movimento, limitado a ±45 graus |
 | Sala plana larga | Blocos azuis em interiores livres; nós intermediários continuam no grafo, mas não iniciam novas caminhadas inteiramente dentro da cobertura |
 | Parede corta um bloco de 256 unidades | Subdivisão sob demanda até 32; interior livre pode ser aproveitado, borda irregular mantém testes por nó |
 | Destino conhecido com uma célula desconhecida no caminho | Não dispensar o trajeto só por conhecer o destino |
@@ -108,6 +116,11 @@ python -B -m unittest discover -s addon/advanced_npc/tools -p "test_*.py" -v
 | NPC em corredor aberto | Caminha com hull e animação, sem ocupar vaga de jogador |
 | Jogador atrás de parede, em outra região conectada | Planeja caminho e segue os corredores |
 | Escadas/degraus | Usa as regras de step height do motor |
+| NPC numa rampa com Think/passo longo | Completa a distância solicitada em partes menores antes de desviar; sem ganhar velocidade além do perfil |
+| Rampa diagonal caminhável pelo jogador | Passada curta pode usar a recuperação de apoio; colisão com paredes/atores permanece e a flag acrescentada é limpa após a chamada |
+| Bloqueio, piso sem apoio ou rampa acima do limite | Não aplicar recuperação de apoio indevida nem ultrapassar o obstáculo por ela |
+| Descida de rampa marcada como queda no grafo | Andar quando o trecho tem apoio contínuo; uma queda real continua usando movimento aéreo |
+| NPC morre, é removido ou muda de estado durante um passo | Interromper as partes restantes e evitar alterar outra entidade/serial ou sobrescrever a animação de ataque |
 | Túnel agachado | Ajusta hull; só levanta com espaço |
 | Salto marcado | Calcula e verifica o arco; mantém gravidade e colisão durante o salto |
 | Escada vertical | Sobe/desce junto de `func_ladder`; saída devolve gravidade normal |

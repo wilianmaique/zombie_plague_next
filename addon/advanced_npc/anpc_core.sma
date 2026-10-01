@@ -8,6 +8,7 @@
 #include "advanced_npc/advanced_npc"
 #include "advanced_npc/advanced_npc_navigation"
 #include "advanced_npc/math"
+#include "advanced_npc/ground"
 
 enum _:Actor
 {
@@ -36,7 +37,7 @@ new gAnimation[ANPC_MAX_TYPES][ANPC_ANIM_COUNT][AnimationData]
 new gTypeName[ANPC_MAX_TYPES][48], gTypeModel[ANPC_MAX_TYPES][128], gTypeOwner[ANPC_MAX_TYPES]
 new bool:gTypeReady[ANPC_MAX_TYPES], bool:gTypesLocked, bool:gRegistrationOpen, bool:gUnloading
 new gTypeCount, gActorCount, gSerial, gTrace, gForwards[CoreForwards], gCapacity
-new Float:gThinkInterval, Float:gCorpseTime, Float:gRepathInterval, Float:gSampleTime
+new Float:gThinkInterval, Float:gCorpseTime, Float:gRepathInterval, Float:gSampleTime, Float:gStepSize
 new gPlayers[32], gPlayerCount, gPlayerUserid[33]
 new Float:gPlayerFeet[33][3], Float:gPlayerOrigin[33][3], Float:gPlayerVelocity[33][3]
 new gPlayerNode[ANPC_MAX_TYPES][33], gPlayerNodeRevision[ANPC_MAX_TYPES][33]
@@ -85,6 +86,7 @@ public plugin_init()
 	register_plugin("Advanced NPC: Entity Core", ANPC_VERSION, "ZPN")
 	if (!is_rehlds() || !is_regamedll()) set_fail_state("Advanced NPC requires ReHLDS and ReGameDLL CS")
 	gTrace = create_tr2()
+	bind_pcvar_float(get_cvar_pointer("sv_stepsize"), gStepSize)
 	RegisterHam(Ham_TraceAttack, "info_target", "npc_trace_attack_pre")
 	RegisterHam(Ham_TakeDamage, "info_target", "npc_take_damage_pre")
 	RegisterHam(Ham_BloodColor, "info_target", "npc_blood_color_pre")

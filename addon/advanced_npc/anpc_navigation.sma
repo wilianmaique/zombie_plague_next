@@ -6,6 +6,7 @@
 #include <reapi>
 #include "advanced_npc/advanced_npc_navigation"
 #include "advanced_npc/math"
+#include "advanced_npc/ground"
 
 new Float:gNodeOrigin[ANPC_MAX_NODES][3], Float:gNodeRadius[ANPC_MAX_NODES]
 new gNodeFlags[ANPC_MAX_NODES], gLinkCount[ANPC_MAX_NODES]
@@ -14,6 +15,7 @@ new Float:gLinkVelocity[ANPC_MAX_NODES][ANPC_MAX_LINKS][3]
 new Float:gLinkCost[ANPC_MAX_NODES][ANPC_MAX_LINKS], Float:gLinkBlocked[ANPC_MAX_NODES][ANPC_MAX_LINKS]
 new gBucketHead[ANPC_HASH_BUCKETS], gBucketNext[ANPC_MAX_NODES]
 new gNodeCount, gRevision, gChangedForward, gTrace, gExpansions, gFrameForward
+new Float:gStepSize
 new gMap[64], gNavPath[256], gBspSize, gBspHash[33]
 new Array:gLadders
 new gEditOwner, bool:gEditDirty
@@ -72,6 +74,7 @@ public plugin_init()
 		set_fail_state("Advanced NPC requires ReHLDS and ReGameDLL CS")
 
 	gTrace = create_tr2()
+	bind_pcvar_float(get_cvar_pointer("sv_stepsize"), gStepSize)
 	gLadders = ArrayCreate(1)
 	gChangedForward = CreateMultiForward("anpc_nav_changed", ET_IGNORE, FP_CELL)
 	bind_pcvar_num(create_cvar("anpc_nav_expansions", "192", FCVAR_NONE, "A* node expansions per server frame", true, 16.0, true, 1024.0), gExpansions)

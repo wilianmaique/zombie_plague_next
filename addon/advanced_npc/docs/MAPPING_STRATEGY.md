@@ -37,6 +37,8 @@ Um grafo existente também passa por uma preparação incremental de retornos: u
 
 A hipótese de ganho é reduzir a distância de exploração repetida em interiores planos e evitar deslocamentos a destinos que parecem próximos, mas têm acesso caro. Mapas com muitas rampas, escadas, triggers ou corredores onde não cabe um bloco podem aproveitar menos essa redução. Ainda haverá trânsito por áreas conhecidas e retornos necessários para conectar o grafo corretamente.
 
+Rampas continuam fora dos blocos planos, mas recebem acompanhamento de apoio por hull e alvos contínuos no mapper. A amostragem limita o desnível local e preserva mudanças relevantes do piso, sem transformar cada pequena subida numa nova âncora. Essa otimização é independente da dispensa de interiores planos.
+
 Um bloco azul significa que ele passou nos testes geométricos desta sessão, na resolução adotada. Não significa “100% de qualquer detalhe do BSP”. As amostras de piso continuam discretas; detalhes menores que sua resolução e ações próprias de scripts precisam de validação no mapa real. Uma navmesh completa também precisaria representar esses movimentos e ações.
 
 Compare a revisão anterior e a atual com o mesmo BSP, parâmetros, posição inicial e orçamento. Registre tempo, distâncias `explore` e `travel/return`, regiões descobertas, ligações úteis e contadores de tentativas dispensadas. Verifique especialmente saídas estreitas, plataformas acessíveis por salto, pisos sobrepostos e passagens após quebrar uma caixa. Mais rapidez com perda dessas regiões não satisfaz o objetivo.

@@ -6,6 +6,8 @@ O explorador usa a física de jogador para andar, agachar, saltar e subir escada
 
 A exploração compartilha blocos de piso de 256 a 32 unidades entre os nós para dispensar tentativas em interiores já analisados. Saídas desconhecidas têm prioridade; o custo das rotas direcionadas existentes orienta a escolha da próxima região. Passagens irregulares continuam com testes detalhados e cada ligação nova continua exigindo travessia real.
 
+Rampas usam apoio medido pelo hull inteiro e acompanhamento do relevo, com alvos longos e nós pelo espaçamento XY. Mudanças de inclinação preservam âncoras antes de cristas. O provedor usa as mesmas consultas, e o NPC tenta passadas menores no mesmo Think antes dos desvios laterais; há tratamento restrito para o teste de apoio em rampas diagonais.
+
 ## Instalação
 
 1. Copie os seis `.amxx` de `compiled/advanced_npc/` para `cstrike/addons/amxmodx/plugins/advanced_npc/`.
@@ -54,4 +56,4 @@ O próprio plugin grava `maps/<mapa>.nav`, `maps/<mapa>.scan` e `maps/<mapa>.sca
 
 Veja [o funcionamento e os limites do explorador](docs/AUTOMAPPER.md), [a análise das técnicas de cobertura](docs/MAPPING_STRATEGY.md), [o editor de navegação](docs/NAVIGATION.md), [a API](docs/API.md) e [os cenários para teste manual](docs/TESTING.md).
 
-As revisões anteriores dos seis plugins foram compiladas com AMXX 1.10.0.5467, sem erros nem avisos. A revisão atual do mapper, com cobertura adaptativa, seleção por custo, sensores e retorno adiado, ainda precisa de compilação manual e validação em jogo com as seis includes internas atualizadas, incluindo `mapper_coverage.inc` e `mapper_frontiers.inc`. Consulte os cenários em `docs/TESTING.md`.
+As revisões anteriores dos seis plugins foram compiladas com AMXX 1.10.0.5467, sem erros nem avisos. A revisão atual precisa de compilação manual de `anpc_mapper.sma`, `anpc_navigation.sma` e `anpc_core.sma`, com as includes externas atualizadas, incluindo `ground.inc`. Os binários existentes não contêm os ajustes de rampas. A validação em jogo segue os cenários de `docs/TESTING.md`.

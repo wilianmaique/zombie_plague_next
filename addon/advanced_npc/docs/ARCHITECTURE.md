@@ -12,6 +12,8 @@ O grafo é carregado uma vez por mapa. Coordenadas de nós e spawns representam 
 
 As partes internas são `mapper_world.inc` (geometria/episódios/provas), `mapper_coverage.inc` (blocos e tentativas interiores redundantes), `mapper_exploration.inc` (sensores e direções), `mapper_frontiers.inc` (seleção por custo), `mapper_motion.inc` (fake client e provas físicas) e `mapper_storage.inc` (memória/checkpoints), nas includes externas configuradas pelo projeto.
 
+`ground.inc` reúne consultas de apoio e passagem usadas pelo mapper, provedor de navegação e recuperação de rampas do núcleo. Projeta o hull real no piso e acompanha o terreno em intervalos proporcionais a `sv_stepsize`, sem exigir que uma rampa inteira caiba na altura de um degrau. Passagens por cristas consultam a folga vertical disponível nas extremidades. O mapper divide essas consultas entre frames; o provedor conserva um teste rápido de corredor para pisos planos e rampas uniformes. As consultas não gravam conexões nem deslocam entidades.
+
 A cobertura é uma tabela espacial de quadrados alinhados em 256/128/64/32 unidades, com spans de altura independentes e subdivisão sob demanda na âncora. Testes de piso estático e faixas de hull sobrepostas classificam interiores planos; volumes sensíveis e geometrias irregulares conservam a análise por nós. Máscaras de cobertura derivadas não entram no journal nem criam arestas. Os callbacks de obstáculo usados pelo mapper invalidam essa camada; a reconstrução é incremental.
 
 A seleção usa Dijkstra com heap e stamps de geração sobre as arestas direcionadas já comprovadas. O custo pondera distância e movimentos, e a utilidade considera direções pendentes e visitas. Uma fronteira alcançável precede a manutenção de ligações inversas, que continua obrigatoriamente física. O limite inferior da pontuação encerra cedo buscas com um vencedor garantido pelo modelo de custo. O A* do provedor segue responsável pela rota efetiva.
@@ -47,6 +49,12 @@ Uma aresta fisicamente bloqueada pode ficar indisponível por três segundos. Co
 ## Movimento
 
 `EngFunc_WalkMove` executa cada passo terrestre com colisão e step height do motor. Gravidade e movimento no ar usam `MOVETYPE_STEP` e velocidade física. O núcleo não substitui a origem para avançar uma rota.
+
+Quando um deslocamento direto falha, o núcleo tenta completá-lo em até oito partes menores no mesmo Think, antes de usar desvios laterais. A soma dessas partes não ultrapassa a distância solicitada por `velocidade × dt`. Isso evita que uma passada longa comece dentro da rampa no teste vertical de `SV_movestep`.
+
+`SV_CheckBottom` também exige apoio no centro e nos quatro cantos dentro de `sv_stepsize`; uma rampa diagonal válida para jogadores pode falhar nessa exigência. Após falha de `WalkMove`, o núcleo só relaxa essa verificação para uma passada curta com apoio estático inclinado e passagem do hull comprovados. `FL_PARTIALGROUND` fica restrita à chamada de `WalkMove`, com limpeza da flag acrescentada pelo núcleo e validação de entidade/serial nos callbacks. A colisão do motor permanece ativa. Pisos planos, ausência de apoio, paredes e inclinações recusadas não recebem essa correção.
+
+Uma ligação marcada como queda pode ser percorrida andando quando `anpc_nav_walkable` encontra apoio contínuo até o destino. Isso evita saltos desnecessários em descidas de rampas onde o scout perdeu contato com o chão por alguns comandos. Quedas sem essa passagem e ligações de salto continuam usando o movimento aéreo.
 
 Agachar modifica o hull e desloca o centro exatamente 18 unidades, preservando a posição dos pés. Levantar exige espaço para o hull inteiro. Isso mantém colisão e modelo na altura correta.
 

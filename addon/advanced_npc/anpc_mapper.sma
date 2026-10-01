@@ -9,6 +9,7 @@
 #include "advanced_npc/advanced_npc_navigation"
 #include "advanced_npc/advanced_npc_mapper"
 #include "advanced_npc/math"
+#include "advanced_npc/ground"
 
 #define SCAN_DIRECTIONS 10
 #define SCAN_DONE ((1<<SCAN_DIRECTIONS)-1)
@@ -31,7 +32,7 @@ enum ScanBlockStatus { SCAN_BLOCK_PENDING, SCAN_BLOCK_OPEN, SCAN_BLOCK_DETAIL }
 enum _:ScanBlock { BL_X, BL_Y, BL_LEVEL, Float:BL_Z, BL_NODE, BL_SAMPLE, BL_PHASE, BL_NEXT, BL_GEOMETRY, bool:BL_SENSITIVE, ScanBlockStatus:BL_STATUS }
 enum ScanPurpose { SCAN_FRONTIER, SCAN_RETURN, SCAN_TRAVEL }
 enum ScanMotion { SCAN_WALK, SCAN_JUMP, SCAN_DROP, SCAN_LADDER }
-enum ScanProbe { PROBE_FLOOR, PROBE_HULL, PROBE_WALK, PROBE_ARC, PROBE_RUNUP, PROBE_INTERIOR, PROBE_KNOWN_PATH }
+enum ScanProbe { PROBE_GROUND, PROBE_FLOOR, PROBE_HULL, PROBE_OBSTACLE, PROBE_ARC, PROBE_RUNUP, PROBE_INTERIOR, PROBE_KNOWN_PATH }
 enum _:ScanProfile { Float:SCAN_CFG_SPACING, Float:SCAN_CFG_SPEED, Float:SCAN_CFG_GRAVITY, Float:SCAN_CFG_DROP, SCAN_CFG_SURVEY }
 
 new gBot, gBotUserid, gFrame, gTouch, gTrace, gActiveCvar, gStartForward, gFinishForward, gEdgeForward
@@ -53,7 +54,7 @@ new gBlockOpen, gBlockDetail, gBlockSkips, gBlockLimit, gFrontierSkips, gCostSel
 new gCurrent = -1, gSource = -1, gGoalNode = -1, gDirection, gRangeIndex, gHeading = -1, gSeedAnchor = -1
 new gSenseNode = -1, gSenseEpoch, gSenseBlockEpoch, gSenseCursor, gSenseTarget[8], gSenseGain[8], bool:gSenseWall[8]
 new Float:gSenseDistance[8], Float:gSenseScore[8], Float:gFrontierRange
-new Float:gSenseVector[8][2], Float:gFrontierVector[2]
+new Float:gSenseVector[8][2], Float:gSenseSlope[8], Float:gFrontierVector[2]
 new gSweeps, gKnownSkips, gReturnTrials, gLongTrials, Float:gExploreDistance, Float:gTravelDistance
 new gRoute, gRouteGoal = -1, gRouteCursor, gSelectCursor
 new gPlanStart = -1, gPlanEpoch, gPlanGraphEpoch, gPlanBlockEpoch, gPlanCurrent = -1, gPlanHeapSize
@@ -68,10 +69,10 @@ new Float:gCheckpointTime, Float:gFrameStart, Float:gNextUse, Float:gStableSince
 new Float:gSourceFeet[3], Float:gGoalFeet[3], Float:gRunupFeet[3], Float:gArcPrevious[3]
 new Float:gFlightTime, Float:gJumpSpeed = 268.32816, Float:gLaunchVelocity[3], Float:gExpectedVelocity[3]
 new gInteriorTarget, gInteriorSample, gInteriorPathCursor, Float:gInteriorDistance, Float:gInteriorCost, Float:gInteriorLimit
-new Float:gLaunchFeet[3], Float:gLastFeet[3], Float:gPreviousGround[3], Float:gWalkPreviousZ
+new Float:gLaunchFeet[3], Float:gLastFeet[3], Float:gPreviousGround[3], Float:gWalkPrevious[3], Float:gGroundNormal[3]
 new gLaunchNode = -1, gArcSample, gArcSamples, gWalkSample, gWalkSamples, gGoalFlags, gJumpPhase
 new gObstacle, gObstacleAttempts, bool:gDuck, bool:gRunup, bool:gAirborne, bool:gJumped
-new bool:gHazard, bool:gWarp, bool:gTouchedLadder, bool:gLowFloorRetry, bool:gRaisedWalk
+new bool:gHazard, bool:gWarp, bool:gTouchedLadder, bool:gLowFloorRetry, bool:gGroundReady, bool:gGroundDirectional, bool:gGroundPlaneReady
 new Float:gBoundsMin[3], Float:gBoundsMax[3], gSurveyCursor, gSurveyTotal, gSurveySize[3]
 new Float:gSurveyStep, bool:gSurveyValid, bool:gSurveyDone
 new gMap[64], gNavPath[256], gMemoryPath[256], gReportPath[256], gBspHash[33], gBspSize
@@ -81,7 +82,7 @@ new gLoadFile, gLoadPhase, gLoadNode, gLoadSeed, gLoadSeedCount, bool:gResetGrap
 new gParentNode, gParentLink, bool:gParentsReady
 new bool:gCapacityHalt, bool:gSeedSettling, bool:gLaunchPending, bool:gSegmentDuck
 new bool:gAbortRequested
-new Float:gServerGravity, Float:gTrialSpeed, Float:gSeedDeadline
+new Float:gServerGravity, Float:gTrialSpeed, Float:gSeedDeadline, Float:gStepSize
 new gConfig[ScanProfile], gPhysicsCvar[7], gPhysicsDigest[33], Float:gJumpDuckLift
 new const SCAN_BEAM_MODEL[] = "sprites/laserbeam.spr"
 new const Float:SCAN_ZERO[3] = {0.0, 0.0, 0.0}
@@ -303,6 +304,7 @@ stock bool:scan_start(const bool:reset)
 	gDropLimit = gConfig[SCAN_CFG_DROP]
 	gSurveyEnabled = gConfig[SCAN_CFG_SURVEY]
 	gServerGravity = floatmax(1.0, get_cvar_float("sv_gravity"))
+	gStepSize = floatmax(0.0, get_pcvar_float(gPhysicsCvar[1]))
 	gJumpSpeed = gPhysicsCvar[6] ? floatsqroot(1600.0*floatmax(1.0,get_pcvar_float(gPhysicsCvar[6]))) : 268.32816
 	scan_physics_digest()
 	gRoute = anpc_nav_open()
@@ -394,10 +396,15 @@ public mapper_frame()
 	{
 		switch (gStage)
 		{
-			case ANPC_SCAN_SEED: scan_seed_step()
+			case ANPC_SCAN_SEED: { if (gTraceLimit-gTraces < 6) break; scan_seed_step(); }
 			case ANPC_SCAN_SELECT: scan_select_step()
 			case ANPC_SCAN_ROUTE: { scan_route_step(); break; }
-			case ANPC_SCAN_PROBE: { scan_probe_step(); if (gProbe == PROBE_KNOWN_PATH) break; }
+			case ANPC_SCAN_PROBE:
+			{
+				if ((gProbe == PROBE_GROUND && gTraceLimit-gTraces < 14) || (gProbe == PROBE_FLOOR && gTraceLimit-gTraces < 6)) break
+				scan_probe_step()
+				if (gProbe == PROBE_KNOWN_PATH) break
+			}
 			default: break
 		}
 		if (!gActive || gStage == ANPC_SCAN_MOVE || gStage == ANPC_SCAN_SAVE) break
@@ -408,7 +415,7 @@ public mapper_frame()
 		for (new block = 0; block < 8 && scan_work_available(); block++) if (!scan_block_background()) break
 	// Discover disconnected regions while the scout moves, using only spare budget.
 	if (gActive && (gStage == ANPC_SCAN_SELECT || gStage == ANPC_SCAN_MOVE || gStage == ANPC_SCAN_ROUTE))
-		for (new cell = 0; cell < 8 && !gSurveyDone && scan_work_available(); cell++) scan_survey_step()
+		for (new cell = 0; cell < 8 && !gSurveyDone && scan_work_available() && gTraceLimit-gTraces >= 6; cell++) scan_survey_step()
 	if (gActive && (gSaveRequested || now >= gCheckpointTime) && gStage != ANPC_SCAN_MOVE && gStage != ANPC_SCAN_SAVE && gLoadPhase == 2) scan_begin_save(gStopAfterSave)
 	return FMRES_IGNORED
 }
