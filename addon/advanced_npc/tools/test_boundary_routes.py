@@ -556,14 +556,14 @@ class CheckpointAndMovementTests(unittest.TestCase):
     def test_zero_node_checkpoint_remaps_block_owners_only_once(self):
         size = 4
         values = {
-            'ANPC_MAX_NODES': size, 'ScanBlock': 19, 'BL_NODE': 11,
+            'ANPC_MAX_NODES': size, 'ScanBlock': 18, 'BL_NODE': 10,
             'ANPC_SCAN_SAVE': 6, 'ANPC_SCAN_PAUSED': 3, 'ANPC_SCAN_SELECT': 2, 'ANPC_SCAN_SEED': 1,
             'SCAN_DONE': 1023, 'gSavePhase': -1, 'gSessionStage': 6, 'gSaveRecords': 1,
             'gActive': True, 'gCompleted': False, 'gSaveNode': 0,
             'gCompactCursor': 0, 'gCompactOriginal': 1, 'gCompactRemoved': 1,
             'gCompactBlocks': 0, 'gCompactBlockCount': 3, 'gCompactMap': [-1]*size,
             'gKnownCount': 1, 'gBotCount': 1, 'gUnreachable': [[9]*size],
-            'gBlock': [[0]*19 for _ in range(3)], 'gGraphEpoch': 1, 'gBlockEpoch': 1,
+            'gBlock': [[0]*18 for _ in range(3)], 'gGraphEpoch': 1, 'gBlockEpoch': 1,
             'gPrunedNodes': 1, 'gPortals': 0, 'gPortalLimit': 0,
         }
         for name in ('gCurrent', 'gSource', 'gGoalNode', 'gRouteGoal', 'gLaunchNode', 'gSeedAnchor', 'gPlanStart', 'gSenseNode'):
@@ -586,7 +586,7 @@ class CheckpointAndMovementTests(unittest.TestCase):
         self.assertEqual(values['gSavePhase'], 0)
         self.assertEqual(values['gGraphEpoch'], 2)
         self.assertEqual(values['gBlockEpoch'], 2)
-        self.assertEqual([row[11] for row in values['gBlock']], [-1, -1, -1])
+        self.assertEqual([row[10] for row in values['gBlock']], [-1, -1, -1])
         self.assertEqual(values['gCurrent'], [-1])
         self.assertEqual(values['gUnreachable'], [[0]*size])
 
@@ -638,7 +638,7 @@ class PursuitFixture:
                   'PATH_VERSION', 'PATH_CURSOR', 'JUMP_CURSOR', 'NEXT_JUMP_PROBE', 'PROGRESS_VALID',
                   'DIRECT_UNTIL', 'DIRECT_OK', 'DIRECT_CROUCH', 'NEXT_REPATH', 'FROM_NODE', 'TO_NODE',
                   'LAST_SEEN', 'WAIT_DOOR', 'OBSTACLE_WAIT', 'YIELD_UNTIL',
-                  'NEXT_ATTACK', 'KNOCKBACK_UNTIL', 'RECOVER_UNTIL', 'PATH_AREA')
+                  'NEXT_ATTACK', 'KNOCKBACK_UNTIL', 'RECOVER_UNTIL', 'PATH_AREA', 'WALK_DUCK', 'NEXT_POSTURE_QUERY')
         self.values = v = {'ACT_'+field: i for i, field in enumerate(fields)}
         end = len(fields)
         v['ACT_DIRECT_GOAL'], v['ACT_LAST_KNOWN'] = slice(end, end+3), slice(end+3, end+6)
@@ -672,6 +672,7 @@ class PursuitFixture:
         runtime.bind('anpc_nav_status', lambda route: 2)
         runtime.bind('anpc_nav_cancel', lambda route: self.cancels.append(route))
         runtime.bind('anpc_nav_area_at', lambda *args: -1)
+        runtime.bind('anpc_nav_area_segment', lambda *args: False)
         runtime.bind('anpc_nav_ladder', lambda point: self.ladder(point))
 
         def read_node(node, out, flag, radius):
@@ -700,7 +701,7 @@ class PursuitFixture:
                      out.put(self.fraction) if out is not None else 0, (2,))
         runtime.bind('anpc_distance_2d', lambda a, b: math.dist(a[:2], b[:2]))
         runtime.load((includes()/'perception.inc').read_text(encoding='utf-8-sig'), (
-            'npc_goal_feet', 'npc_direct_segment', 'npc_chase_direct', 'npc_ladder_segment', 'npc_follow_route', 'npc_hunt'))
+            'npc_goal_feet', 'npc_direct_segment', 'npc_walk_probe', 'npc_chase_direct', 'npc_ladder_segment', 'npc_follow_route', 'npc_hunt'))
 
 
 class PursuitTests(unittest.TestCase):
@@ -815,6 +816,7 @@ class PursuitTests(unittest.TestCase):
         v, runtime = fixture.values, fixture.runtime
         v.update(gStepSize=18., ANPC_ANIM_IDLE=0, var_velocity=2)
         runtime.bind('npc_posture', lambda *args: True)
+        runtime.bind('npc_walk_posture', lambda *args: False)
         runtime.bind('npc_face', lambda *args: 0.)
         runtime.bind('anpc_nav_area_segment', lambda *args: False)
         runtime.bind('set_entvar', lambda *args: None)

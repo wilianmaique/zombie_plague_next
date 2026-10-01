@@ -28,7 +28,7 @@ enum _:ScanSeed { Float:SEED_FEET[3], SEED_FLAGS, bool:SEED_USED, SEED_NEXT }
 enum _:ScanLadder { LADDER_ENTITY, Float:LADDER_MINS[3], Float:LADDER_MAXS[3] }
 enum _:ScanVolume { VOLUME_ENTITY, VOLUME_TYPE, Float:VOLUME_MINS[3], Float:VOLUME_MAXS[3] }
 enum ScanBlockStatus { SCAN_BLOCK_PENDING, SCAN_BLOCK_OPEN, SCAN_BLOCK_DETAIL }
-enum _:ScanBlock { BL_X, BL_Y, BL_LEVEL, Float:BL_FEET[3], Float:BL_NORMAL[3], BL_FLAGS, BL_SOURCE_FLAGS, BL_NODE, BL_SAMPLE, BL_PHASE, BL_CHILD, BL_NEXT, BL_GEOMETRY, bool:BL_SENSITIVE, ScanBlockStatus:BL_STATUS }
+enum _:ScanBlock { BL_X, BL_Y, BL_LEVEL, Float:BL_FEET[3], Float:BL_NORMAL[3], BL_FLAGS, BL_NODE, BL_SAMPLE, BL_PHASE, BL_CHILD, BL_NEXT, BL_GEOMETRY, bool:BL_SENSITIVE, ScanBlockStatus:BL_STATUS }
 enum _:ScanBlockReject { BLOCK_FLOOR, BLOCK_PLANE, BLOCK_HULL, BLOCK_VOLUME, BLOCK_CAPACITY, BLOCK_REJECT_COUNT }
 enum _:ScanFloorReject { FLOOR_SUPPORT, FLOOR_SOLID, FLOOR_ENTITY, FLOOR_HEIGHT, FLOOR_REJECT_COUNT }
 enum ScanPurpose { SCAN_FRONTIER, SCAN_RETURN, SCAN_TRAVEL }
@@ -95,13 +95,16 @@ new gObstacle[SCAN_MAX_BOTS], gObstacleAttempts[SCAN_MAX_BOTS], bool:gDuck[SCAN_
 new bool:gHazard[SCAN_MAX_BOTS], bool:gWarp[SCAN_MAX_BOTS], bool:gTouchedLadder[SCAN_MAX_BOTS], bool:gLowFloorRetry[SCAN_MAX_BOTS], bool:gGroundReady[SCAN_MAX_BOTS], bool:gGroundDirectional[SCAN_MAX_BOTS], bool:gGroundPlaneReady[SCAN_MAX_BOTS]
 new Float:gBoundsMin[3], Float:gBoundsMax[3], gSurveyCursor, gSurveyTotal, gSurveySize[3]
 new Float:gSurveyStep, bool:gSurveyValid, bool:gSurveyDone
-new gMap[64], gNavPath[256], gMemoryPath[256], gReportPath[256], gBspHash[33], gBspSize
+new gBspLeafOffset, gBspLeafCount, gSurveyLeafTotal, gSurveyLeafCursor, gSurveyFile, gLeafSeeds
+new Float:gElapsedBase, Float:gClockStart, bool:gClockRunning, bool:gLoadTiming, Float:gLoadElapsed
+new gMap[64], gNavPath[256], gMemoryPath[256], gReportPath[256], gBspPath[128], gBspHash[33], gBspSize
 new gSaveFile, gSavePhase, gSaveNode, gSaveLink, gSaveCount, bool:gStopAfterSave, bool:gCompleted, bool:gSaved
 new gSaveTemporary[288], gNavDigest[33], bool:gMemoryLoaded
 new gLoadFile, gLoadPhase, gLoadNode, gLoadSeed, gLoadSeedCount, bool:gResetGraph, bool:gSaveRequested
 new gParentNode, gParentLink, bool:gParentsReady
 new bool:gCapacityHalt, bool:gSeedSettling[SCAN_MAX_BOTS], bool:gLaunchPending[SCAN_MAX_BOTS], bool:gSegmentDuck[SCAN_MAX_BOTS], bool:gLaunchDuck[SCAN_MAX_BOTS]
 new bool:gAbortRequested, bool:gSavePaused
+new bool:gWalkDuck[SCAN_MAX_BOTS], Float:gNextPosture[SCAN_MAX_BOTS], gPostureChecks, gStandRestores
 new Float:gServerGravity, Float:gTrialSpeed[SCAN_MAX_BOTS], Float:gSeedDeadline[SCAN_MAX_BOTS], Float:gStepSize
 new gConfig[ScanProfile], gPhysicsCvar[7], gPhysicsDigest[33], Float:gJumpDuckLift[SCAN_MAX_BOTS]
 new const SCAN_BEAM_MODEL[] = "sprites/laserbeam.spr"
@@ -185,15 +188,15 @@ public plugin_init()
 	gTrace = create_tr2()
 	gBeamTrace = create_tr2()
 	rh_get_mapname(gMap, charsmax(gMap), MNT_TRUE)
-	new directory[192], bsp[128]
+	new directory[192]
 	get_configsdir(directory, charsmax(directory))
 	formatex(gNavPath, charsmax(gNavPath), "%s/advanced_npc/maps/%s.nav", directory, gMap)
 	formatex(gMemoryPath, charsmax(gMemoryPath), "%s/advanced_npc/maps/%s.scan", directory, gMap)
 	formatex(gReportPath, charsmax(gReportPath), "%s/advanced_npc/maps/%s.scan.txt", directory, gMap)
-	formatex(bsp, charsmax(bsp), "maps/%s.bsp", gMap)
-	gBspSize = file_size(bsp)
-	if (gBspSize > 0) hash_file(bsp, Hash_Md5, gBspHash, charsmax(gBspHash))
-	scan_read_bounds(bsp)
+	formatex(gBspPath, charsmax(gBspPath), "maps/%s.bsp", gMap)
+	gBspSize = file_size(gBspPath)
+	if (gBspSize > 0) hash_file(gBspPath, Hash_Md5, gBspHash, charsmax(gBspHash))
+	scan_read_bounds(gBspPath)
 	scan_cache_ladders()
 	scan_cache_volumes()
 	set_pcvar_num(gActiveCvar, 0)
@@ -208,6 +211,7 @@ public plugin_end()
 	remove_task(SCAN_TASK_AUTO)
 	if (gLoadFile) { fclose(gLoadFile); gLoadFile = 0; }
 	if (gSaveFile) { fclose(gSaveFile); gSaveFile = 0; }
+	if (gSurveyFile) { fclose(gSurveyFile); gSurveyFile = 0; }
 	// An interrupted temporary file is never committed over a good checkpoint.
 	if (gActive) scan_finish(false, "map shutdown")
 	if (gTrace) free_tr2(gTrace)
@@ -319,6 +323,9 @@ stock bool:scan_start(const bool:reset)
 	gParentNode = gParentLink = 0
 	gParentsReady = false
 	gStarted = get_gametime()
+	gElapsedBase = gLoadElapsed = 0.0
+	gClockStart = gStarted; gClockRunning = true; gLoadTiming = false
+	gSurveyLeafCursor = gLeafSeeds = gPostureChecks = gStandRestores = 0
 	gCheckpointTime = gStarted+gCheckpointInterval
 	gWorkerCursor = gDriveCursor = gBeamCursor = gAvoidances = 0
 	gClaimEpoch = 1
@@ -400,11 +407,15 @@ stock scan_finish(const bool:saved, const reason[])
 {
 	if (!gActive || gFinishing) return
 	gFinishing = true
+	scan_clock_pause()
+	new duration[48]
+	scan_duration(scan_elapsed(),duration,charsmax(duration))
 	new AnpcScanStatus:stage = gSessionStage, scouts = gBotCount
 	if (gFrame) { unregister_forward(FM_StartFrame,gFrame); gFrame = 0; }
 	if (gTouch) { unregister_forward(FM_Touch,gTouch); gTouch = 0; }
 	if (gSaveFile) { fclose(gSaveFile); gSaveFile = 0; }
 	if (gLoadFile) { fclose(gLoadFile); gLoadFile = 0; }
+	if (gSurveyFile) { fclose(gSurveyFile); gSurveyFile = 0; }
 	if (!gFinishingMap && stage == ANPC_SCAN_SAVE && gSavePhase == -2)
 	{
 		if (!anpc_nav_reload()) anpc_nav_reset()
@@ -433,7 +444,9 @@ stock scan_finish(const bool:saved, const reason[])
 	gSessionStage = gCompleted ? ANPC_SCAN_COMPLETE : ANPC_SCAN_OFF
 	new result
 	ExecuteForward(gFinishForward,result,gCompleted,saved,gKnownCount,gLinks)
-	log_amx("Mapper ended: reason=%s; stage=%d scouts=%d completed=%d saved=%d nodes=%d links=%d jumps=%d failures=%d episodes=%d",reason,stage,scouts,gCompleted,saved,gKnownCount,gLinks,gJumps,gFailures,gSeedEpisodes)
+	log_amx("Mapper ended: reason=%s; elapsed=%s; stage=%d scouts=%d completed=%d saved=%d nodes=%d links=%d jumps=%d failures=%d episodes=%d",reason,duration,stage,scouts,gCompleted,saved,gKnownCount,gLinks,gJumps,gFailures,gSeedEpisodes)
+	if (gCompleted && saved && !gFinishingMap)
+		client_print(0,print_chat,"[ANPC] Scan completed in %s: %d areas, %d anchors.",duration,anpc_nav_area_count(),gKnownCount)
 	if (gRestart && !gFinishingMap) set_cvar_num("sv_restart",1)
 	gFinishing = false
 }
@@ -667,18 +680,21 @@ stock scan_show_blocks(const Float:now)
 
 stock scan_status(const id)
 {
-	new pending
+	new pending, duration[48]
+	scan_duration(scan_elapsed(),duration,charsmax(duration))
 	// Count cached work; asking for status must not classify every map direction.
 	for (new node = 0; node < gKnownCount; node++) if (scan_frontier_weight(node,false)) pending++
 	console_print(id, "[ANPC] Mapper active=%d stage=%d bots=%d nodes=%d/%d links=%d pending-estimate=%d", gActive, gSessionStage, gBotCount, gKnownCount, ANPC_MAX_NODES, gLinks, pending)
 	console_print(id, "[ANPC] Verified walk=%d jump=%d drop=%d ladder=%d | failures=%d hazards=%d warps=%d unsupported=%d", gWalks,gJumps,gDrops,gClimbs,gFailures,gHazards,gWarps,gUnsupported)
-	console_print(id, "[ANPC] Seeds %d/%d episodes=%d | survey %d/%d | elapsed %.1f min | last checkpoint saved=%d", scan_used_seeds(),gSeedCount,gSeedEpisodes,gSurveyCursor,gSurveyTotal,(get_gametime()-gStarted)/60.0,gSaved)
+	console_print(id, "[ANPC] Seeds %d/%d episodes=%d | survey %d/%d | active elapsed %s | last checkpoint saved=%d", scan_used_seeds(),gSeedCount,gSeedEpisodes,gSurveyCursor,gSurveyTotal,duration,gSaved)
 	console_print(id, "[ANPC] Resumed memory=%d | trace/frame limit=%d | cooperative budget=%.2f ms",gMemoryLoaded,gTraceLimit,gBudgetMs)
 	console_print(id, "[ANPC] Sweeps=%d known-direction skips=%d long walks=%d deferred returns=%d | distance: explore=%.0f travel/return=%.0f",gSweeps,gKnownSkips,gLongTrials,gReturnTrials,gExploreDistance,gTravelDistance)
 	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d (dynamic) | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d coverage-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
 	console_print(id, "[ANPC] Area rejections: floor=%d plane=%d hull=%d sensitive=%d capacity=%d | crouch retries=%d",gBlockReject[BLOCK_FLOOR],gBlockReject[BLOCK_PLANE],gBlockReject[BLOCK_HULL],gBlockReject[BLOCK_VOLUME],gBlockReject[BLOCK_CAPACITY],gBlockCrouchRetry)
 	console_print(id, "[ANPC] Floor probe failures: support=%d solid-start=%d non-world=%d height=%d",gBlockFloorReject[FLOOR_SUPPORT],gBlockFloorReject[FLOOR_SOLID],gBlockFloorReject[FLOOR_ENTITY],gBlockFloorReject[FLOOR_HEIGHT])
 	console_print(id, "[ANPC] Survey: enabled=%d valid-BSP-bounds=%d step=%.0f",gSurveyEnabled,gSurveyValid,gSurveyStep)
+	console_print(id,"[ANPC] BSP extents: %.0f x %.0f x %.0f units | leaves checked %d/%d seeds=%d",gBoundsMax[0]-gBoundsMin[0],gBoundsMax[1]-gBoundsMin[1],gBoundsMax[2]-gBoundsMin[2],gSurveyLeafCursor,gSurveyLeafTotal,gLeafSeeds)
+	console_print(id,"[ANPC] Local posture checks=%d standing restored=%d",gPostureChecks,gStandRestores)
 	console_print(id, "[ANPC] Navigation areas=%d | suppressed node samples=%d symmetric floor returns=%d local landings=%d",anpc_nav_area_count(),gAreaNodesSkipped,gAreaReturns,gLandingTrials)
 	console_print(id, "[ANPC] Finalization: removed interior samples=%d generated portals=%d portal capacity skips=%d",gPrunedNodes,gPortals,gPortalLimit)
 	console_print(id, "[ANPC] Retained area revalidation: phase=%d source areas=%d/%d",gRestoreAreaPhase,gRestoreAreaCursor,gRestoreAreaCount)

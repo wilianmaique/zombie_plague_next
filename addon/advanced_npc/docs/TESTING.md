@@ -1,5 +1,28 @@
 # Verificação e testes
 
+## Revisão 1.6.0: postura, perseguição livre e BSP — 01/10/2026
+
+Passaram **150 testes Python** e a conferência estrutural de **27 fontes Pawn**, sem compilar. `test_adaptive_navigation.py` acrescenta 43 regressões de funções instaladas, usando o interpretador estrito `pawn_test_runtime.py` com doubles de motor/arquivo. Não executa bytecode, física HLDS nem todas as regras de tipos/células Pawn. As 107 regressões anteriores continuam passando.
+
+Os casos novos cobrem saída de teto baixo, preferência por ficar em pé, orçamento de duas posturas, bloco único por plano independentemente da postura anterior, aproximação em área de 1.400 unidades, meta local em rampa, recusa de lacuna, atalho de nó comum de raio 8, fallback a candidato próximo, preservação de decolagem, salto/escada da rota publicada durante pedido pendente, borda plana com apoio, ausência de piso, substituição de entidade, flag parcial anterior e desvios locais limitados. Fixtures binárias BSP 30 conferem signed shorts, versão/lump/truncamento, folhas sólidas/líquidas/céu, aprovação de semente por piso/hull e conclusão após folhas + grade. O journal tem testes de cabeçalho atual, BSP/NAV/física exatos, tempo aplicado só após EOF, ausência/duplicação/truncamento de `TIME`, limites, pausa/retomada, checkpoint pausado e falha de gravação final.
+
+Recompile manualmente os seis plugins com as includes atuais e carregue-os juntos. A API pública e `ANPC_NAV 4` permanecem; o journal agora é `ANPC_SCAN 3`, política `boundary-regions-team-5`. Execute `anpc_scan start new` para avaliar a geração atual. Não houve execução no HLDS, medição de FPS ou garantia de cobertura total.
+
+```powershell
+rtk proxy python -B -X utf8 -m unittest discover -s addon/advanced_npc/tools -p "test_*.py"
+rtk proxy python -B -X utf8 addon/advanced_npc/tools/check_pawn_sources.py
+```
+
+No servidor, reproduza os seguintes cenários sob o mesmo BSP e configuração:
+
+1. Dust2 sem túneis baixos: observe se scouts voltam a andar em pé; compare `Local posture checks` e `standing restored` em `anpc_scan status`.
+2. Saída de túnel baixo e entrada em sala livre: verifique postura durante caminhada e a certificação em pé dos blocos externos.
+3. Jogador distante em várias áreas contíguas: o zombie deve aproximar-se continuamente e alcançar o jogador ao terminar a lista de âncoras.
+4. Porta atravessada pelo jogador, quina, caixa e rampa: verifique espera limitada da porta, direção local, alcance da borda antes do salto e pouso; não deve atravessar paredes nem aceitar buracos.
+5. Jogador móvel durante salto/escada e grupo de zombies em passagem estreita: observe continuidade da rota publicada, desvio e recuperação sem apagar a topologia por colisão de parceiro.
+6. Pausa de um minuto, gravação pausada, retomada e reinício pelo checkpoint: tempo ativo deve excluir a pausa/offline, conservar o último valor salvo e congelar após concluir.
+7. Um e quatro scouts: compare folhas/sementes, grade, fronteiras, tempo, cobertura e custo por frame. Contadores de candidatos esgotados não comprovam que todo piso do mapa foi alcançado.
+
 ## Revisão 1.5.1: passagens compartilhadas e perseguição — 01/10/2026
 
 Passaram **107 testes Python** e a conferência estrutural de **27 fontes Pawn**, sem compilar. Os 47 testes em `test_boundary_routes.py` usam `pawn_test_runtime.py` para interpretar o controle de fluxo de funções selecionadas das fontes instaladas, com doubles determinísticos de arrays, grafo e colisão. O interpretador rejeita sintaxe não suportada: não é compilador, máquina virtual AMXX nem simulador HLDS, e não confere todas as regras de tipos/aritmética Pawn. Os demais testes mantêm as verificações independentes de arquivos/geometria e condições de fonte.

@@ -26,7 +26,9 @@ As leituras de alcance orientam o planejamento, sem certificar piso, salto ou pa
 
 Quando a região local já foi analisada, um Dijkstra incremental compara o custo das rotas direcionadas existentes até outras fronteiras, com penalidades de agachamento, escada, salto/queda e visitas, favorecendo destinos com mais direções pendentes. Isso evita escolher um destino próximo em linha reta que exige uma volta longa. O A* do provedor produz a rota de deslocamento. Limites inferiores de pontuação permitem encerrar a seleção antes de visitar todo o grafo quando já existe uma escolha melhor que as restantes. Buscas impossíveis são lembradas até uma alteração relevante na topologia; arestas que falham em movimento recebem também bloqueio temporário na seleção.
 
-A amostragem incremental dos limites do BSP procura outros pisos enquanto o bot caminha, usando o orçamento restante do frame, e acrescenta pontos iniciais para regiões separadas. Sementes dentro de blocos de piso já analisados são dispensadas. Âncoras do grafo sem rota podem iniciar episódios diretamente, sem duplicar nem consumir a fila dinâmica de sementes; âncoras que não conseguem assentar um jogador são registradas como rejeitadas.
+A amostragem usa os limites do modelo do mundo no BSP 30 e começa pelas folhas vazias, que fornecem candidatos na altura real das regiões do mapa. O centro da caixa de uma folha ainda precisa estar vazio no motor e alcançar piso/hull válidos para virar semente. Depois a grade tridimensional dos limites procura outros pisos. Ambas usam o orçamento restante do frame; a equipe só esgota a amostragem depois de terminar as duas. Sementes dentro de blocos já analisados ou próximas de uma âncora são dispensadas. Folhas de sólido, água, lava, slime e céu não geram candidatos. Limites inválidos não são usados; uma grade excessiva não impede examinar folhas válidas.
+
+Essas dimensões orientam a exploração e aparecem no status/relatório em unidades GoldSrc. Não equivalem a área caminhável nem permitem estimar uma porcentagem exata de conclusão. Âncoras do grafo sem rota podem iniciar episódios diretamente, sem duplicar a fila de sementes; âncoras que não conseguem assentar um jogador são registradas como rejeitadas.
 
 Mudanças de episódio e recuperação podem reposicionar o explorador em uma âncora validada. **Esse reposicionamento não grava uma conexão.** Regiões separadas continuam separadas no `.nav` até existir uma travessia física verificada.
 
@@ -35,6 +37,8 @@ Mudanças de episódio e recuperação podem reposicionar o explorador em uma â
 A navegação usa retângulos convexos, inclusive inclinados, e âncoras para passagens e movimentos especiais. Uma âncora inicia a análise de um quadrado de 256 unidades. Se houver obstáculo, desnível irregular ou volume sensível, os quatro filhos são analisados em 128/64/32 unidades, incluindo partes sem pontos. Trechos que não aprovam o tamanho mínimo continuam detalhados por âncoras.
 
 O teste começa junto aos pés com o hull real, sem lançar o raio de dentro do teto. O plano de apoio vem da normal do contato (`z >= 0,7`); amostras de piso a cada no máximo 16 unidades precisam permanecer nesse plano. Faixas sobrepostas do hull verificam paredes, caixas e folga. Se o hull em pé não cabe, o bloco tenta agachamento. Buracos, degraus, água, piso móvel e volumes sensíveis não recebem uma área simples. Dois pisos no mesmo XY são independentes. A certificação tem resolução finita; mantenha a validação no jogo dos detalhes estreitos.
+
+A certificação sempre começa em pé, mesmo quando o scout chegou agachado; o cache identifica célula, nível e plano, sem criar um segundo bloco pela postura anterior. Caminhando ou aguardando no chão, o scout testa a folga do próximo passo a cada 0,15 segundo e volta a ficar em pé assim que há apoio/passagem. A consulta reserva até 14 traces para as duas posturas e continua respeitando o orçamento compartilhado. Saltos e escadas preservam seu comando de postura próprio; o journal continua conservador sobre trechos percorridos agachados.
 
 Retângulos coplanares de mesma postura podem ser unidos em um retângulo completo dentro da célula de 256 unidades. A união não preenche L, lacunas ou andares diferentes. Direções de exploração cobertas por apoio contínuo deixam de gerar tentativas repetidas; rampas uniformes também participam. Ao continuar, o mapper lê os planos de todas as áreas anteriores e revalida a geometria por etapas antes de explorar. Essa revalidação independe de nós internos, incluindo arquivos somente com áreas. A geometria também é invalidada e reconstruída depois de ações de obstáculo.
 
@@ -113,16 +117,18 @@ Os arquivos ficam em `addons/amxmodx/configs/advanced_npc/maps/`:
 | Arquivo | Conteúdo |
 | --- | --- |
 | `<mapa>.nav` | Nós, áreas `A` e conexões no formato atual `ANPC_NAV 4` |
-| `<mapa>.scan` | Memória `ANPC_SCAN 2`: direções/visitas, antecessores, retornos pendentes, âncoras rejeitadas, sementes e amostragem |
+| `<mapa>.scan` | Memória `ANPC_SCAN 3`: direções/visitas, antecessores, retornos pendentes, âncoras rejeitadas, sementes, amostragem e tempo ativo |
 | `<mapa>.scan.txt` | Contadores, perfil físico, limites atingidos e movimentos não representados |
 | `*.bak` | Versão anterior do respectivo arquivo |
 | `*.tmp` | Gravação em andamento; um arquivo incompleto nunca é promovido |
 
 A escrita congela a exploração e distribui registros por frames. O commit de cada arquivo usa renomeação com backup. A memória inclui MD5 do BSP, do `.nav` e uma assinatura dos parâmetros físicos e da política de exploração. Se houver interrupção entre os commits, a memória que não corresponde ao novo `.nav` é descartada; o grafo permanece utilizável e as direções são examinadas novamente.
 
-O formato de memória permanece `ANPC_SCAN 2`; memórias em outro formato são descartadas. O provedor aceita somente `ANPC_NAV 4`, descrito em [NAVIGATION.md](NAVIGATION.md). `anpc_scan start new` facilita comparar a geração atual sem amostras antigas. IDs são estáveis enquanto os scouts trabalham, mas podem mudar em cada checkpoint congelado; arquivo e journal recebem o mesmo remapeamento. Os antecessores têm IDs menores que seus filhos, impedindo ciclos na árvore de descoberta. Retornos interrompidos por pausa/checkpoint continuam pendentes.
+O formato de memória é `ANPC_SCAN 3`; memórias em outro formato são descartadas. O registro obrigatório `TIME <segundos_ativos> <cursor_das_folhas>` vem imediatamente após o cabeçalho. O loader confere ordem, limites, registros e EOF antes de somar o tempo anterior; um journal incompleto não acrescenta sua duração. O provedor mantém `ANPC_NAV 4`, descrito em [NAVIGATION.md](NAVIGATION.md). `anpc_scan start new` facilita comparar a geração atual sem amostras antigas. IDs podem mudar em cada checkpoint congelado; arquivo e journal recebem o mesmo remapeamento. Antecessores anteriores aos filhos impedem ciclos; retornos interrompidos continuam pendentes.
 
-A política atual tem a assinatura `boundary-regions-team-4`. Um `.scan` com outra assinatura é descartado mesmo no formato 2; o grafo atual permanece e a exploração é reanalisada. Checkpoints desta revisão podem ser retomados com outra quantidade de scouts, pois a memória conserva trabalho compartilhado, sem identidades ou reservas transitórias. As áreas e a cobertura são reconstruídas a partir do mapa e das âncoras; durante o checkpoint, retângulos atuais são gravados junto do grafo.
+A política atual tem a assinatura `boundary-regions-team-5`. Um `.scan` com outra assinatura é descartado; o grafo atual permanece e a exploração é reanalisada. Checkpoints desta revisão podem ser retomados com outra quantidade de scouts, pois conservam trabalho compartilhado, sem reservas transitórias. Áreas e cobertura são reconstruídas a partir do mapa e das âncoras; durante o checkpoint, retângulos atuais são gravados junto do grafo.
+
+O status e o relatório mostram duração ativa, por exemplo `1h 02m 05s`, incluindo preparação e checkpoints feitos durante a exploração. Pausas explícitas e períodos offline não entram na conta. Ao terminar, o relógio congela; a conclusão gravada informa a duração também no chat e log. O relatório registra o instante de sua gravação, poucos frames antes do encerramento. Ao retomar, conserva somente o tempo do último checkpoint válido; sessões interrompidas perdem o intervalo ainda não gravado. Uma falha de gravação final não anuncia conclusão bem sucedida.
 
 Pausa e checkpoint mantêm pendentes as tentativas interrompidas, preservando direções já comprovadas em segmentos parciais. Um desligamento inesperado preserva o último checkpoint confirmado. O comando `stop` termina a gravação antes de remover todos os bots; evite desligar o mapa enquanto `active=1`.
 
@@ -137,7 +143,7 @@ Pausa e checkpoint mantêm pendentes as tentativas interrompidas, preservando di
 | `anpc_scan_speed` | `300` | Limite de velocidade do explorador; 100 a 320 |
 | `anpc_scan_gravity` | `0.7` | Multiplicador de gravidade; 0,3 a 1,5 |
 | `anpc_scan_max_drop` | `160` | Limite de descida; 18 a 256 |
-| `anpc_scan_survey` | `1` | Procura pisos adicionais nos limites do BSP |
+| `anpc_scan_survey` | `1` | Procura pisos a partir das folhas vazias e da grade dos limites do BSP |
 | `anpc_scan_traces` | `24` | Limite de traces de análise por frame; 16 a 64 |
 | `anpc_scan_budget_ms` | `1.0` | Orçamento cooperativo de trabalho por frame; 0,2 a 4 |
 | `anpc_scan_save_records` | `32` | Registros gravados por frame; 4 a 128 |

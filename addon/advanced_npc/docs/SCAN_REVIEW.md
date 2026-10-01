@@ -1,8 +1,20 @@
-# Revisão do scan, movimento e armazenamento — 1.5.1
+# Revisão do scan, movimento e armazenamento — 1.6.0
 
-Esta revisão reúne travessias entre blocos certificados em um portal por borda válida, retira amostras redundantes dos interiores e permite ao NPC dispensar portais intermediários após provar a passagem livre. Mantém a perseguição entre posições com múltiplas entradas/saídas, movimento durante planejamento, desvios entre NPCs e as correções de alinhamento, cobertura e estruturas descritas abaixo. Compilação e execução no HLDS permanecem manuais, conforme as instruções do projeto.
+Esta revisão corrige a herança de agachamento, usa candidatos das folhas vazias do BSP, registra o tempo ativo e permite aproximação livre por metas locais em áreas certificadas longas. Mantém portais por borda, retirada de interiores resolvidos, A* entre posições e desvio de NPCs; libera ações da rota publicada durante recálculo e trata apoio em bordas planas. Compilação e execução no HLDS permanecem manuais.
 
 A imagem inicial mostra 551 amostras e `areas 8/85`: oito áreas desenhadas de 85 existentes. As duas imagens seguintes mostram 2.251/2.316 amostras, 402/409 áreas e agrupamentos de pontos próximos a bordas e rampas. Esses contadores incluem trabalho temporário do scan; as imagens não identificam, sozinhas, todas as flags ou ações físicas. A inspeção das fontes encontrou uma passagem projetada por travessia comum, além do portal compartilhado, e a possibilidade de gravar perda breve de apoio em rampa como queda. Beams comuns dentro dos retângulos eram redundantes para representar o chão livre. A causa da perseguição interrompida foi investigada nas fontes; a imagem sozinha não confirma o comportamento físico de uma porta ou de um NPC.
+
+A imagem mais recente mostra 3.571 âncoras e `areas 8/574`, com um zombie sobre uma caixa. Ela não confirma a causa da imobilidade. Nas fontes, a postura vinha de flags anteriores, um conector longo podia exceder o limite da consulta e ações físicas esperavam qualquer busca pendente. O teste de apoio do motor também podia recusar uma borda plana apesar do hull apoiado. Esses casos têm regressões de controle de fluxo; ainda exigem reprodução no servidor.
+
+## Postura, base do mapa e duração
+
+Scouts e NPCs preferem ficar em pé e reavaliam o apoio/hull do próximo passo a cada 0,15 segundo. O início de cada sondagem testa o espaço atual, e a caminhada pode liberar o comando de duck ao sair de um teto baixo. O bloco começa sua certificação em pé e só repete agachado após falha; o cache deixou de separar a mesma célula/plano pela postura anterior do scout. A consulta do mapper reserva o pior caso de 14 traces das duas posturas dentro do orçamento compartilhado. Posturas de saltos/escadas e memória conservadora de trechos agachados permanecem.
+
+O BSP 30 fornece limites do mundo no lump de modelos e caixas das folhas vazias no lump 10. O formato de 28 bytes e coordenadas signed short foram conferidos no [header GoldSrc da Valve](https://github.com/ValveSoftware/halflife/blob/master/utils/common/bspfile.h). Essas caixas geram candidatos de altura antes da grade tridimensional; `PointContents`, piso, hull e deduplicação precisam aprová-los. Não criam nós, conexões nem certificados diretamente. Dimensões, folhas examinadas e sementes aprovadas aparecem no status/relatório; dimensões do BSP não medem superfície caminhável nem porcentagem completa do mapa.
+
+A implementação das [natives de arquivo do AMXX](https://github.com/alliedmodders/amxmodx/blob/master/amxmodx/file.cpp) confirma que `fread` retorna bytes, `fread_blocks` retorna blocos completos e `BLOCK_SHORT` estende o sinal. A leitura recusa lump fora do arquivo e registro truncado, usando os shorts diretamente.
+
+O relógio acumula tempo ativo entre retomadas e exclui pausas/períodos offline. Status, relatório, log e conclusão gravada exibem horas/minutos/segundos. `ANPC_SCAN 3` inclui `TIME <segundos_ativos> <cursor_das_folhas>` antes dos nós; o tempo anterior só entra após validar todos os registros e EOF. A conclusão congela o relógio e só é anunciada no chat após gravação bem sucedida. O relatório é uma fotografia do instante de sua escrita; um desligamento conserva somente a duração do último checkpoint válido.
 
 ## Compactação em checkpoints e âncoras nas bordas
 
@@ -26,7 +38,9 @@ A seleção antiga podia usar uma única âncora próxima desconectada, ignorar 
 
 O caminho publicado continua legível durante a substituição pendente. Mudança de área ou deslocamento de pelo menos 48 unidades agenda outra busca pelo intervalo configurado; um pedido em andamento não é cancelado a cada movimento. `path_revision` identifica a publicação atômica. O seguidor tenta se conectar a pontos WALK adiante a partir dos pés atuais, sem dispensar uma decolagem ou escada. Cada resultado recém-publicado recebe movimento antes de outro pedido, evitando adiar uma ação aérea indefinidamente.
 
-Durante o percurso, o NPC pode dispensar até oito âncoras comuns adiante sob cobertura contínua e hull livre. Isso inclui portais de raio 8, mantendo a passagem precisa quando não há atalho comprovado. O atalho para antes de saltos/quedas, escadas, mudanças de postura ou pontos precisos sem flag de portal.
+Durante o percurso, o NPC pode dispensar até oito âncoras comuns adiante sob cobertura contínua e hull livre. Isso inclui pontos comuns e portais de raio 8; raio define chegada e não força parada em chão livre. O atalho conserva decolagens, quedas, escadas e mudanças de postura, e testa até três candidatos de distância decrescente se o mais distante falha.
+
+Destinos acima de 256 unidades com segmento inteiramente coberto usam provas locais de 192 unidades, incluindo aproximação direta ao jogador. A colisão cobre o trecho imediato enquanto o destino é atualizado; cada passada do motor já é limitada por velocidade × dt. O destino real continua sendo a referência de progresso: andar devagar aproxima o alvo, enquanto repetir um desvio sem aproximação ainda aciona recuperação. Assim, o limite de alcance da consulta não invalida uma área longa nem a referência móvel do probe esconde um travamento. É uma aplicação de corredor e direção local, princípios presentes no [Detour PathCorridor](https://recastnav.com/classdtPathCorridor.html); não instala Detour nem implementa uma navmesh poligonal completa. O menor custo continua restrito ao A* e seus conectores.
 
 Chegar à última âncora percorre o conector até o jogador após nova prova de hull/apoio, inclusive quando ele fica a mais de 192 unidades em um grafo espaçado. Uma porta fechada recebe tratamento do obstáculo e espera limitada, seguido de renovação da rota. O alvo não é rejeitado apenas por terminar o caminho. A mesma escada admite aproximação final com volume comum e hull livre. Durante um pulo do jogador, a perseguição conserva seu último apoio; ao pousar atualiza o destino, e escadas conservam a altura real.
 
@@ -34,7 +48,9 @@ Chegar à última âncora percorre o conector até o jogador após nova prova de
 
 O núcleo examina NPCs à frente na mesma faixa de altura, antecipa sua posição por 0,15 s e mantém o lado de desvio por 0,4 s. Passadas laterais/recuos exigem chão, hull incluindo atores e `WalkMove`; não há deslocamento de navegação por alteração da origem. Em passagem estreita, o serial maior cede por 0,15 s e essa espera interrompe também o fallback de agachamento/desvio. Atalhos pela área mantêm a postura necessária; uma passagem baixa pode ser tentada agachada pelo perfil permitido.
 
-Colisões de jogadores/NPCs não bloqueiam a topologia para os demais. Bloqueios do mundo reconhecem também `FM_NULLENT` (-1), permitindo recuperação e indisponibilidade temporária da aresta correta. Saltos mantêm aproximação precisa, solução de arco, gravidade e colisão já existentes; iniciar nova ação aérea ou entrada em escada aguarda a publicação da substituição.
+Colisões de jogadores/NPCs não bloqueiam a topologia para os demais. Bloqueios do mundo reconhecem `FM_NULLENT` (-1), permitindo recuperação e indisponibilidade temporária da aresta correta. Saltos mantêm aproximação precisa, arco, gravidade e colisão; a rota publicada pode iniciar salto/queda ou subir escada enquanto outra busca está pendente. Um NPC em voo conserva seu movimento até pousar. Para caminhadas bloqueadas, seis desvios em ±30°/65°/100° procuram uma direção apoiada e livre de atores, conservando o lado aprovado por 0,45 segundo.
+
+`SV_CheckBottom` examina centro e quatro cantos do NPC. Depois de falha de `WalkMove`, o tratamento já usado em rampas agora admite também uma borda plana, somente com passo curto, apoio contínuo, hull livre e contato final comprovados. `FL_PARTIALGROUND` dura apenas a chamada, com restauração condicionada à mesma entidade/serial. A regra foi conferida no [movimento do ReHLDS](https://github.com/rehlds/ReHLDS/blob/master/rehlds/engine/sv_move.cpp); buracos e passagens bloqueadas continuam recusados.
 
 ## Etapa 1: alinhamento e falta de progresso
 
@@ -120,7 +136,7 @@ END quantidade_de_nos quantidade_de_areas quantidade_de_arestas
 
 O rodapé obrigatório rejeita truncamento tanto dentro de uma linha quanto entre registros completos. As contagens precisam corresponder ao conteúdo. Registros depois do rodapé são recusados; comentários e linhas vazias continuam permitidos. Cada escrita e o flush são conferidos antes do commit do temporário com backup. O gravador do provedor preserva seis decimais de coordenadas, planos e velocidades.
 
-O importador YaPB produz o mesmo formato. `check_nav_file.py` permite validação estrutural independente, com conferência opcional do nome/tamanho/MD5 do BSP. Arquivos anteriores precisam ser gerados novamente ou reimportados; não foi acrescentada compatibilidade com formatos antigos. A política do journal é `boundary-regions-team-4`; sua estrutura permanece `ANPC_SCAN 2`.
+O importador YaPB produz o mesmo formato. `check_nav_file.py` permite validação estrutural independente, com conferência opcional do nome/tamanho/MD5 do BSP. `ANPC_NAV 4` permanece. A política do journal é `boundary-regions-team-5` e sua estrutura passa a `ANPC_SCAN 3`; memórias anteriores são descartadas, preservando o grafo atual para reanalisar a exploração.
 
 ## Técnicas avaliadas
 
@@ -132,7 +148,7 @@ O importador YaPB produz o mesmo formato. `check_nav_file.py` permite validaçã
 | Simplificação de rota com apoio e hull | Aplicada também ao mapper, preservando transições |
 | Índice espacial para deduplicar sementes | Aplicado junto da fila dinâmica |
 | Navmesh completa no estilo Recast | Não incorporada: exige outro processamento de geometria/polígonos e integração com movimentos/scripts GoldSrc; não é uma native AMXX/ReAPI disponível para substituir o mapper |
-| Parse completo do BSP para aprovar o chão | Não usado como certificado único: ignora entidades e alterações do mundo; BSP continua fonte de limites e ferramenta de diagnóstico offline |
+| BSP como certificado do chão | Limites e folhas vazias orientam sementes; piso/hull e travessia continuam obrigatórios |
 | Compactar interiores durante o scan | Aplicado em checkpoints congelados, com remapeamento dos estados e proteção das fronteiras/ações físicas necessárias |
 | `Array:` em todas as variáveis | Recusado: limitações e padrões de acesso distintos; arrays densos continuam apropriados ao planejador |
 | JSON como otimização presumida | Recusado sem medição; integridade e escrita incremental foram melhoradas no `.nav` |
@@ -143,16 +159,19 @@ As referências de cobertura, fronteiras, Recast e planejamento estão em [MAPPI
 
 ## Arquivos e validação
 
-Nesta revisão, foram alterados `anpc_navigation.sma`, os testes de fluxo, comentários de configuração e documentação. As cinco includes abaixo foram editadas diretamente em `ANPC_INCLUDE_DIR`, conforme `LOCAL.md`, e não são cópias no Git:
+Nesta revisão, foram alterados `anpc_core.sma`, `anpc_mapper.sma`, testes e documentação. As oito includes abaixo foram editadas diretamente em `ANPC_INCLUDE_DIR`, conforme `LOCAL.md`, e não são cópias no Git:
 
 ```text
 advanced_npc_limits.inc
+mapper_coverage.inc
 mapper_motion.inc
+mapper_storage.inc
+mapper_team.inc
+mapper_world.inc
+movement.inc
 perception.inc
-navigation_areas.inc
-navigation_portals.inc
 ```
 
-Passaram **107 testes Python** e a conferência estrutural de **27 fontes Pawn**. Os 47 testes de fluxo interpretam funções selecionadas das fontes instaladas, com doubles determinísticos; a busca é comparada com Dijkstra independente em trinta grafos dirigidos. As 14 regressões acrescentadas nesta revisão verificam travessias densas reduzidas a um portal, reutilização entre checkpoints, marcador próximo fora da borda, cadeias de blocos, formas em L, saída externa, queda real, rampa contínua, conectividade por postura, reserva de capacidade, colisões de hash e atalhos do NPC. No caso sintético com 32 pontos de travessia entre dois blocos, ficou um portal e nenhuma aresta física redundante. Os demais exercitam perseguição/compactação anteriores, condições, geometria e integridade de arquivos. Não houve compilação, execução de bytecode AMXX/HLDS ou medição de aceleração, cobertura final, memória real e FPS. Os cenários e comandos manuais estão em [TESTING.md](TESTING.md).
+Passaram **150 testes Python** e a conferência estrutural de **27 fontes Pawn**. As 43 novas regressões interpretam funções instaladas de postura, perseguição, movimento, folhas BSP e tempo com doubles de colisão/arquivos; conferem orçamento, ponto local em área longa, proteção de ações, borda plana, entidade substituída, folhas malformadas e retomada estrita do journal. As 107 anteriores preservam compactação, portais, busca comparada com Dijkstra em trinta grafos, condições, geometria e integridade. O interpretador é um subconjunto estrito de controle de fluxo, sem conferir toda a semântica de tipos/células Pawn. Não houve compilação, execução de bytecode AMXX/HLDS ou medição de cobertura, memória real e FPS. Os cenários manuais estão em [TESTING.md](TESTING.md).
 
 Para instalar: recompile manualmente os seis plugins com as includes atuais, carregue os binários juntos e use `anpc_scan start new` para comparar sem amostras antigas. Confirme primeiro o caso de imobilidade das imagens; depois examine passagens agachadas, saltos, escadas, buracos, pisos sobrepostos, pausas e compactação. Compare um e quatro scouts sob o mesmo orçamento e BSP, registrando contadores e custo do servidor.

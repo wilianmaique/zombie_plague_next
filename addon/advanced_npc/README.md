@@ -1,4 +1,4 @@
-# Advanced NPC 1.5.1
+# Advanced NPC 1.6.0
 
 NPCs por entidade para CS 1.6, com navegação A*, animações, percepção e combate. O `anpc_mapper.sma` cria de um a oito fake clients temporários, configurados por `anpc_scan_bots`, para explorar o mapa e gerar a navegação pelo próprio servidor. Esse modo usa AMXX, ReAPI, Fakemeta e Hamsandwich; não exige YaPB, Python nem um módulo próprio em C++.
 
@@ -12,9 +12,13 @@ Em cada checkpoint, `save` ou `stop`, a equipe congela e a compactação remove 
 
 O zumbi planeja entre posições reais usando várias entradas e saídas acessíveis, incluindo o custo dos trechos até as âncoras. Continua andando pela rota publicada enquanto calcula outra, acompanha mudanças de região do alvo e percorre o trecho final até ele. Desvios de outros NPCs exigem apoio e passagem do hull; corredores estreitos usam prioridade estável para ceder passagem.
 
+Em áreas certificadas longas, o zombie prova a passagem até um alvo local de 192 unidades, atualizado durante a aproximação. Cada passada continua limitada por velocidade e tempo, mantendo o destino real como referência para detectar progresso e travamento. Caminhadas comuns de raio pequeno podem ser dispensadas quando há cobertura e passagem comprovadas. Um destino mais distante bloqueado permite tentar um ponto mais próximo; saltos, quedas e escadas conservam suas ações. A rota publicada pode executar essas ações enquanto sua substituição está sendo calculada.
+
+Scouts e NPCs reavaliam a folga do próximo passo a cada 0,15 segundo e preferem andar em pé. Saindo de uma passagem baixa, deixam de herdar o agachamento anterior. Blocos também começam a certificação em pé, sem duplicar o cache pela postura de quem chegou. O BSP fornece dimensões e folhas vazias para localizar candidatos, seguidos da grade de amostragem; piso e hull continuam obrigatórios. O status, relatório e aviso de conclusão mostram o tempo ativo em horas/minutos/segundos, acumulado nos checkpoints e sem contar pausas ou períodos offline.
+
 Caixas recebem candidatos de aterrissagem perto da face encontrada, evitando mirar apenas um ponto além do obstáculo. O mapper verifica recuo, apoio da corrida e velocidade real antes de saltar; tentativas que falham deixam de criar grupos de pontos de decolagem. O NPC pode encurtar caminhos dentro de um retângulo validado e usar agachamento no ar quando o perfil permite.
 
-Rampas usam apoio medido pelo hull inteiro e acompanhamento do relevo, com alvos longos e nós pelo espaçamento XY. Mudanças de inclinação preservam âncoras antes de cristas. O provedor usa as mesmas consultas, e o NPC tenta passadas menores no mesmo Think antes dos desvios laterais; há tratamento restrito para o teste de apoio em rampas diagonais.
+Rampas usam apoio medido pelo hull inteiro e acompanhamento do relevo, com alvos longos e nós pelo espaçamento XY. Mudanças de inclinação preservam âncoras antes de cristas. O provedor usa as mesmas consultas, e o NPC tenta passadas menores no mesmo Think antes dos desvios laterais. Bordas planas de decolagem e rampas recebem tratamento do teste de apoio do motor somente após comprovar apoio e hull. Desvios locais tentam curvas menores, tangentes e recuos, mantendo o lado escolhido por um intervalo curto.
 
 ## Ambiente local
 
@@ -35,7 +39,7 @@ Preencha `AMXX_COMPILER`, `AMXX_INCLUDE_DIR` e `ANPC_INCLUDE_DIR` com os caminho
 3. Copie `configs/advanced_npc.cfg` para `cstrike/addons/amxmodx/configs/advanced_npc/advanced_npc.cfg`. Os arquivos de mapa ficam na subpasta `maps/`.
 4. Instale o modelo `models/player/zpn_z_default/zpn_z_default.mdl` já usado pelo projeto para o tipo de NPC padrão. O explorador usa um modelo de jogador do CS.
 
-As includes permanecem em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de `AMXX_INCLUDE_DIR` indicada em `LOCAL.md`, incluindo `navigation_areas.inc` e `navigation_portals.inc`. Edite-as nesse diretório externo, sem duplicá-las no repositório. Recompile manualmente os seis plugins com essas includes e carregue os binários juntos. A revisão acrescenta `anpc_nav_request_to` e `anpc_nav_path_revision`, atualiza o contrato de `anpc_nav_area_finish_step` e mantém `ANPC_NAV 4`.
+As includes permanecem em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de `AMXX_INCLUDE_DIR` indicada em `LOCAL.md`, incluindo `navigation_areas.inc` e `navigation_portals.inc`. Edite-as nesse diretório externo, sem duplicá-las no repositório. Recompile manualmente os seis plugins com essas includes e carregue os binários juntos. Esta revisão mantém as APIs de navegação e `ANPC_NAV 4`; a memória passa a `ANPC_SCAN 3`, com política `boundary-regions-team-5` e tempo/cursor das folhas no checkpoint. Memórias anteriores são descartadas e a exploração é reanalisada.
 
 `core/zpn_main.sma` permanece sem integração do scanner. Faça a geração em uma sessão de manutenção, sem modos de jogo ou outros plugins controlando a equipe, a classe ou a vida do bot.
 
