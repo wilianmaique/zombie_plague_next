@@ -14,7 +14,7 @@ public plugin_precache()
 	new profile[AnpcProfile]
 	profile[ANPC_HEALTH] = 5000.0
 	profile[ANPC_SPEED] = 300.0
-	profile[ANPC_GRAVITY] = 0.7
+	profile[ANPC_GRAVITY] = 0.8
 	profile[ANPC_DAMAGE] = 35.0
 	profile[ANPC_ATTACK_RANGE] = 72.0
 	profile[ANPC_ATTACK_COOLDOWN] = 1.0
