@@ -27,6 +27,8 @@ new gRegionBucket, gRegionNeighbor, bool:gRegionKeep[ANPC_MAX_NODES], gRegionMap
 new gRegionPortalLimit
 enum _:NavRegionEdge { RE_FROM, RE_TO, RE_FLAGS, Float:RE_VELOCITY[3], Float:RE_FROM_FEET[3], Float:RE_TO_FEET[3], RE_FROM_FLAGS, RE_TO_FLAGS }
 new Array:gRegionTransitions, gRegionNeeded
+enum _:NavRegionPortal { RP_ORIGINAL, RP_FLAGS, Float:RP_FEET[3] }
+new Array:gRegionPortalPlan, gRegionParent[2][ANPC_MAX_AREAS], gRegionPortalNeeded
 new gPairBlockedFrom[NAV_BLOCKED_PAIRS], gPairBlockedTo[NAV_BLOCKED_PAIRS], Float:gPairBlockedUntil[NAV_BLOCKED_PAIRS]
 new gJobCurrent[ANPC_SEARCH_JOBS], gJobNeighborCursor[ANPC_SEARCH_JOBS]
 new Float:gAreaMins[ANPC_MAX_AREAS][3], Float:gAreaMaxs[ANPC_MAX_AREAS][3]
@@ -154,6 +156,7 @@ public plugin_end()
 	}
 	for (new node = 0; node < ANPC_MAX_NODES; node++) if (gNodeLinks[node]) ArrayDestroy(gNodeLinks[node])
 	if (gRegionTransitions) ArrayDestroy(gRegionTransitions)
+	if (gRegionPortalPlan) ArrayDestroy(gRegionPortalPlan)
 	ArrayDestroy(gLadders)
 	free_tr2(gTrace)
 	gTrace = 0

@@ -238,12 +238,13 @@ class PositionRouteTests(unittest.TestCase):
 
 
 class RegionFixture:
-    def __init__(self, points, edges=(), areas=None, flags=None, protected=(), capacity=32):
+    def __init__(self, points, edges=(), areas=None, flags=None, protected=(), capacity=32, hash_function=None):
         self.values = values = {
             'ANPC_MAX_NODES': capacity, 'ANPC_MAX_ACTORS': 1, 'NAV_NODE_AREAS': 8,
             'ANPC_NODE_CROUCH': 1, 'ANPC_NODE_LADDER': 2, 'ANPC_NODE_DISABLED': 4, 'ANPC_NODE_PORTAL': 8,
-            'ANPC_CAP_CROUCH': 1, 'ANPC_CAP_ALL': 31, 'floatround_floor': 0, 'floatround_ceil': 1,
-            'NavRegionEdge': 14, 'NavLink': 7,
+            'ANPC_CAP_CROUCH': 1, 'ANPC_CAP_ALL': 31, 'ANPC_LINK_JUMP': 1, 'floatround_floor': 0, 'floatround_ceil': 1,
+            'NavRegionEdge': 14, 'NavLink': 7, 'NavRegionPortal': 5,
+            'RP_ORIGINAL': 0, 'RP_FLAGS': 1, 'RP_FEET': slice(2, 5),
             'NL_TO': 0, 'NL_FLAGS': 1, 'NL_VELOCITY': slice(2, 5),
             'RE_FROM': 0, 'RE_TO': 1, 'RE_FLAGS': 2, 'RE_VELOCITY': slice(3, 6),
             'RE_FROM_FEET': slice(6, 9), 'RE_TO_FEET': slice(9, 12), 'RE_FROM_FLAGS': 12, 'RE_TO_FLAGS': 13,
@@ -252,6 +253,7 @@ class RegionFixture:
             'gNodeLinks': [0]*capacity, 'gLinkCount': [0]*capacity,
             'gBucketHead': [-1]*64, 'gBucketNext': [-1]*capacity,
             'gRegionTransitions': 0, 'gRegionPhase': 0, 'gRegionOriginal': 0, 'gRegionCursor': 0,
+            'gRegionPortalPlan': 0, 'gRegionPortalNeeded': 0,
             'gRegionLink': 0, 'gRegionKept': 0, 'gRegionNeeded': 0, 'gRegionPortals': 0,
             'gRegionEdges': 0, 'gRegionPortalLimit': 0, 'gRegionsReady': False,
             'gRegionKeep': [False]*capacity, 'gRegionMap': [-1]*capacity, 'gPairBlockedFrom': [-1]*16,
@@ -260,14 +262,15 @@ class RegionFixture:
         areas = areas or [(0., 0., 256., 128., 0., (0., 0., 1.))]
         values.update(gAreaCount=len(areas), gAreaMins=[[a[0], a[1], a[4]] for a in areas],
                       gAreaMaxs=[[a[2], a[3], a[4]] for a in areas], gAreaNormal=[list(a[5]) for a in areas],
-                      gAreaFlags=[0]*len(areas), gAreaHead=[-1]*64, gAreaNext=[-1]*len(areas))
+                      gAreaFlags=[0]*len(areas), gAreaHead=[-1]*64, gAreaNext=[-1]*len(areas),
+                      gRegionParent=[[0]*len(areas), [0]*len(areas)])
         runtime = self.runtime = PawnRuntime(values)
         common(runtime)
         runtime.bind('nav_cancel_route', lambda route: None)
         runtime.bind('nav_changed', lambda: None)
 
         def bucket(x, y):
-            return (x+8*y) % 64
+            return hash_function(x, y) if hash_function else (x+8*y) % 64
 
         def members(node):
             if values['gNodeFlags'][node] & 6:
@@ -275,18 +278,13 @@ class RegionFixture:
             x, y, z = values['gNodeOrigin'][node]
             return [i for i, area in enumerate(areas)
                     if area[0]-0.01 <= x <= area[2]+0.01 and area[1]-0.01 <= y <= area[3]+0.01
+                    and not (values['gAreaFlags'][i] & 1 and not values['gNodeFlags'][node] & 1)
                     and abs(z-(area[4]-((x-area[0])*area[5][0]+(y-area[1])*area[5][1])/area[5][2])) <= 1.]
 
         def collect(node, out):
             found = members(node)
             out[:len(found)] = found
             return len(found)
-
-        def area_at(point, caps):
-            found = [i for i, a in enumerate(areas) if a[0]-0.01 <= point[0] <= a[2]+0.01
-                     and a[1]-0.01 <= point[1] <= a[3]+0.01
-                     and abs(point[2]-(a[4]-((point[0]-a[0])*a[5][0]+(point[1]-a[1])*a[5][1])/a[5][2])) <= 1.]
-            return max(found, key=lambda i: (areas[i][2]-areas[i][0])*(areas[i][3]-areas[i][1]), default=-1)
 
         def find_near(point, radius, height):
             found = [i for i in range(values['gNodeCount']) if math.dist(values['gNodeOrigin'][i], point) < radius
@@ -300,6 +298,8 @@ class RegionFixture:
             values['gNodeCount'] += 1
             values['gNodeOrigin'][node] = point[:]
             values['gNodeFlags'][node] = flag; values['gNodeRadius'][node] = radius
+            index = bucket(math.floor(point[0]/256.), math.floor(point[1]/256.))
+            values['gBucketNext'][node] = values['gBucketHead'][index]; values['gBucketHead'][index] = node
             return node
 
         def find_link(a, b):
@@ -320,21 +320,26 @@ class RegionFixture:
             return True
 
         runtime.bind('nav_hash', bucket)
+        runtime.bind('anpc_finite', math.isfinite)
         runtime.bind('nav_collect_node_areas', collect)
-        runtime.bind('nav_area_at', area_at)
         runtime.bind('nav_common_area', lambda a, b: next(iter(set(members(a)) & set(members(b))), -1))
         runtime.bind('nav_attach_node', lambda node: None)
         runtime.bind('nav_find_near', find_near)
         runtime.bind('nav_add_node', add_node)
         runtime.bind('nav_find_link', find_link)
         runtime.bind('nav_add_link', add_link)
-        runtime.load((includes()/'navigation_areas.inc').read_text(encoding='utf-8-sig'), ('nav_area_height',))
+        runtime.load((includes()/'navigation_areas.inc').read_text(encoding='utf-8-sig'), (
+            'nav_area_height', 'nav_area_contains', 'nav_area_at', 'nav_area_segment'))
         runtime.load((includes()/'navigation_portals.inc').read_text(encoding='utf-8-sig'), (
-            'nav_region_begin', 'nav_region_interior', 'nav_region_exit', 'nav_region_endpoint', 'nav_region_portal', 'nav_region_step'))
+            'nav_region_begin', 'nav_region_border', 'nav_region_root', 'nav_region_union', 'nav_region_covered',
+            'nav_region_match', 'nav_region_exit', 'nav_region_endpoint', 'nav_region_portal', 'nav_region_step'))
         for i, area in enumerate(areas):
             index = bucket(math.floor(area[0]/256.), math.floor(area[1]/256.))
             values['gAreaNext'][i] = values['gAreaHead'][index]
             values['gAreaHead'][index] = i
+        for i, point in enumerate(points):
+            index = bucket(math.floor(point[0]/256.), math.floor(point[1]/256.))
+            values['gBucketNext'][i] = values['gBucketHead'][index]; values['gBucketHead'][index] = i
         for edge in edges:
             add_link(*edge)
         runtime.call('nav_region_begin')
@@ -342,7 +347,7 @@ class RegionFixture:
             values['gRegionKeep'][node] = True
 
     def finish(self):
-        for _ in range(500):
+        for _ in range(5000):
             if self.runtime.call('nav_region_step'):
                 return
         raise AssertionError('Source compaction failed to finish')
@@ -429,6 +434,122 @@ class BoundaryRegionTests(unittest.TestCase):
                                 areas=[(0., 0., 256., 128., 0., normal)])
         fixture.finish()
         self.assertIn((256., 64., 128.), fixture.nodes())
+
+
+class SharedPassageTests(unittest.TestCase):
+    @staticmethod
+    def row(count):
+        return [(float(i*256), 0., float((i+1)*256), 128., 0., (0., 0., 1.)) for i in range(count)]
+
+    def test_dense_bidirectional_crossings_collapse_to_one_shared_contact(self):
+        points, edges = [], []
+        for crossing in range(16):
+            source = len(points)
+            y = float(16+crossing*6)
+            points.extend([(240., y, 0.), (272., y, 0.)])
+            edges.extend([(source, source+1, 0, [0., 0., 0.]), (source+1, source, 0, [0., 0., 0.])])
+        fixture = RegionFixture(points, edges, areas=self.row(2), capacity=64)
+        fixture.finish()
+        self.assertEqual(fixture.nodes(), [(256., 64., 0.)])
+        self.assertEqual(fixture.values['gRegionEdges'], 0)
+        self.assertEqual(fixture.values['gRegionMap'][:32], [-1]*32)
+        for area in range(2):
+            self.assertTrue(fixture.runtime.call('nav_area_contains', area, fixture.nodes()[0]))
+
+    def test_old_border_cluster_keeps_the_canonical_id_across_checkpoints(self):
+        points = [(256., y, 0.) for y in (16., 40., 64., 90.)]
+        fixture = RegionFixture(points, areas=self.row(2), flags=[8]*4)
+        fixture.finish()
+        self.assertEqual(fixture.nodes(), [(256., 64., 0.)])
+        self.assertEqual(fixture.values['gRegionMap'][:4], [-1, -1, 0, -1])
+        self.assertEqual(fixture.values['gRegionPortals'], 0)
+        fixture.runtime.call('nav_region_begin')
+        fixture.finish()
+        self.assertEqual(fixture.nodes(), [(256., 64., 0.)])
+        self.assertEqual(fixture.values['gRegionMap'][0], 0)
+        self.assertEqual(fixture.values['gRegionPortals'], 0)
+
+    def test_nearby_marker_inside_one_block_cannot_replace_shared_contact(self):
+        fixture = RegionFixture([(255.5, 64., 0.)], areas=self.row(2), flags=[8])
+        fixture.finish()
+        self.assertEqual(fixture.nodes(), [(256., 64., 0.)])
+        self.assertEqual(fixture.values['gRegionMap'][0], -1)
+        for area in range(2):
+            self.assertTrue(fixture.runtime.call('nav_area_contains', area, fixture.nodes()[0]))
+
+    def test_walk_across_three_blocks_uses_logical_passages(self):
+        fixture = RegionFixture([(40., 32., 0.), (650., 96., 0.)], [(0, 1, 0, [0., 0., 0.])], areas=self.row(3))
+        fixture.finish()
+        self.assertCountEqual(fixture.nodes(), [(256., 64., 0.), (512., 64., 0.)])
+        self.assertEqual(fixture.values['gRegionEdges'], 0)
+        self.assertEqual(fixture.runtime.call('nav_region_root', 0, 0), fixture.runtime.call('nav_region_root', 0, 2))
+
+    def test_connected_l_shape_preserves_walk_through_uncovered_space(self):
+        areas = self.row(2)+[(256., 128., 512., 256., 0., (0., 0., 1.))]
+        fixture = RegionFixture([(32., 32., 0.), (450., 220., 0.)], [(0, 1, 0, [0., 0., 0.])], areas=areas)
+        self.assertFalse(fixture.runtime.call('nav_area_segment', fixture.nodes()[0], fixture.nodes()[1], 0))
+        fixture.finish()
+        self.assertEqual(fixture.values['gRegionEdges'], 1)
+        self.assertIn((256., 64., 0.), fixture.nodes())
+        self.assertIn((384., 128., 0.), fixture.nodes())
+        self.assertEqual(fixture.values['gNodeCount'], 4)
+
+    def test_physical_exit_is_projected_to_outer_border_of_adjacent_blocks(self):
+        fixture = RegionFixture([(40., 32., 0.), (600., 32., 0.)], [(0, 1, 0, [0., 0., 0.])], areas=self.row(2))
+        fixture.finish()
+        self.assertCountEqual(fixture.nodes(), [(600., 32., 0.), (512., 32., 0.), (256., 64., 0.)])
+        source = fixture.nodes().index((512., 32., 0.))
+        destination = fixture.nodes().index((600., 32., 0.))
+        self.assertEqual(fixture.values['gNodeLinks'][source][0][0], destination)
+        self.assertEqual(fixture.values['gLinkCount'][destination], 0)
+
+    def test_height_discontinuity_preserves_real_directed_drop(self):
+        areas = [(0., 0., 256., 128., 128., (0., 0., 1.)), (256., 0., 512., 128., 0., (0., 0., 1.))]
+        points = [(180., 64., 128.), (300., 64., 0.)]
+        fixture = RegionFixture(points, [(0, 1, 2, [0., 0., 0.])], areas=areas)
+        fixture.finish()
+        self.assertEqual(fixture.nodes(), points)
+        self.assertEqual(fixture.values['gNodeLinks'][0][0][:2], [1, 2])
+        self.assertEqual(fixture.values['gLinkCount'][1], 0)
+        self.assertEqual(fixture.values['gRegionPortals'], 0)
+
+    def test_supported_ramp_drop_is_replaced_by_area_walking(self):
+        normal = (-1./math.sqrt(5.), 0., 2./math.sqrt(5.))
+        areas = [(0., 0., 256., 128., 0., normal), (256., 0., 512., 128., 128., normal)]
+        fixture = RegionFixture([(300., 64., 150.), (40., 64., 20.)], [(0, 1, 2, [0., 0., 0.])], areas=areas)
+        fixture.finish()
+        self.assertEqual(fixture.nodes(), [(256., 64., 128.)])
+        self.assertEqual(fixture.values['gRegionEdges'], 0)
+
+    def test_standing_connectivity_cannot_pass_through_crouch_only_block(self):
+        for crouched in (False, True):
+            fixture = RegionFixture([(40., 64., 0.), (650., 64., 0.)], [(0, 1, 0, [0., 0., 0.])],
+                                    areas=self.row(3), flags=[int(crouched)]*2)
+            fixture.values['gAreaFlags'][1] = 1
+            fixture.finish()
+            with self.subTest(crouched=crouched):
+                self.assertEqual(fixture.values['gRegionEdges'], 0 if crouched else 1)
+                self.assertEqual(fixture.runtime.call('nav_region_root', 1, 0), fixture.runtime.call('nav_region_root', 1, 2))
+                self.assertNotEqual(fixture.runtime.call('nav_region_root', 0, 0), fixture.runtime.call('nav_region_root', 0, 2))
+                canonical = [fixture.values['gNodeFlags'][i] for i, point in enumerate(fixture.nodes())
+                             if point in ((256., 64., 0.), (512., 64., 0.)) and fixture.values['gNodeFlags'][i] & 1]
+                self.assertEqual(canonical, [9, 9])
+
+    def test_capacity_reserves_logical_passages_before_removing_walk_edges(self):
+        points = [(40., 32., 0.), (650., 96., 0.)]
+        fixture = RegionFixture(points, [(0, 1, 0, [0., 0., 0.])], areas=self.row(3), protected=(0,), capacity=2)
+        fixture.finish()
+        self.assertEqual(fixture.nodes(), points)
+        self.assertEqual(fixture.values['gRegionMap'][:2], [0, 1])
+        self.assertEqual(fixture.values['gNodeLinks'][0][0][:2], [1, 0])
+        self.assertEqual(fixture.values['gRegionPortalLimit'], 1)
+
+    def test_colliding_spatial_buckets_do_not_reserve_the_same_border_repeatedly(self):
+        fixture = RegionFixture([], areas=self.row(2), capacity=1, hash_function=lambda x, y: 0)
+        fixture.finish()
+        self.assertEqual(fixture.nodes(), [(256., 64., 0.)])
+        self.assertEqual(fixture.values['gRegionPortalLimit'], 0)
+        self.assertEqual(fixture.values['gRegionPortals'], 1)
 
 
 class CheckpointAndMovementTests(unittest.TestCase):
@@ -583,6 +704,39 @@ class PursuitFixture:
 
 
 class PursuitTests(unittest.TestCase):
+    def portal_route(self, flags=None, edges=None):
+        fixture = PursuitFixture([(float(x), 0., 0.) for x in (0, 100, 200, 300)],
+                                 (60., 0., 0.), (600., 0., 0.), flags=flags or [8]*4, edges=edges)
+        fixture.values['gActor'][0][fixture.values['ACT_PATH_CURSOR']] = 1
+        fixture.runtime.bind('anpc_nav_area_at', lambda *args: 0)
+        fixture.runtime.bind('anpc_nav_area_segment', lambda *args: True)
+        return fixture
+
+    def test_small_portals_are_skipped_on_a_clear_covered_route(self):
+        fixture = self.portal_route()
+        fixture.runtime.call('npc_follow_route', 0, 0.05, 10.)
+        self.assertEqual(fixture.moves[0][1], (300., 0., 0.))
+        self.assertEqual(fixture.values['gActor'][0][fixture.values['ACT_PATH_CURSOR']], 3)
+        self.assertIn(((60., 0., 0.), (300., 0., 0.), False), fixture.proofs)
+
+    def test_small_portal_shortcut_stops_at_real_jump_takeoff(self):
+        fixture = self.portal_route(edges={(0, 1): 0, (1, 2): 0, (2, 3): 1})
+        fixture.runtime.call('npc_follow_route', 0, 0.05, 10.)
+        self.assertEqual(fixture.moves[0][1], (200., 0., 0.))
+        self.assertEqual(fixture.values['gActor'][0][fixture.values['ACT_PATH_CURSOR']], 2)
+
+    def test_portal_shortcut_requires_clear_hull_coverage_and_same_posture(self):
+        for restriction in ('hull', 'coverage', 'posture'):
+            fixture = self.portal_route(flags=[8, 8, 9, 9] if restriction == 'posture' else None)
+            if restriction == 'hull':
+                fixture.walkable = False
+            if restriction == 'coverage':
+                fixture.runtime.bind('anpc_nav_area_segment', lambda a, b, caps: b[0] <= 100.)
+            fixture.runtime.call('npc_follow_route', 0, 0.05, 10.)
+            with self.subTest(restriction=restriction):
+                self.assertEqual(fixture.moves[0][1], (100., 0., 0.))
+                self.assertEqual(fixture.values['gActor'][0][fixture.values['ACT_PATH_CURSOR']], 1)
+
     def test_ready_replacement_is_consumed_before_moving_target_requests_again(self):
         fixture = PursuitFixture([(0., 0., 0.), (100., 0., 0.)],
                                  (0., 0., 0.), (600., 0., 0.), replacement=True)

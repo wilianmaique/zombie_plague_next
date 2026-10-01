@@ -1,12 +1,14 @@
 # Verificação e testes
 
-## Revisão 1.5: fronteiras das áreas e perseguição — 01/10/2026
+## Revisão 1.5.1: passagens compartilhadas e perseguição — 01/10/2026
 
-Passaram **93 testes Python** e a conferência estrutural de **27 fontes Pawn**, sem compilar. Os 33 novos testes em `test_boundary_routes.py` usam `pawn_test_runtime.py` para interpretar o controle de fluxo de funções selecionadas das fontes instaladas, com doubles determinísticos de arrays, grafo e colisão. O interpretador rejeita sintaxe não suportada: não é compilador, máquina virtual AMXX nem simulador HLDS, e não confere todas as regras de tipos/aritmética Pawn. Os demais testes mantêm as verificações independentes de arquivos/geometria e condições de fonte.
+Passaram **107 testes Python** e a conferência estrutural de **27 fontes Pawn**, sem compilar. Os 47 testes em `test_boundary_routes.py` usam `pawn_test_runtime.py` para interpretar o controle de fluxo de funções selecionadas das fontes instaladas, com doubles determinísticos de arrays, grafo e colisão. O interpretador rejeita sintaxe não suportada: não é compilador, máquina virtual AMXX nem simulador HLDS, e não confere todas as regras de tipos/aritmética Pawn. Os demais testes mantêm as verificações independentes de arquivos/geometria e condições de fonte.
 
-As novas regressões cobrem compactação repetida, raio 8 comum, portais absorvidos, ligação dirigida nas bordas, rampas, pisos sobrepostos, preservação de salto e capacidade sem desconexão. Também exercitam a busca entre múltiplos extremos, custo dos conectores, prova orientada ao alvo, orçamento compartilhado, publicação sem apagar o caminho anterior, pedido entre IDs após pedido entre posições, remapeamento de checkpoint sem nós, perseguição final distante, espera por porta, destino durante pulo/escada, troca de rota sem voltar ao início ou dispensar decolagem, consumo de resultado antes do próximo pedido e espera de passagem respeitada. Trinta grafos dirigidos aleatórios comparam o custo do A* da fonte com Dijkstra independente.
+As 14 regressões desta revisão cobrem 32 pontos de travessia reduzidos a um portal entre dois blocos, reutilização desse portal com remapeamento nos checkpoints, recusa de marcador próximo que pertence a só um bloco, cadeias de áreas, componente em L com segmento fora dos certificados, saída na borda externa, queda real entre pisos, DROP apoiado em rampa, conectividade separada por postura, reserva antecipada dos portais, colisões de hash e atalhos de portais de raio 8 com proteção de decolagem, postura, cobertura e hull.
 
-Recompile manualmente os seis plugins com as includes atuais de `ANPC_INCLUDE_DIR` e carregue-os juntos. A API de finalização mudou e o core utiliza novas natives de posição/revisão do caminho. `ANPC_NAV 4` e `ANPC_SCAN 2` permanecem; a política do journal é `boundary-regions-team-3`. Use `anpc_scan start new` para avaliar o novo grafo sem amostras anteriores.
+As regressões da revisão 1.5 continuam cobrindo compactação repetida, raio 8 comum, portais absorvidos, ligação dirigida nas bordas, rampas, pisos sobrepostos, preservação de salto e capacidade sem desconexão. Também exercitam a busca entre múltiplos extremos, custo dos conectores, prova orientada ao alvo, orçamento compartilhado, publicação sem apagar o caminho anterior, pedido entre IDs após pedido entre posições, remapeamento de checkpoint sem nós, perseguição final distante, espera por porta, destino durante pulo/escada, troca de rota sem voltar ao início ou dispensar decolagem, consumo de resultado antes do próximo pedido e espera de passagem respeitada. Trinta grafos dirigidos aleatórios comparam o custo do A* da fonte com Dijkstra independente.
+
+Recompile manualmente os seis plugins com as includes atuais de `ANPC_INCLUDE_DIR` e carregue-os juntos. A API de finalização da revisão 1.5 e as natives de posição/revisão do caminho permanecem. `ANPC_NAV 4` e `ANPC_SCAN 2` permanecem; a política do journal é `boundary-regions-team-4`. Use `anpc_scan start new` para avaliar o novo grafo sem amostras anteriores.
 
 ```powershell
 rtk proxy python -B -m unittest discover -s addon/advanced_npc/tools -p "test_*.py"
@@ -16,10 +18,14 @@ rtk proxy python -B addon/advanced_npc/tools/check_nav_file.py "CAMINHO_DO_MAPA/
 
 | Teste manual atual | Resultado esperado |
 | --- | --- |
-| Sala certificada antes/depois de `save`, `stop` e checkpoint automático | Interiores resolvidos removidos; travessias WALK nas bordas, sem beams verdes internos comuns |
+| Sala certificada antes/depois de `save`, `stop` e checkpoint automático | Interiores resolvidos removidos; um portal por borda compartilhada válida, sem pontos por travessia comum |
+| Muitas travessias entre os mesmos blocos, depois dois checkpoints | Portais canônicos reutilizados; agrupamentos redundantes retirados; exploração já concluída conservada |
+| Caminhada por vários blocos e saída para trecho ainda não certificado | Cruzar livremente o conjunto; contato físico na borda externa, preservando sua direção |
+| Descer rampa contínua, depois tentar queda real sobre lacuna | Rampa usa caminhada comprovada; queda real mantém pontos, direção e ação física |
+| NPC segue portais próximos de raio 8 até um salto ou passagem agachada | Dispensar pontos intermediários com cobertura/hull; manter decolagem e mudança de postura |
 | Checkpoint incompleto com quatro scouts, depois pausa/retomada | Fronteiras pendentes e posições necessárias conservadas; IDs, blocos e journal coerentes; sem referências antigas |
 | Compactar novamente e recarregar o mesmo grafo | Sem recriar grupos interiores nem perder as direções físicas; portais de uniões antigas retirados |
-| Área isolada sem nós; salto/queda/escada dentro de área | Perseguição local na primeira; coordenadas e ações físicas preservadas nas demais |
+| Área isolada sem nós; salto/queda real/escada dentro de área | Perseguição local na primeira; coordenadas e ações físicas preservadas nas demais |
 | Jogador atravessa uma porta e continua andando fora da visão | Renovar entradas/saídas pelo custo da rota; usar a porta comum quando necessário; executar conector final |
 | Âncora mais próxima desconectada ou atrás de parede | Outra âncora acessível pode completar a busca; nenhuma ligação atravessa a parede |
 | Última âncora a 300 unidades do jogador em piso livre | Andar até o alvo com apoio/hull verificados, sem recalcular eternamente a mesma lista |

@@ -1,4 +1,4 @@
-# Advanced NPC 1.5
+# Advanced NPC 1.5.1
 
 NPCs por entidade para CS 1.6, com navegação A*, animações, percepção e combate. O `anpc_mapper.sma` cria de um a oito fake clients temporários, configurados por `anpc_scan_bots`, para explorar o mapa e gerar a navegação pelo próprio servidor. Esse modo usa AMXX, ReAPI, Fakemeta e Hamsandwich; não exige YaPB, Python nem um módulo próprio em C++.
 
@@ -8,7 +8,7 @@ O explorador usa a física de jogador para andar, agachar, saltar e subir escada
 
 A navegação combina retângulos de piso livre com âncoras de passagem. Quadrados de 256 a 32 unidades são validados por etapas e gravados no `.nav`; quadrados adjacentes compatíveis podem formar retângulos. O mapper dispensa pontos intermediários dentro desses interiores e reutiliza âncoras próximas somente com acesso comprovado. Bordas, quinas, rampas, saltos e escadas preservam pontos necessários. Saídas desconhecidas têm prioridade e o custo das rotas direcionadas orienta a próxima região.
 
-Em cada checkpoint, `save` ou `stop`, a equipe congela e a compactação remove amostras internas já resolvidas, inclusive pontos comuns de raio 8. Caminhadas que saem de uma área passam a usar âncoras na borda; decolagens, chegadas de saltos/quedas, escadas e fronteiras ainda em exploração preservam suas coordenadas necessárias. O desenho dispensa ligações comuns já representadas pelas áreas.
+Em cada checkpoint, `save` ou `stop`, a equipe congela e a compactação remove amostras internas já resolvidas, inclusive pontos comuns de raio 8. Blocos vizinhos com borda e apoio contínuos compartilham um portal por passagem, reutilizado nos próximos checkpoints; muitas travessias observadas na mesma borda dispensam pontos extras. Caminhadas que deixam esse conjunto usam sua borda externa. Saltos, quedas reais, escadas e fronteiras ainda em exploração preservam suas coordenadas necessárias. Uma perda breve de apoio em rampa certificada continua sendo caminhada quando chão e hull comprovam o trajeto. O NPC pode dispensar portais intermediários, inclusive de raio 8, após provar cobertura e hull, respeitando ações físicas e mudanças de postura.
 
 O zumbi planeja entre posições reais usando várias entradas e saídas acessíveis, incluindo o custo dos trechos até as âncoras. Continua andando pela rota publicada enquanto calcula outra, acompanha mudanças de região do alvo e percorre o trecho final até ele. Desvios de outros NPCs exigem apoio e passagem do hull; corredores estreitos usam prioridade estável para ceder passagem.
 
@@ -81,6 +81,6 @@ O próprio plugin grava `maps/<mapa>.nav`, `maps/<mapa>.scan` e `maps/<mapa>.sca
 
 Veja [a análise e as melhorias desta revisão](docs/SCAN_REVIEW.md), [o funcionamento e os limites do explorador](docs/AUTOMAPPER.md), [a análise das técnicas de cobertura](docs/MAPPING_STRATEGY.md), [o editor de navegação](docs/NAVIGATION.md), [a API](docs/API.md) e [os cenários para teste manual](docs/TESTING.md).
 
-Os binários existentes pertencem a revisões anteriores. A suíte de 93 testes Python e a conferência estrutural de 27 fontes Pawn passaram. Os novos testes interpretam o controle de fluxo de funções Pawn selecionadas com doubles e comparam a busca com Dijkstra independente; não executam AMXX nem física GoldSrc. Compilação manual e validação no HLDS ficam para o usuário, conforme [TESTING.md](docs/TESTING.md). Tempo, cobertura e custo adicional precisam ser medidos no servidor.
+Os binários existentes pertencem a revisões anteriores. A suíte de 107 testes Python e a conferência estrutural de 27 fontes Pawn passaram. Os testes de fluxo interpretam funções Pawn selecionadas com doubles e comparam a busca com Dijkstra independente; não executam AMXX nem física GoldSrc. Compilação manual e validação no HLDS ficam para o usuário, conforme [TESTING.md](docs/TESTING.md). Tempo, cobertura e custo adicional precisam ser medidos no servidor.
 
 Alinhamentos mantêm uma âncora fixa e o prazo original da tentativa. Rotas conhecidas dispensam novas amostras periódicas e podem encurtar trechos com cobertura contínua. Blocos, sementes, escadas, volumes e arestas físicas usam `Array:`; heaps e tabelas densas de busca continuam indexados diretamente. O `.nav` permanece textual, com um rodapé obrigatório de contagens que detecta gravações truncadas.
