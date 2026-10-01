@@ -5,7 +5,7 @@
 - Pesquisa das interfaces do YaPB e ReAPI/AMXX, com consulta às includes do ambiente configurado do projeto.
 - Leitura do modelo studio v10 `zpn_z_default.mdl`: 111 sequências; confirmação dos sete labels usados pelo tipo inicial.
 - Conferência estática das chamadas, registro dos natives próprios e integridade de delimitadores nas fontes.
-- Compilação dos seis plugins, incluindo `anpc_mapper`, com `D:\GOOGLE DRIVE\Counter-Strike\Ferramentas\compiler\amxxpc.exe` (AMXX 1.10.0.5467), usando as includes de `D:\GOOGLE DRIVE\Counter-Strike\Ferramentas\compiler\include`: zero erros e zero avisos.
+- Compilação dos seis plugins, incluindo `anpc_mapper`, com `amxxpc.exe` (AMXX 1.10.0.5467), usando as includes externas do ambiente local: zero erros e zero avisos.
 - Correção da criação do fake client: `set_entvar` e as funções de jogador da ReAPI só são chamadas após `ClientPutInServer` e confirmação de private data. A conexão recebe o tamanho do buffer de rejeição; a rotina também registra o fake client no AMXX quando necessário e remove conexões incompletas ao liberar a sessão.
 - Correção do encerramento imediato na revisão `1.1.2`: o ReGameDLL escreve `iuser4` durante `PreThink`, invalidando o antigo marcador. A identidade agora usa vaga/`userid`, conexão, private data e estado de bot. O marcador foi removido da API e da percepção; a sessão já exige zero NPCs e bloqueia sua criação. Os encerramentos registram motivo/etapa e a perda de identidade inclui seus campos de diagnóstico. Os seis plugins foram recompilados com zero erros e zero avisos; a validação no jogo dessa revisão permanece manual.
 - Correção do parâmetro reservado `state` na rotina de troca de estado, dos índices sem tag `AnpcAnimation` e da indentação na include local `advanced_npc/movement.inc`.
@@ -13,6 +13,8 @@
 - Importação de um grafo real da base oficial do YaPB para o BSP `de_dust2` local, com tamanho correspondente e MD5 gravado.
 
 A compilação foi executada por solicitação explícita do usuário. Os seis binários `.amxx` e seus logs estão em `compiled/advanced_npc/`. A validação em execução do scanner permanece pendente para os testes manuais do usuário; a tentativa de preparar um HLDS isolado foi encerrada a pedido dele. Compilar sem erros não valida física, carregamento, cobertura nem combate no HLDS. Nenhuma integração do scanner foi mantida em `core/zpn_main.sma`.
+
+Para localizar o compilador e as includes desta máquina, consulte `AMXX_COMPILER`, `AMXX_INCLUDE_DIR` e `ANPC_INCLUDE_DIR` em `addon/advanced_npc/LOCAL.md`. A [preparação do ambiente local](../README.md#ambiente-local) e o [modelo público](../LOCAL.example.md) descrevem como preencher esse arquivo em outra máquina. A compilação continua manual e só deve ser executada pelo Codex quando solicitada explicitamente pelo usuário.
 
 ## Visualização de navegação: validação manual
 

@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 *.tmp
+
+# Caminhos e informações específicos da máquina.
+/LOCAL.md

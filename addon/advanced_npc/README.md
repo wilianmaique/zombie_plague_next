@@ -10,6 +10,18 @@ Caixas recebem candidatos de aterrissagem perto da face encontrada, evitando mir
 
 Rampas usam apoio medido pelo hull inteiro e acompanhamento do relevo, com alvos longos e nós pelo espaçamento XY. Mudanças de inclinação preservam âncoras antes de cristas. O provedor usa as mesmas consultas, e o NPC tenta passadas menores no mesmo Think antes dos desvios laterais; há tratamento restrito para o teste de apoio em rampas diagonais.
 
+## Ambiente local
+
+Os caminhos do compilador e das includes ficam em `LOCAL.md`, nesta pasta. Esse arquivo é ignorado pelo Git. O [modelo público](LOCAL.example.md) explica os campos sem expor caminhos pessoais.
+
+Para configurar outra máquina, copie o modelo a partir da raiz do repositório, somente se `LOCAL.md` ainda não existir:
+
+```powershell
+Copy-Item .\addon\advanced_npc\LOCAL.example.md .\addon\advanced_npc\LOCAL.md
+```
+
+Preencha `AMXX_COMPILER`, `AMXX_INCLUDE_DIR` e `ANPC_INCLUDE_DIR` com os caminhos dessa máquina. A documentação usa esses nomes para se referir aos caminhos registrados no arquivo local.
+
 ## Instalação
 
 1. Copie os seis `.amxx` de `compiled/advanced_npc/` para `cstrike/addons/amxmodx/plugins/advanced_npc/`.
@@ -17,7 +29,7 @@ Rampas usam apoio medido pelo hull inteiro e acompanhamento do relevo, com alvos
 3. Copie `configs/advanced_npc.cfg` para `cstrike/addons/amxmodx/configs/advanced_npc/advanced_npc.cfg`. Os arquivos de mapa ficam na subpasta `maps/`.
 4. Instale o modelo `models/player/zpn_z_default/zpn_z_default.mdl` já usado pelo projeto para o tipo de NPC padrão. O explorador usa um modelo de jogador do CS.
 
-As includes permanecem em `D:\GOOGLE DRIVE\Counter-Strike\Ferramentas\compiler\include\advanced_npc`, incluindo a nova `navigation_areas.inc`. Recompile os consumidores alterados junto com o provedor para usar as consultas de áreas e a assinatura atual de `anpc_nav_find_near`.
+As includes permanecem em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de `AMXX_INCLUDE_DIR` indicada em `LOCAL.md`, incluindo a nova `navigation_areas.inc`. Edite-as nesse diretório externo, sem duplicá-las no repositório. Recompile os consumidores alterados junto com o provedor para usar as consultas de áreas e a assinatura atual de `anpc_nav_find_near`.
 
 `core/zpn_main.sma` permanece sem integração do scanner. Faça a geração em uma sessão de manutenção, sem modos de jogo ou outros plugins controlando a equipe, a classe ou a vida do bot.
 

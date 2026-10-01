@@ -1,6 +1,6 @@
 # API pública
 
-As includes do projeto advanced_npc estão em `D:\GOOGLE DRIVE\Counter-Strike\Ferramentas\compiler\include\advanced_npc` se precisar, editar elas lá! e não adicionar includes aqui.
+As includes do projeto ficam em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de `AMXX_INCLUDE_DIR`. Consulte os caminhos em `addon/advanced_npc/LOCAL.md`; para configurar outra máquina, siga a [preparação do ambiente local](../README.md#ambiente-local) e o [modelo público](../LOCAL.example.md). Edite as includes nesse diretório externo, sem adicioná-las ou duplicá-las neste repositório.
 
 ## Tipos
 

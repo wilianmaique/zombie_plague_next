@@ -22,6 +22,7 @@
 new gTrace, gBeamSprite, gAutoSpawn, gRecorder, gRecordedNode = -1
 new gMap[64], gBspSize, gSpawnPath[256], gBspHash[33]
 new bool:gShow[33]
+new xMsgSyncANPC
 
 public plugin_precache()
 {
@@ -55,6 +56,8 @@ public plugin_init()
 	formatex(bsp, charsmax(bsp), "maps/%s.bsp", gMap)
 	gBspSize = file_size(bsp)
 	if (gBspSize > 0) hash_file(bsp, Hash_Md5, gBspHash, charsmax(gBspHash))
+
+	xMsgSyncANPC = CreateHudSyncObj()
 }
 
 public plugin_cfg()
@@ -448,8 +451,9 @@ public show_nodes(const task)
 			links_shown++
 		}
 	}
-	set_hudmessage(80, 220, 80, -1.0, 0.65, 0, 0.0, 0.6, 0.0, 0.0)
-	show_hudmessage(id, "ANPC: nearest shown node %d | total %d | areas %d/%d", nearest, count, areas_shown, anpc_nav_area_count())
+
+	set_hudmessage(0, 255, 255, 0.68, 0.12, 0, 0.0, 0.0, 0.1, 0.1)
+	ShowSyncHudMsg(id, xMsgSyncANPC, "ANPC: nearest shown node %d^ntotal %d^nareas %d/%d", nearest, count, areas_shown, anpc_nav_area_count())
 }
 
 public round_freeze_end_post()
