@@ -397,7 +397,11 @@ public show_nodes(const task)
 	// Select the nearest nodes in front before spending the message budget; IDs do not imply proximity.
 	for (new node = 0; node < count; node++)
 	{
-		if (!anpc_nav_node(node, point, flags, radius) || !admin_nav_in_view(eye, direction, point, distance_sq)) continue
+		if (!anpc_nav_node(node,point,flags,radius) || !admin_nav_in_view(eye,direction,point,distance_sq)) continue
+		// The scout keeps temporary discovery samples until finalization. Show the
+		// certified interior as an area; special anchors and portals stay visible.
+		if (anpc_nav_editing() && radius > 8.0 && !(flags & (ANPC_NODE_LADDER | ANPC_NODE_DISABLED | ANPC_NODE_PORTAL))
+		&& anpc_nav_area_at(point) >= 0) continue
 		new position = shown
 		while (position > 0 && distance_sq < distances[position-1]) position--
 		if (position >= NAV_SHOW_NODES) continue
@@ -411,36 +415,49 @@ public show_nodes(const task)
 		if (shown < NAV_SHOW_NODES) shown++
 	}
 	new nearest = shown ? nodes[0] : -1
-	new areas[NAV_SHOW_AREAS], areas_shown
+	// Areas are selected independently: an empty interior needs no point to draw.
+	new areas[NAV_SHOW_AREAS], Float:area_distances[NAV_SHOW_AREAS], areas_shown
+	for (new area = 0, total = anpc_nav_area_count(); area < total; area++)
+	{
+		new Float:mins[3], Float:maxs[3], Float:normal[3], area_flags
+		if (!anpc_nav_area(area,mins,maxs,normal,area_flags)) continue
+		new bool:visible, Float:closest = NAV_SHOW_RANGE*NAV_SHOW_RANGE
+		for (new sample = 0; sample < 5; sample++)
+		{
+			point[0] = sample == 4 ? (mins[0]+maxs[0])*0.5 : sample%2 ? maxs[0] : mins[0]
+			point[1] = sample == 4 ? (mins[1]+maxs[1])*0.5 : sample/2 ? maxs[1] : mins[1]
+			point[2] = mins[2]-((point[0]-mins[0])*normal[0]+(point[1]-mins[1])*normal[1])/normal[2]
+			if (admin_nav_in_view(eye,direction,point,distance_sq)) { visible = true; closest = floatmin(closest,distance_sq); }
+		}
+		if (!visible) continue
+		new position = areas_shown
+		while (position > 0 && closest < area_distances[position-1]) position--
+		if (position >= NAV_SHOW_AREAS) continue
+		for (new move = min(areas_shown,NAV_SHOW_AREAS-1); move > position; move--)
+		{ areas[move] = areas[move-1]; area_distances[move] = area_distances[move-1]; }
+		areas[position] = area; area_distances[position] = closest
+		if (areas_shown < NAV_SHOW_AREAS) areas_shown++
+	}
+	for (new index = 0; index < areas_shown; index++)
+	{
+		new Float:mins[3], Float:maxs[3], Float:normal[3], Float:corner[4][3], area_flags
+		if (!anpc_nav_area(areas[index],mins,maxs,normal,area_flags)) continue
+		for (new side = 0; side < 4; side++)
+		{
+			corner[side][0] = side == 1 || side == 2 ? maxs[0] : mins[0]
+			corner[side][1] = side >= 2 ? maxs[1] : mins[1]
+			corner[side][2] = mins[2]-((corner[side][0]-mins[0])*normal[0]+(corner[side][1]-mins[1])*normal[1])/normal[2]+NAV_SHOW_LIFT
+		}
+		for (new side = 0; side < 4; side++) admin_beam(id,corner[side],corner[(side+1)%4],40,140,255)
+	}
 	for (new index = 0; index < shown; index++)
 	{
 		new node = nodes[index]
-		if (!anpc_nav_node(node, point, flags, radius)) continue
-		new area = anpc_nav_area_at(point)
-		if (area >= 0 && areas_shown < NAV_SHOW_AREAS)
-		{
-			new bool:duplicate
-			for (new drawn = 0; drawn < areas_shown; drawn++) if (areas[drawn] == area) duplicate = true
-			if (!duplicate)
-			{
-				new Float:mins[3], Float:maxs[3], Float:corner[4][3], area_flags
-				if (anpc_nav_area(area,mins,maxs,area_flags))
-				{
-					areas[areas_shown++] = area
-					for (new side = 0; side < 4; side++)
-					{
-						corner[side][0] = side == 1 || side == 2 ? maxs[0] : mins[0]
-						corner[side][1] = side >= 2 ? maxs[1] : mins[1]
-						corner[side][2] = mins[2]+NAV_SHOW_LIFT
-					}
-					for (new side = 0; side < 4; side++) admin_beam(id,corner[side],corner[(side+1)%4],40,140,255)
-				}
-			}
-		}
+		if (!anpc_nav_node(node,point,flags,radius)) continue
 		point[2] += NAV_SHOW_LIFT
 		anpc_copy_vec(point, top)
 		top[2] += NAV_SHOW_NODE_HEIGHT
-		admin_beam(id, point, top, flags & ANPC_NODE_DISABLED ? 255 : 40, node == nearest ? 255 : 100)
+		admin_beam(id,point,top,flags & ANPC_NODE_DISABLED ? 255 : 40,node == nearest ? 255 : 100,flags & ANPC_NODE_PORTAL ? 255 : 40)
 		for (new link = 0, links = anpc_nav_link_count(node); link < links && links_shown < NAV_SHOW_LINKS; link++)
 		{
 			new to, link_flags, destination_flags, Float:destination[3], Float:velocity[3]
@@ -453,7 +470,7 @@ public show_nodes(const task)
 	}
 
 	set_hudmessage(0, 255, 255, 0.7, 0.4, 0, 0.0, 0.0, 0.2, 0.2)
-	ShowSyncHudMsg(id, xMsgSyncANPC, "ANPC: nearest shown node %d^ntotal %d^nareas %d/%d", nearest, count, areas_shown, anpc_nav_area_count())
+	ShowSyncHudMsg(id, xMsgSyncANPC, "ANPC: nearest anchor %d^n%s %d^nareas %d/%d",nearest,anpc_nav_editing() ? "scan samples" : "anchors",count,areas_shown,anpc_nav_area_count())
 }
 
 public round_freeze_end_post()

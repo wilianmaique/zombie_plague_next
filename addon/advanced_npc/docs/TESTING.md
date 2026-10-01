@@ -1,5 +1,34 @@
 # Verificação e testes
 
+## Revisão 1.3: áreas e portais — 01/10/2026
+
+Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma` com as includes externas atuais, inclusive a nova `navigation_portals.inc`. Carregue os quatro juntos. O formato é `ANPC_NAV 3` e a política do journal `ANPC_SCAN 2` é `planar-regions-1`. Não houve compilação, execução dos plugins no HLDS ou medição de FPS.
+
+- Conferência estática de 26 fontes Pawn: includes/globais, chamadas próprias e formatos/argumentos. Nenhum compilador foi invocado.
+- 21 testes Python passaram: 11 do importador atualizado e 10 de geometria sobre BSPs sintéticos. Cobrem plano inclinado, coordenadas negativas, teto baixo, postura, buraco entre extremos válidos, parede/subdivisão e separação de pisos. Os hulls sintéticos são comparados com interseções analíticas independentes.
+- O verificador offline leu o BSP local `de_dust2`, MD5 `74d6d81b4b818b691fafd2e56a5ae362`. Entre 623 sementes de superfícies caminháveis, 125 tinham inclinação rejeitada pela regra horizontal anterior. O modelo encontrou 573 blocos válidos inclinados. O teste inclui somente a geometria estática: não executa Pawn, não inclui entidades/plugins e não mede a quantidade de áreas/portais que o scan real produzirá após união.
+
+```powershell
+python -B -m unittest discover -s addon/advanced_npc/tools -p "test_*.py"
+python -B addon/advanced_npc/tools/check_nav_regions.py "CAMINHO_DO_SERVIDOR/cstrike/maps/de_dust2.bsp"
+```
+
+| Teste manual no servidor | Resultado esperado |
+| --- | --- |
+| `anpc_scan start new` no `de_dust2`, com `anpc_nav_show 1` e `anpc_scan status` | Áreas em terreno livre e rampas uniformes; razões de rejeição disponíveis |
+| Teto de 80 unidades e passagem que exige agachar | Área em pé no primeiro caso; área agachada no segundo |
+| Caixa, parede, buraco, trigger ou degrau dentro do quadrado | Subdivide ou mantém trecho detalhado; não certifica uma passagem através do obstáculo |
+| Área sem pontos e câmera olhando para ela | Contorno azul aparece; `areas` independe dos nós desenhados |
+| Sala convexa conectada a dois corredores | Após conclusão, portais/âncoras das entradas; NPC atravessa o interior sem cadeia de pontos |
+| Fronteira entre regiões e entre pisos sobrepostos | Porta geométrica só com borda e apoio contínuos; não liga apenas por quina ou XY |
+| Esperar conclusão automática | Log informa amostras removidas/portais; arquivo e journal usam IDs compactados |
+| Salvar/parar antes de concluir e depois retomar | Mantém amostras e memória de exploração, sem compactação prematura |
+| Continuar um scan concluído, inclusive com regiões sem nós | Revalida planos das áreas anteriores antes da exploração e preserva regiões válidas |
+| Nascer e perseguir em uma região isolada sem nós | Criação e perseguição local funcionam, com postura e colisão verificadas |
+| Saltos, quedas, escadas, caixa quebrada e bloqueio temporário de passagem | Mantém ações físicas, precisão e busca alternativa; não atravessa sólidos |
+
+As verificações geométricas e de fonte não substituem esses testes de execução.
+
 ## Histórico das revisões anteriores em 30/09/2026
 
 - Pesquisa das interfaces do YaPB e ReAPI/AMXX, com consulta às includes do ambiente configurado do projeto.
@@ -24,8 +53,8 @@ Foram conferidos os delimitadores da fonte, os campos de `TE_BEAMPOINTS`, as gua
 
 | Cenário | Resultado esperado |
 | --- | --- |
-| Ativar `anpc_nav_show 1` com nós à frente e atrás | Apenas nós no cone frontal; largura atual 10, ligações acima do piso e até oito retângulos azuis associados aos pontos |
-| Girar 180 graus sem andar | Seleção acompanha a nova direção na atualização seguinte, em até 0,5 segundo |
+| Ativar `anpc_nav_show 1` com nós à frente e atrás | Apenas nós no cone frontal; largura atual 10, ligações acima do piso e até oito retângulos azuis selecionados independentemente dos pontos |
+| Girar 180 graus sem andar | Seleção acompanha a nova direção na atualização seguinte, em até 0,2 segundo |
 | Olhar para cima/baixo ou agachar | Filtro acompanha pitch e posição dos olhos, sem inverter a direção |
 | Mais de 32 nós à frente, com IDs em ordem diferente das distâncias | Os 32 nós mais próximos da câmera ocupam o limite; HUD/destaque correspondem ao primeiro |
 | Morrer, entrar em spectator e depois renascer com o desenho ligado | Desenho continua e troca a referência de visão automaticamente |
@@ -34,10 +63,10 @@ Foram conferidos os delimitadores da fonte, os campos de `TE_BEAMPOINTS`, as gua
 | Trocar o jogador observado ou perder o alvo | Atualiza a referência na próxima passagem, sem consultar jogador desconectado |
 | Perseguição livre/travada perto de paredes | Aproxima a posição padrão de perseguição, sem projetar o recuo através do mapa; alterações de distância/autodirector seguem a limitação descrita em `NAVIGATION.md` |
 | Usar as câmeras de entidade do addon, inclusive frontal e superior | Desenho segue posição/ângulos da entidade de câmera |
-| Grafo vazio ou nenhum nó no cone/alcance | Sem beams; HUD mostra nó `-1` e total coerente |
+| Nenhuma âncora no cone/alcance | HUD mostra `-1`; áreas visíveis continuam desenhadas independentemente |
 | Desativar com `anpc_nav_show 0` ou desconectar e reutilizar a vaga | Atualizações encerradas; beams existentes expiram em 0,6 segundo; novo jogador começa com desenho desligado |
 
-## Scanner: validação manual
+## Histórico das conferências do scanner 1.2
 
 A revisão 1.2 altera mapper, provedor, núcleo e administrador, com as includes externas configuradas no projeto e a nova `navigation_areas.inc`. Recompile manualmente `anpc_mapper.sma`, `anpc_navigation.sma`, `anpc_core.sma` e `anpc_admin.sma`. Não houve compilação, execução no HLDS ou medição de FPS nesta revisão. O `.nav` atual é `ANPC_NAV 2`; regenere mapas antigos ou reimporte os grafos YaPB. A memória permanece `ANPC_SCAN 2`, com política atual `sparse-walk-1`. Para substituir os pontos densos anteriores, comece com `anpc_scan start new`.
 

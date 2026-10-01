@@ -14,6 +14,18 @@ new gLinkTo[ANPC_MAX_NODES][ANPC_MAX_LINKS], gLinkFlags[ANPC_MAX_NODES][ANPC_MAX
 new Float:gLinkVelocity[ANPC_MAX_NODES][ANPC_MAX_LINKS][3]
 new Float:gLinkCost[ANPC_MAX_NODES][ANPC_MAX_LINKS], Float:gLinkBlocked[ANPC_MAX_NODES][ANPC_MAX_LINKS]
 new gBucketHead[ANPC_HASH_BUCKETS], gBucketNext[ANPC_MAX_NODES]
+#define NAV_NODE_AREAS 8
+#define NAV_BLOCKED_PAIRS 128
+#define NAV_NEIGHBOR_STRIDE (ANPC_MAX_NODES*NAV_NODE_AREAS+2)
+
+new Float:gAreaNormal[ANPC_MAX_AREAS][3]
+new gAreaNodeHead[ANPC_MAX_AREAS], gNodeAreaCount[ANPC_MAX_NODES]
+new gNodeArea[ANPC_MAX_NODES][NAV_NODE_AREAS], gNodeAreaNext[ANPC_MAX_NODES][NAV_NODE_AREAS]
+new bool:gRegionsReady, gRegionPhase, gRegionCursor, gRegionLink, gRegionOriginal, gRegionKept, gRegionPortals, gRegionEdges
+new gRegionBucket, gRegionNeighbor, bool:gRegionKeep[ANPC_MAX_NODES], gRegionMap[ANPC_MAX_NODES]
+new gRegionPortalLimit
+new gPairBlockedFrom[NAV_BLOCKED_PAIRS], gPairBlockedTo[NAV_BLOCKED_PAIRS], Float:gPairBlockedUntil[NAV_BLOCKED_PAIRS]
+new gJobCurrent[ANPC_SEARCH_JOBS], gJobNeighborCursor[ANPC_SEARCH_JOBS]
 new Float:gAreaMins[ANPC_MAX_AREAS][3], Float:gAreaMaxs[ANPC_MAX_AREAS][3]
 new gAreaFlags[ANPC_MAX_AREAS], gAreaNext[ANPC_MAX_AREAS], gAreaHead[ANPC_HASH_BUCKETS], gAreaCount
 new gNodeCount, gRevision, gChangedForward, gTrace, gExpansions, gFrameForward
@@ -36,6 +48,7 @@ new gQueueCursor, gJobCursor, gReversePath[ANPC_MAX_NODES]
 #include "advanced_npc/navigation_areas"
 #include "advanced_npc/navigation_graph"
 #include "advanced_npc/navigation_search"
+#include "advanced_npc/navigation_portals"
 
 public plugin_natives()
 {
@@ -51,8 +64,11 @@ public plugin_natives()
 	register_native("anpc_nav_area_count", "native_area_count")
 	register_native("anpc_nav_area", "native_area")
 	register_native("anpc_nav_area_at", "native_area_at")
+	register_native("anpc_nav_area_segment", "native_area_segment")
 	register_native("anpc_nav_area_add", "native_area_add")
 	register_native("anpc_nav_area_clear", "native_area_clear")
+	register_native("anpc_nav_area_finish_step", "native_area_finish_step")
+	register_native("anpc_nav_neighbor_next", "native_neighbor_next")
 	register_native("anpc_nav_nearest", "native_nearest")
 	register_native("anpc_nav_walkable", "native_walkable")
 	register_native("anpc_nav_link", "native_link")
@@ -85,7 +101,7 @@ public plugin_init()
 	bind_pcvar_float(get_cvar_pointer("sv_stepsize"), gStepSize)
 	gLadders = ArrayCreate(1)
 	gChangedForward = CreateMultiForward("anpc_nav_changed", ET_IGNORE, FP_CELL)
-	bind_pcvar_num(create_cvar("anpc_nav_expansions", "192", FCVAR_NONE, "A* node expansions per server frame", true, 16.0, true, 1024.0), gExpansions)
+	bind_pcvar_num(create_cvar("anpc_nav_expansions", "192", FCVAR_NONE, "A* bounded search operations per server frame", true, 16.0, true, 1024.0), gExpansions)
 	for (new job = 0; job < ANPC_SEARCH_JOBS; job++)
 		gJobRoute[job] = -1
 	for (new route = 0; route < ANPC_MAX_ACTORS; route++)
@@ -143,6 +159,7 @@ public bool:native_begin_edit(const plugin)
 public bool:native_end_edit(const plugin)
 {
 	if (!gTrace || gEditOwner != plugin+1) return false
+	if (!gRegionsReady) nav_build_area_membership()
 	gEditOwner = 0
 	if (gEditDirty) nav_invalidate()
 	gEditDirty = false
@@ -184,7 +201,8 @@ public bool:native_area()
 	if (!(0 <= area < gAreaCount)) return false
 	set_array_f(2, gAreaMins[area], 3)
 	set_array_f(3, gAreaMaxs[area], 3)
-	set_param_byref(4, gAreaFlags[area])
+	set_array_f(4, gAreaNormal[area], 3)
+	set_param_byref(5, gAreaFlags[area])
 	return true
 }
 
@@ -195,13 +213,19 @@ public native_area_at()
 	return nav_area_at(feet, get_param(2))
 }
 
+public bool:native_area_segment()
+{
+	new Float:from[3], Float:to[3]
+	get_array_f(1,from,3); get_array_f(2,to,3)
+	return nav_area_segment(from,to,get_param(3))
+}
+
 public native_area_add(const plugin)
 {
 	if (!nav_edit_allowed(plugin) || gEditOwner != plugin+1) return -1
-	new Float:mins[3], Float:maxs[3]
-	get_array_f(1, mins, 3)
-	get_array_f(2, maxs, 3)
-	new area = nav_add_area(mins, maxs, get_param(3), true)
+	new Float:mins[3], Float:maxs[3], Float:normal[3]
+	get_array_f(1,mins,3); get_array_f(2,maxs,3); get_array_f(3,normal,3)
+	new area = nav_add_area(mins,maxs,normal,get_param(4),true)
 	if (area >= 0) nav_changed()
 	return area
 }
@@ -233,20 +257,53 @@ public bool:native_walkable()
 
 public bool:native_link()
 {
-	new from = get_param(1), link = nav_find_link(from, get_param(2))
-	if (link < 0 || gLinkBlocked[from][link] > get_gametime()) return false
-	set_param_byref(3, gLinkFlags[from][link])
-	set_array_f(4, gLinkVelocity[from][link], 3)
+	new from = get_param(1), to = get_param(2), link = nav_find_link(from,to)
+	if (from == to) return false
+	if (link >= 0)
+	{
+		if (gLinkBlocked[from][link] > get_gametime()) return false
+		set_param_byref(3,gLinkFlags[from][link])
+		set_array_f(4,gLinkVelocity[from][link],3)
+		return true
+	}
+	if (!gRegionsReady || nav_common_area(from,to) < 0 || nav_pair_blocked(from,to,get_gametime())) return false
+	new Float:zero[3]
+	set_param_byref(3,0); set_array_f(4,zero,3)
 	return true
 }
 
 public bool:native_block_link(const plugin)
 {
 	if (!nav_edit_allowed(plugin)) return false
-	new from = get_param(1), link = nav_find_link(from, get_param(2))
-	if (link < 0) return false
-	gLinkBlocked[from][link] = get_gametime() + floatclamp(get_param_f(3), 0.1, 10.0)
+	new from = get_param(1), to = get_param(2), link = nav_find_link(from,to)
+	if (from == to) return false
+	new Float:until = get_gametime()+floatclamp(get_param_f(3),0.1,10.0)
+	if (link >= 0) { gLinkBlocked[from][link] = until; return true; }
+	if (!gRegionsReady || nav_common_area(from,to) < 0) return false
+	new slot = nav_pair_slot(from,to)
+	gPairBlockedFrom[slot] = from; gPairBlockedTo[slot] = to; gPairBlockedUntil[slot] = until
 	return true
+}
+
+public AnpcNeighborStatus:native_neighbor_next()
+{
+	new cursor = get_param_byref(2), destination, flags, Float:cost
+	new AnpcNeighborStatus:result = nav_next_neighbor(get_param(1),cursor,destination,flags,cost,get_param(6),get_gametime())
+	set_param_byref(2,cursor)
+	if (result == ANPC_NEIGHBOR_EDGE)
+	{ set_param_byref(3,destination); set_param_byref(4,flags); set_float_byref(5,cost); }
+	return result
+}
+
+public native_area_finish_step(const plugin)
+{
+	if (!gTrace || gEditOwner != plugin+1) return -1
+	if (!nav_region_step()) return 0
+	set_array(1,gRegionMap,ANPC_MAX_NODES)
+	set_param_byref(2,gRegionOriginal-gRegionKept); set_param_byref(3,gRegionPortals)
+	set_param_byref(4,gRegionEdges)
+	set_param_byref(5,gRegionPortalLimit)
+	return 1
 }
 
 public native_link_count()
@@ -289,7 +346,7 @@ public native_add(const plugin)
 	new Float:feet[3]
 	get_array_f(1, feet, 3)
 	new node = nav_add_node(feet, get_param(2), get_param_f(3))
-	if (node >= 0) nav_changed()
+	if (node >= 0) { if (gRegionsReady) nav_attach_node(node); nav_changed(); }
 	return node
 }
 
@@ -299,6 +356,7 @@ public bool:native_set_flags(const plugin)
 	new node = get_param(1), flags = get_param(2)
 	if (!nav_valid_node(node) || (flags & ~ANPC_NODE_FLAGS)) return false
 	gNodeFlags[node] = flags
+	nav_build_area_membership()
 	nav_changed()
 	return true
 }

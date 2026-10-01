@@ -1,6 +1,8 @@
-# Advanced NPC 1.2
+# Advanced NPC 1.3
 
 NPCs por entidade para CS 1.6, com navegação A*, animações, percepção e combate. O novo `anpc_mapper.sma` cria um fake client temporário para explorar o mapa e gerar a navegação pelo próprio servidor. Esse modo usa AMXX, ReAPI, Fakemeta e Hamsandwich; não exige YaPB, Python nem um módulo próprio em C++.
+
+Áreas retangulares representam chão plano ou rampas uniformes, com espaço verificado para o hull. O NPC navega entre portais e transições; o interior certificado dispensa uma malha de pontos. O HUD desenha as áreas mesmo quando não há nós dentro delas.
 
 O explorador usa a física de jogador para andar, agachar, saltar e subir escadas. As travessias geram conexões após movimento real. Dentro de piso estático plano validado, a mesma prova permite acrescentar a caminhada inversa sem repetir o percurso; saltos, quedas, escadas e regiões irregulares continuam exigindo testes separados da volta.
 
@@ -29,7 +31,7 @@ Preencha `AMXX_COMPILER`, `AMXX_INCLUDE_DIR` e `ANPC_INCLUDE_DIR` com os caminho
 3. Copie `configs/advanced_npc.cfg` para `cstrike/addons/amxmodx/configs/advanced_npc/advanced_npc.cfg`. Os arquivos de mapa ficam na subpasta `maps/`.
 4. Instale o modelo `models/player/zpn_z_default/zpn_z_default.mdl` já usado pelo projeto para o tipo de NPC padrão. O explorador usa um modelo de jogador do CS.
 
-As includes permanecem em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de `AMXX_INCLUDE_DIR` indicada em `LOCAL.md`, incluindo a nova `navigation_areas.inc`. Edite-as nesse diretório externo, sem duplicá-las no repositório. Recompile os consumidores alterados junto com o provedor para usar as consultas de áreas e a assinatura atual de `anpc_nav_find_near`.
+As includes permanecem em `ANPC_INCLUDE_DIR`, a subpasta `advanced_npc` de `AMXX_INCLUDE_DIR` indicada em `LOCAL.md`, incluindo `navigation_areas.inc` e `navigation_portals.inc`. Edite-as nesse diretório externo, sem duplicá-las no repositório. Recompile os consumidores alterados junto com o provedor para usar as consultas de áreas e a assinatura atual de `anpc_nav_find_near`.
 
 `core/zpn_main.sma` permanece sem integração do scanner. Faça a geração em uma sessão de manutenção, sem modos de jogo ou outros plugins controlando a equipe, a classe ou a vida do bot.
 
@@ -44,7 +46,7 @@ anpc_scan start new
 anpc_scan status
 ```
 
-Aguarde a remoção dos NPCs antes de iniciar. `start new` começa um grafo vazio em memória. A navegação anterior só é substituída ao salvar um checkpoint, com backup `.bak`. Esta revisão usa `ANPC_NAV 2`: gere novamente mapas antigos ou reimporte seus grafos YaPB com o importador atualizado. Para substituir os muitos pontos de um scan anterior, use `start new`; continuar um grafo não remove seus IDs existentes.
+Aguarde a remoção dos NPCs antes de iniciar. `start new` começa um grafo vazio em memória. A navegação anterior só é substituída ao salvar um checkpoint, com backup `.bak`. Esta revisão usa `ANPC_NAV 3`: gere novamente mapas antigos ou reimporte seus grafos YaPB com o importador atualizado. Use `start new` para medir a nova geração de áreas sem os pontos anteriores. Checkpoints preservam IDs de exploração; quando o scan esgota os candidatos, remove amostras comuns do interior certificado e gera portais nas bordas compartilhadas. Saltos, escadas e trechos irregulares mantêm suas âncoras.
 
 O explorador anda sozinho. Para observar pelo cliente de um administrador com `ADMIN_RCON`:
 

@@ -29,11 +29,9 @@ Flags de agachamento e escada são convertidas. Saltos preservam a referência d
 
 Pontos com `Button`, `Lift` e `DoubleJump` ficam desabilitados. Essas ações dependem de lógica própria e não devem ser tratadas como uma caminhada comum. Flags táticas, de equipe e de objetivos de bots não limitam o deslocamento do NPC.
 
-## Exemplo fornecido
+## Referência para de_dust2
 
-`configs/maps/de_dust2.nav` foi convertido de [de_dust2.graph](https://github.com/yapb/graph/blob/19b802d42fbdadabd3205fb767c8ea59d976a7de/graph/de_dust2.graph), autor `$_Vladislav`, usando o BSP encontrado no servidor local. Tem 1.238 nós e 5.939 conexões direcionadas. O relatório acompanha o arquivo.
-
-Reimporte esse exemplo com a ferramenta atual para obter `ANPC_NAV 2`. Grafos YaPB fornecem nós e conexões, sem retângulos certificados; esses são gerados pelo mapper no servidor. Os saltos e descidas listados no relatório ainda exigem validação física no jogo. O BSP não é distribuído com este pacote. Uma versão diferente do mapa exige uma nova importação.
+O [grafo de_dust2 do YaPB](https://github.com/yapb/graph/blob/19b802d42fbdadabd3205fb767c8ea59d976a7de/graph/de_dust2.graph) pode ser importado com o BSP exato do servidor. O importador atual gera `ANPC_NAV 3`; grafos YaPB fornecem pontos e conexões, sem áreas certificadas. Para obter áreas e portais, execute o mapper no servidor. O BSP e arquivos `.nav` gerados não são distribuídos no projeto.
 
 ## Editor de mapa
 
@@ -55,7 +53,7 @@ anpc_nav_show 0
 
 O gravador cobre trechos efetivamente percorridos. Para completar a cobertura, percorra ramificações, conecte segmentos e teste a rota de cada região importante. Saltos, quedas e escadas verticais são ligações explícitas.
 
-`anpc_nav_show 1` acompanha a posição e a direção da câmera, inclusive ao olhar para cima ou para baixo. A cada 0,5 segundo, seleciona até 32 nós mais próximos em um cone frontal de 120 graus e até 5.000 unidades da câmera; IDs menores ou nós atrás não ocupam essas vagas. Desenha até 32 ligações com ambos os nós nesse cone e os contornos azuis de até oito áreas associadas aos pontos selecionados. O HUD informa o nó desenhado mais próximo, ou `-1`, total de nós e áreas desenhadas/total. As linhas têm largura `10` no protocolo do beam e ficam duas unidades acima do piso.
+`anpc_nav_show 1` acompanha a câmera e atualiza a cada 0,2 segundo. Seleciona até 32 âncoras no cone frontal de 120 graus, a até 5.000 unidades, e até 32 arestas físicas. Até oito áreas são selecionadas independentemente dos pontos e desenhadas em azul, acompanhando a inclinação do piso. Portais têm marcadores azuis. Durante o scan, amostras comuns já cobertas deixam de ocupar o desenho; o HUD identifica a contagem total como `scan samples`, pois esses IDs temporários continuam necessários ao journal. Após a conclusão automática, mostra `anchors`. `areas X/Y` significa áreas desenhadas/áreas existentes; `0/Y` pode ser apenas ausência de áreas no campo de visão, enquanto `0/0` indica nenhuma área aprovada.
 
 O desenho continua ao morrer ou entrar em spectator, sem precisar repetir o comando. Em câmera livre, usa a posição e os ângulos do administrador; em primeira pessoa, usa os olhos e a direção do jogador acompanhado. Câmeras de entidade criadas com `SetView`, como as do addon de câmera do projeto, usam a própria posição e os próprios ângulos. Nas câmeras de perseguição, usa o alvo acompanhado e aproxima o recuo padrão de 112 unidades com trace contra o mapa; a posição exata, uma distância de perseguição personalizada, o autodirector e o overview são calculados pelo cliente e não estão disponíveis nessa consulta do servidor. Primeira pessoa e câmera livre são os modos indicados para conferir o grafo em spectator.
 
@@ -72,24 +70,26 @@ O desenho continua ao morrer ou entrar em spectator, sem precisar repetir o coma
 | `anpc_nav_show 0|1` | Nós, ligações e retângulos à frente da câmera; desenho limitado ao admin, inclusive morto/spec |
 | `anpc_nav_record 0|1` | Gravação de trechos terrestres válidos |
 
-Uma conexão é direcionada. Para caminhar também na volta, crie `to -> from`. Quedas e saltos podem ser viáveis em apenas um sentido. O máximo é oito saídas por nó.
+Uma conexão é direcionada. Para caminhar também na volta, crie `to -> from`. Quedas e saltos podem ser viáveis em apenas um sentido. O máximo é oito arestas físicas por nó. Conexões WALK implícitas entre âncoras da mesma área não consomem essas vagas.
 
-Flags de nó: `1` agachado, `2` escada, `4` desabilitado; podem ser somadas. Raio deve ficar entre 8 e 64. O seguidor limita tolerância de avanço a 24 unidades e a quatro unidades antes de uma saída de salto/queda. Para posições precisas, prefira raio 8.
+Flags de nó: `1` agachado, `2` escada, `4` desabilitado, `8` portal; podem ser somadas. Raio deve ficar entre 8 e 64. O seguidor limita tolerância de avanço a 24 unidades e a quatro unidades nos portais ou antes de uma saída de salto/queda. Para posições precisas, prefira raio 8.
 
 ## Formato atual `.nav`
 
 A ordem é nós, áreas opcionais e conexões. IDs de nós e de áreas são sequenciais a partir de zero em contagens independentes. Coordenadas representam os pés, com decimais; `NaN`, infinitos, índices fora dos limites e registros desconhecidos são rejeitados.
 
 ```text
-ANPC_NAV 2 "nome_do_mapa" tamanho_do_bsp md5_do_bsp
+ANPC_NAV 3 "nome_do_mapa" tamanho_do_bsp md5_do_bsp
 N id x y z raio flags
-A id min_x min_y max_x max_y piso_z flags
+A id min_x min_y max_x max_y z_em_min_xy normal_x normal_y normal_z flags
 E origem destino flags vx vy vz
 ```
 
-O header contém cinco campos, `N` e `E` sete campos e `A` oito. O MD5 tem 32 caracteres hexadecimais minúsculos. Linhas vazias e comentários começando com `;` ou `#` são aceitos. O provedor aceita somente a versão atual; arquivos antigos devem ser gerados ou importados novamente.
+O header contém cinco campos, `N` e `E` sete campos e `A` onze. O MD5 tem 32 caracteres hexadecimais minúsculos. Linhas vazias e comentários começando com `;` ou `#` são aceitos. O provedor aceita somente a versão atual; arquivos antigos devem ser gerados ou importados novamente.
 
-Cada `A` descreve piso estático plano: lados entre 32 e 256 unidades, contidos numa única célula espacial de 256 unidades, com flags `0` ou `1` (agachamento). XY usa limites semiabertos `[min, max)` e a consulta admite até uma unidade de diferença do piso. Até 4.096 áreas podem ser gravadas. Uma área não cria conectividade entre componentes: as conexões continuam explícitas. O NPC usa seu interior para seguir diretamente, dispensar âncoras comuns intermediárias e reaproveitar a prova de apoio, mantendo o teste do hull atual. Saltos, escadas, posições precisas e mudanças de postura interrompem essa simplificação.
+Cada `A` descreve uma região convexa de piso estático, horizontal ou inclinado: lados de 32 a 256 unidades dentro de uma célula espacial de 256, normal unitária com `z >= 0,7` e flags `0` ou `1` (agachamento). `z_em_min_xy` é a altura dos pés em `(min_x,min_y)`; nos outros pontos, `z = z_em_min_xy - ((x-min_x)·normal_x + (y-min_y)·normal_y)/normal_z`. Não se trata da altura da superfície visível do brush: o hull determina o plano de apoio dos pés. Limites incluem bordas compartilhadas, com tolerância XY de 0,01 e Z de uma unidade. Pisos sobrepostos ficam separados pelo plano. Há até 4.096 áreas.
+
+Uma borda compartilhada de pelo menos 16 unidades e planos de apoio contínuos admite um portal. Contato somente por uma quina, parede, lacuna ou mudança de piso não cria essa passagem. Portais persistem como registros `N` com flag `8`; sua associação às áreas é reconstruída ao carregar. A* combina arestas físicas `E` com caminhada implícita entre âncoras pertencentes à mesma área. Colisões atuais ainda são verificadas no movimento. É válido um arquivo com áreas e zero nós: o NPC pode andar dentro da região isolada, sem precisar de âncora para nascer ou perseguir um alvo nela.
 
 Velocidade da aresta fica zerada para caminhada/descida. No salto, uma referência zero solicita cálculo pelo perfil. A referência define uma preferência de tempo quando viável; o núcleo sempre calcula o lançamento usando a gravidade atual e verifica o arco.
 

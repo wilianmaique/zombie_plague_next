@@ -257,8 +257,9 @@ public native_create()
 	new type = get_param(1), Float:feet[3], Float:yaw = get_param_f(3)
 	get_array_f(2, feet, 3)
 	if (gUnloading || !gTrace || !gTypesLocked || !(0 <= type < gTypeCount) || !gTypeReady[type] || gActorCount >= gCapacity
-	|| !anpc_finite(yaw, 36000.0) || anpc_nav_editing() || !anpc_nav_count()
-	|| anpc_nav_nearest(feet, gProfile[type][ANPC_CAPABILITIES]) < 0) return 0
+	|| !anpc_finite(yaw, 36000.0) || anpc_nav_editing() || (!anpc_nav_count() && !anpc_nav_area_count())
+	|| (anpc_nav_area_at(feet,gProfile[type][ANPC_CAPABILITIES]) < 0
+		&& anpc_nav_nearest(feet,gProfile[type][ANPC_CAPABILITIES]) < 0)) return 0
 	new slot = -1
 	for (new i = 0; i < ANPC_MAX_ACTORS; i++) if (!gActor[i][ACT_ENTITY]) { slot = i; break; }
 	if (slot < 0) return 0
@@ -266,7 +267,8 @@ public native_create()
 	anpc_copy_vec(feet, origin)
 	origin[2] += 36.1
 	engfunc(EngFunc_TraceHull, origin, origin, DONT_IGNORE_MONSTERS, HULL_HUMAN, 0, gTrace)
-	if (get_tr2(gTrace, TR_StartSolid) || get_tr2(gTrace, TR_AllSolid))
+	if (get_tr2(gTrace, TR_StartSolid) || get_tr2(gTrace, TR_AllSolid)
+	|| (anpc_nav_area_at(feet,gProfile[type][ANPC_CAPABILITIES]) >= 0 && anpc_nav_area_at(feet,0) < 0))
 	{
 		if (!(gProfile[type][ANPC_CAPABILITIES] & ANPC_CAP_CROUCH)) return 0
 		duck = true

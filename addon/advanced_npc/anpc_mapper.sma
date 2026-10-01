@@ -22,7 +22,7 @@
 #define SCAN_ANCHOR_REUSE 0.75
 #define SCAN_GROUND_SAMPLES 16
 #define SCAN_BLOCK_LEVELS 4
-#define SCAN_MAX_BLOCKS (ANPC_MAX_NODES*SCAN_BLOCK_LEVELS)
+#define SCAN_MAX_BLOCKS (ANPC_MAX_AREAS*8)
 #define SCAN_BLOCK_BUCKETS 4096
 #define SCAN_MAX_VOLUMES 256
 #define SCAN_PLAN_BLOCKED 64
@@ -31,7 +31,8 @@ enum _:ScanSeed { Float:SEED_FEET[3], SEED_FLAGS, bool:SEED_USED }
 enum _:ScanLadder { LADDER_ENTITY, Float:LADDER_MINS[3], Float:LADDER_MAXS[3] }
 enum _:ScanVolume { VOLUME_ENTITY, VOLUME_TYPE, Float:VOLUME_MINS[3], Float:VOLUME_MAXS[3] }
 enum ScanBlockStatus { SCAN_BLOCK_PENDING, SCAN_BLOCK_OPEN, SCAN_BLOCK_DETAIL }
-enum _:ScanBlock { BL_X, BL_Y, BL_LEVEL, Float:BL_Z, BL_NODE, BL_SAMPLE, BL_PHASE, BL_NEXT, BL_GEOMETRY, bool:BL_SENSITIVE, ScanBlockStatus:BL_STATUS }
+enum _:ScanBlock { BL_X, BL_Y, BL_LEVEL, Float:BL_FEET[3], Float:BL_NORMAL[3], BL_FLAGS, BL_SOURCE_FLAGS, BL_NODE, BL_SAMPLE, BL_PHASE, BL_CHILD, BL_NEXT, BL_GEOMETRY, bool:BL_SENSITIVE, ScanBlockStatus:BL_STATUS }
+enum _:ScanBlockReject { BLOCK_FLOOR, BLOCK_PLANE, BLOCK_HULL, BLOCK_VOLUME, BLOCK_CAPACITY, BLOCK_REJECT_COUNT }
 enum ScanPurpose { SCAN_FRONTIER, SCAN_RETURN, SCAN_TRAVEL }
 enum ScanMotion { SCAN_WALK, SCAN_JUMP, SCAN_DROP, SCAN_LADDER }
 enum ScanProbe { PROBE_GROUND, PROBE_LEDGE, PROBE_LANDING, PROBE_FLOOR, PROBE_HULL, PROBE_OBSTACLE, PROBE_TAKEOFF, PROBE_ARC, PROBE_RUNUP, PROBE_INTERIOR, PROBE_KNOWN_PATH }
@@ -53,6 +54,9 @@ new gVolumes[SCAN_MAX_VOLUMES][ScanVolume], gVolumeCount, bool:gVolumeOverflow
 new gBlock[SCAN_MAX_BLOCKS][ScanBlock], gBlockHead[SCAN_BLOCK_BUCKETS], gBlockCount, gBlockCursor, gBlockEpoch, gBlockGeometry
 new gNodeBlock[ANPC_MAX_NODES], gBlockMask[ANPC_MAX_NODES], gBlockMaskEpoch[ANPC_MAX_NODES], gInteriorMask[ANPC_MAX_NODES], bool:gNodeLadder[ANPC_MAX_NODES]
 new gBlockOpen, gBlockDetail, gBlockSkips, gBlockLimit, gFrontierSkips, gCostSelections
+new gBlockReject[BLOCK_REJECT_COUNT], gBlockCrouchRetry
+new gRestoreAreaCount, gRestoreAreaCursor, gRestoreAreaPhase
+new gCompactMap[ANPC_MAX_NODES], gCompactOriginal, gCompactCursor, gPrunedNodes, gPortals, gPortalLimit
 new gCurrent = -1, gSource = -1, gGoalNode = -1, gDirection, gRangeIndex, gHeading = -1, gSeedAnchor = -1
 new gSenseNode = -1, gSenseEpoch, gSenseBlockEpoch, gSenseCursor, gSenseTarget[8], gSenseGain[8], bool:gSenseWall[8]
 new Float:gSenseDistance[8], Float:gSenseScore[8], Float:gFrontierRange
@@ -176,7 +180,7 @@ public plugin_init()
 }
 
 public plugin_cfg() { set_task(2.0, "scan_auto_start", SCAN_TASK_AUTO); }
-public scan_auto_start() { if (gAuto && !anpc_nav_count()) scan_start(false); }
+public scan_auto_start() { if (gAuto && !anpc_nav_count() && !anpc_nav_area_count()) scan_start(false); }
 
 public plugin_end()
 {
@@ -274,6 +278,7 @@ stock bool:scan_start(const bool:reset)
 	if (!anpc_nav_begin_edit()) return false
 	gActive = true
 	gCompleted = gSaved = gStopAfterSave = false
+	gPrunedNodes = gPortals = gPortalLimit = 0
 	gResetGraph = reset
 	gCapacityHalt = gSaveRequested = gSeedSettling = false
 	gAbortRequested = false
@@ -329,7 +334,10 @@ stock bool:scan_start(const bool:reset)
 	if (!scan_create_bot()) { scan_finish(false, "scout initialization failed"); return false; }
 	if (reset && !anpc_nav_reset()) { scan_finish(false, "navigation reset failed"); return false; }
 	// Rebuild certificates from current geometry; keep existing graph anchors.
-	if (!anpc_nav_area_clear()) { scan_finish(false, "area reset failed"); return false; }
+	// Retained regions can have no interior node after compaction. Read their
+	// support planes by stages before clearing/revalidating the certificates.
+	gRestoreAreaCount = anpc_nav_area_count()
+	gRestoreAreaCursor = gRestoreAreaPhase = 0
 	gStage = ANPC_SCAN_SEED
 	gFrame = register_forward(FM_StartFrame, "mapper_frame")
 	gTouch = register_forward(FM_Touch, "scan_touch")
@@ -363,6 +371,14 @@ stock scan_finish(const bool:saved, const reason[])
 	if (gTouch) { unregister_forward(FM_Touch, gTouch); gTouch = 0; }
 	if (gSaveFile) { fclose(gSaveFile); gSaveFile = 0; }
 	if (gLoadFile) { fclose(gLoadFile); gLoadFile = 0; }
+	// If shutdown/cancellation interrupted in-place compaction, release only a
+	// complete graph. The previously committed navigation remains authoritative.
+	if (!gFinishingMap && stage == ANPC_SCAN_SAVE && gSavePhase == -2)
+	{
+		if (!anpc_nav_reload()) anpc_nav_reset()
+		gKnownCount = anpc_nav_count()
+		gCompleted = false
+	}
 	for (new id = 1; id <= MaxClients; id++)
 	{
 		if (gWatch[id] && is_user_connected(id)) engset_view(id, id)
@@ -371,6 +387,7 @@ stock scan_finish(const bool:saved, const reason[])
 	scan_release_camera()
 	scan_remove_bot()
 	if (gRoute) { anpc_nav_close(gRoute); gRoute = 0; }
+	gKnownCount = anpc_nav_count()
 	anpc_nav_end_edit()
 	gActive = false
 	set_pcvar_num(gActiveCvar, 0)
@@ -403,6 +420,12 @@ public mapper_frame()
 	scan_show_blocks(now)
 	if (gStage == ANPC_SCAN_PAUSED) return FMRES_IGNORED
 	if (gStage == ANPC_SCAN_SAVE) { scan_save_step(); return FMRES_IGNORED; }
+	if (gRestoreAreaPhase < 2)
+	{
+		for (new operation = 0; operation < 8 && gActive && scan_work_available(); operation++)
+			if (scan_restore_areas_step()) break
+		if (!gActive || gRestoreAreaPhase < 2) return FMRES_IGNORED
+	}
 	for (new operation = 0; operation < SCAN_FRAME_OPERATIONS && scan_work_available(); operation++)
 	{
 		switch (gStage)
@@ -546,6 +569,8 @@ stock scan_show_blocks(const Float:now)
 			anpc_copy_vec(feet, point)
 			point[0] += float(x)*32.0
 			point[1] += float(y)*32.0
+			new base = scan_block_open_at(feet)
+			if (base >= 0) point[2] = scan_block_height(base,point[0],point[1])
 			new block = scan_block_open_at(point), bool:duplicate
 			if (block < 0) continue
 			for (new old = 0; old < count; old++) if (selected[old] == block) { duplicate = true; break; }
@@ -559,7 +584,7 @@ stock scan_show_blocks(const Float:now)
 		{
 			corner[side][0] = float(gBlock[block][BL_X])*size+((side == 1 || side == 2) ? size : 0.0)
 			corner[side][1] = float(gBlock[block][BL_Y])*size+(side >= 2 ? size : 0.0)
-			corner[side][2] = gBlock[block][BL_Z]+2.0
+			corner[side][2] = scan_block_height(block,corner[side][0],corner[side][1])+2.0
 		}
 		for (new side = 0; side < 4; side++)
 		{
@@ -586,7 +611,10 @@ stock scan_status(const id)
 	console_print(id, "[ANPC] Resumed memory=%d | trace/frame limit=%d | cooperative budget=%.2f ms",gMemoryLoaded,gTraceLimit,gBudgetMs)
 	console_print(id, "[ANPC] Sweeps=%d known-direction skips=%d long walks=%d deferred returns=%d | distance: explore=%.0f travel/return=%.0f",gSweeps,gKnownSkips,gLongTrials,gReturnTrials,gExploreDistance,gTravelDistance)
 	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d/%d | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d coverage-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,SCAN_MAX_BLOCKS,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
+	console_print(id, "[ANPC] Area rejections: floor=%d plane=%d hull=%d sensitive=%d capacity=%d | crouch retries=%d",gBlockReject[BLOCK_FLOOR],gBlockReject[BLOCK_PLANE],gBlockReject[BLOCK_HULL],gBlockReject[BLOCK_VOLUME],gBlockReject[BLOCK_CAPACITY],gBlockCrouchRetry)
 	console_print(id, "[ANPC] Navigation areas=%d | suppressed node samples=%d symmetric floor returns=%d local landings=%d",anpc_nav_area_count(),gAreaNodesSkipped,gAreaReturns,gLandingTrials)
+	console_print(id, "[ANPC] Finalization: removed interior samples=%d generated portals=%d portal capacity skips=%d",gPrunedNodes,gPortals,gPortalLimit)
+	console_print(id, "[ANPC] Retained area revalidation: phase=%d source areas=%d/%d",gRestoreAreaPhase,gRestoreAreaCursor,gRestoreAreaCount)
 	if (scan_bot_valid())
 	{
 		new Float:feet[3]

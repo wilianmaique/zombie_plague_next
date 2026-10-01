@@ -43,6 +43,8 @@ ReAPI atende criação, remoção, leitura/escrita de variáveis e rodada. Fakem
 - [Yamauchi, 1997: exploração por fronteiras](https://www.cs.cmu.edu/~motionplanning/papers/sbp_papers/integrated2/yamauchi_frontier_explor.pdf): transição entre espaço conhecido e desconhecido como destino de exploração.
 - [Choset e Pignon: decomposição boustrophedon](https://publications.ri.cmu.edu/coverage-path-planning-the-boustrophedon-decomposition): divisão em células para cobertura física de superfície.
 - [FUEL](https://arxiv.org/abs/2010.11561) e [implementação dos autores](https://github.com/HKUST-Aerial-Robotics/FUEL): fronteiras incrementais e planejamento hierárquico para exploração.
+- [Geração de áreas da Valve](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/server/nav_generate.cpp): regiões retangulares, conexões nas bordas e união preservando a forma convexa. Referência conceitual para os portais do projeto.
+- [Configuração geométrica do Recast](https://recastnav.com/structrcConfig.html): raio, altura e inclinação do agente precisam entrar na construção de áreas.
 - [Recast heightfield](https://recastnav.com/structrcHeightfield.html): grade de spans de altura usada na construção de regiões caminháveis.
 
 Essas fontes orientam a camada adaptativa de cobertura e a seleção por fronteiras/custo. O mapper mantém seu grafo e as provas físicas próprias, sem importar código dessas bibliotecas nem resultados de desempenho de robôs para o HLDS. Veja [MAPPING_STRATEGY.md](MAPPING_STRATEGY.md) para a comparação e a decisão de implementação.

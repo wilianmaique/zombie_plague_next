@@ -120,7 +120,7 @@ class ImportTests(unittest.TestCase):
             self.assertEqual(main(arguments), 0)
             text = output.read_text()
             digest = hashlib.md5(bsp.read_bytes()).hexdigest()
-            self.assertEqual(text.splitlines()[0], f'ANPC_NAV 2 "de_fixture" 128 {digest}')
+            self.assertEqual(text.splitlines()[0], f'ANPC_NAV 3 "de_fixture" 128 {digest}')
             self.assertEqual(len(text.splitlines()[1].split()), 7)
             self.assertEqual(main(arguments), 1)
             self.assertEqual(output.read_text(), text)
