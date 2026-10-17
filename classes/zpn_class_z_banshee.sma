@@ -57,6 +57,15 @@ bool:is_class(id) return (is_user_alive(id) && zpn_is_user_zombie(id) && !zpn_is
 
 public zpn_user_infected_post(const this, const infector, const class_id)
 {
+	xBatEnemy[this] = 0
+
+	new ent = MaxClients
+	while((ent = engfunc(EngFunc_FindEntityByString, ent, "classname", "bat")) > 0)
+	{
+		if(get_entvar(ent, var_iuser4) == this)
+			bat_think(ent)
+	}
+
 	if(is_user_bot(this))
 		set_task(random_float(10.0, 30.0), "force_bot_skill", this)
 }
