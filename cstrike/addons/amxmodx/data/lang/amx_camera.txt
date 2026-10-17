@@ -1,0 +1,17 @@
+[bp]
+CAMERA_MENU_TITLE = Escolha sua câmera
+CAMERA_THIRD_PERSON = Terceira pessoa
+CAMERA_SIDE = Vista lateral
+CAMERA_TOP = Vista de cima
+CAMERA_FRONT = Vista de frente
+CAMERA_DEFAULT = Primeira pessoa (padrão)
+CAMERA_CANCEL = Cancelar
+
+[en]
+CAMERA_MENU_TITLE = Choose your camera
+CAMERA_THIRD_PERSON = Third person
+CAMERA_SIDE = Side view
+CAMERA_TOP = Top view
+CAMERA_FRONT = Front view
+CAMERA_DEFAULT = First person (default)
+CAMERA_CANCEL = Cancel

@@ -37,20 +37,22 @@ public plugin_precache()
 public plugin_init()
 {
 	register_plugin("Advanced NPC: Administration", ANPC_VERSION, "ZPN")
-	register_concmd("anpc_spawn", "command_spawn", ADMIN_RCON, "[type] [x y z yaw] - aim at floor, or supply feet coordinates")
-	register_concmd("anpc_remove", "command_remove", ADMIN_RCON, "[entity] - remove aimed NPC or entity id")
-	register_concmd("anpc_clear", "command_clear", ADMIN_RCON, "Remove all NPCs")
-	register_concmd("anpc_status", "command_status", ADMIN_RCON, "Show entity and navigation status")
-	register_concmd("anpc_nav_add", "command_nav_add", ADMIN_RCON, "[flags] [radius] - add a node at your feet")
-	register_concmd("anpc_nav_link", "command_nav_link", ADMIN_RCON, "from to flags [vx vy vz] - directed link; flags 0 walk, 1 jump, 2 drop")
-	register_concmd("anpc_nav_unlink", "command_nav_unlink", ADMIN_RCON, "from to - remove a directed link")
-	register_concmd("anpc_nav_flags", "command_nav_flags", ADMIN_RCON, "node flags - 1 crouch, 2 ladder, 4 disabled")
-	register_concmd("anpc_nav_save", "command_nav_save", ADMIN_RCON, "Save the current map's graph")
-	register_concmd("anpc_nav_reload", "command_nav_reload", ADMIN_RCON, "Reload the current map's graph")
-	register_concmd("anpc_nav_show", "command_nav_show", ADMIN_RCON, "0|1 - show nodes/links ahead of your camera, including spectators")
-	register_concmd("anpc_nav_record", "command_nav_record", ADMIN_RCON, "0|1 - record verified walking connections")
-	register_concmd("anpc_spawns_save", "command_spawns_save", ADMIN_RCON, "Save live NPC positions as this map's spawn points")
-	register_concmd("anpc_spawns_load", "command_spawns_load", ADMIN_RCON, "Spawn saved points; requires no existing NPCs")
+	register_dictionary("advanced_npc_admin.txt")
+	register_dictionary("common.txt")
+	register_concmd("anpc_spawn", "command_spawn", ADMIN_RCON, "ANPC_HELP_SPAWN", .info_ml = true)
+	register_concmd("anpc_remove", "command_remove", ADMIN_RCON, "ANPC_HELP_REMOVE", .info_ml = true)
+	register_concmd("anpc_clear", "command_clear", ADMIN_RCON, "ANPC_HELP_CLEAR", .info_ml = true)
+	register_concmd("anpc_status", "command_status", ADMIN_RCON, "ANPC_HELP_STATUS", .info_ml = true)
+	register_concmd("anpc_nav_add", "command_nav_add", ADMIN_RCON, "ANPC_HELP_NAV_ADD", .info_ml = true)
+	register_concmd("anpc_nav_link", "command_nav_link", ADMIN_RCON, "ANPC_HELP_NAV_LINK", .info_ml = true)
+	register_concmd("anpc_nav_unlink", "command_nav_unlink", ADMIN_RCON, "ANPC_HELP_NAV_UNLINK", .info_ml = true)
+	register_concmd("anpc_nav_flags", "command_nav_flags", ADMIN_RCON, "ANPC_HELP_NAV_FLAGS", .info_ml = true)
+	register_concmd("anpc_nav_save", "command_nav_save", ADMIN_RCON, "ANPC_HELP_NAV_SAVE", .info_ml = true)
+	register_concmd("anpc_nav_reload", "command_nav_reload", ADMIN_RCON, "ANPC_HELP_NAV_RELOAD", .info_ml = true)
+	register_concmd("anpc_nav_show", "command_nav_show", ADMIN_RCON, "ANPC_HELP_NAV_SHOW", .info_ml = true)
+	register_concmd("anpc_nav_record", "command_nav_record", ADMIN_RCON, "ANPC_HELP_NAV_RECORD", .info_ml = true)
+	register_concmd("anpc_spawns_save", "command_spawns_save", ADMIN_RCON, "ANPC_HELP_SPAWNS_SAVE", .info_ml = true)
+	register_concmd("anpc_spawns_load", "command_spawns_load", ADMIN_RCON, "ANPC_HELP_SPAWNS_LOAD", .info_ml = true)
 	RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "round_freeze_end_post", true)
 	register_forward(FM_StartFrame,"nav_show_frame")
 	bind_pcvar_num(create_cvar("anpc_auto_spawn", "0", FCVAR_NONE, "Spawn saved map points after freeze time", true, 0.0, true, 1.0), gAutoSpawn)
@@ -95,12 +97,12 @@ stock bool:admin_editor_ready(const id)
 {
 	if (anpc_nav_editing())
 	{
-		console_print(id, "[ANPC] Automatic mapper owns the graph. Stop it before editing or spawning NPCs.")
+		console_print(id, "%L", id, "ANPC_GRAPH_BUSY")
 		return false
 	}
 	if (anpc_get_count())
 	{
-		console_print(id, "[ANPC] Clear NPCs before editing/reloading navigation. Wait for deferred removal.")
+		console_print(id, "%L", id, "ANPC_CLEAR_BEFORE_EDIT")
 		return false
 	}
 	return true
@@ -152,7 +154,7 @@ stock admin_aim_entity(const id)
 public command_spawn(const id, const level, const cid)
 {
 	if (!cmd_access(id, level, cid, 1)) return PLUGIN_HANDLED
-	if (anpc_nav_editing()) { console_print(id, "[ANPC] Stop the automatic mapper before spawning NPCs."); return PLUGIN_HANDLED; }
+	if (anpc_nav_editing()) { console_print(id, "%L", id, "ANPC_STOP_BEFORE_SPAWN"); return PLUGIN_HANDLED; }
 	new type_name[48] = "zombie_default", Float:feet[3], Float:yaw
 	if (read_argc() >= 2) read_argv(1, type_name, charsmax(type_name))
 	if (read_argc() >= 5)
@@ -164,12 +166,12 @@ public command_spawn(const id, const level, const cid)
 	}
 	else if (!admin_aim_floor(id, feet))
 	{
-		console_print(id, "[ANPC] Aim at walkable floor, or use: anpc_spawn type x y z [yaw]")
+		console_print(id, "%L", id, "ANPC_AIM_FLOOR")
 		return PLUGIN_HANDLED
 	}
 	new type = anpc_find_type(type_name), entity
 	if (type >= 0) entity = anpc_create(type, feet, yaw)
-	console_print(id, "[ANPC] Spawn result: entity %d. Graph, model, floor clearance, type and capacity must be valid.", entity)
+	console_print(id, "%L", id, "ANPC_SPAWN_RESULT", entity)
 	return PLUGIN_HANDLED
 }
 
@@ -179,25 +181,25 @@ public command_remove(const id, const level, const cid)
 	new value[24], entity
 	if (read_argc() >= 2) { read_argv(1, value, charsmax(value)); entity = str_to_num(value); }
 	else entity = admin_aim_entity(id)
-	console_print(id, "[ANPC] Removal scheduled: %d", anpc_remove(entity))
+	console_print(id, "%L", id, "ANPC_REMOVE_SCHEDULED", anpc_remove(entity))
 	return PLUGIN_HANDLED
 }
 
 public command_clear(const id, const level, const cid)
 {
-	if (cmd_access(id, level, cid, 1)) console_print(id, "[ANPC] Scheduled removal of %d NPC entities", anpc_remove_all())
+	if (cmd_access(id, level, cid, 1)) console_print(id, "%L", id, "ANPC_CLEAR_SCHEDULED", anpc_remove_all())
 	return PLUGIN_HANDLED
 }
 
 public command_status(const id, const level, const cid)
 {
 	if (!cmd_access(id, level, cid, 1)) return PLUGIN_HANDLED
-	console_print(id, "[ANPC] Entities %d/%d | navigation nodes %d | revision %d", anpc_get_count(), anpc_get_capacity(), anpc_nav_count(), anpc_nav_revision())
+	console_print(id, "%L", id, "ANPC_STATUS", anpc_get_count(), anpc_get_capacity(), anpc_nav_count(), anpc_nav_revision())
 	new entity
 	while ((entity = rg_find_ent_by_class(entity, ANPC_CLASSNAME)))
 	{
 		if (!anpc_is_npc(entity)) continue
-		console_print(id, " entity %d serial %d type %d state %d target %d health %.0f", entity, anpc_get_serial(entity), anpc_get_type(entity), anpc_get_state(entity), anpc_get_target(entity), Float:get_entvar(entity, var_health))
+		console_print(id, "%L", id, "ANPC_ENTITY_STATUS", entity, anpc_get_serial(entity), anpc_get_type(entity), anpc_get_state(entity), anpc_get_target(entity), Float:get_entvar(entity, var_health))
 	}
 	return PLUGIN_HANDLED
 }
@@ -205,17 +207,17 @@ public command_status(const id, const level, const cid)
 public command_nav_add(const id, const level, const cid)
 {
 	if (!cmd_access(id, level, cid, 1) || !admin_editor_ready(id)) return PLUGIN_HANDLED
-	if (!id || !is_user_alive(id)) { console_print(id, "[ANPC] This command requires a living admin in the map."); return PLUGIN_HANDLED; }
+	if (!id || !is_user_alive(id)) { console_print(id, "%L", id, "ANPC_ALIVE_ADMIN_REQUIRED"); return PLUGIN_HANDLED; }
 	new value[32], flags, Float:radius = 24.0, Float:feet[3]
 	if (read_argc() >= 2) { read_argv(1, value, charsmax(value)); flags = str_to_num(value); }
 	if (read_argc() >= 3) { read_argv(2, value, charsmax(value)); radius = str_to_float(value); }
 	anpc_entity_feet(id, feet)
 	if (!(get_entvar(id, var_flags) & FL_ONGROUND) && !((flags & ANPC_NODE_LADDER) && anpc_nav_ladder(feet)))
 	{
-		console_print(id, "[ANPC] Stand on the floor, or mark a node on a real ladder.")
+		console_print(id, "%L", id, "ANPC_NODE_NEEDS_FLOOR")
 		return PLUGIN_HANDLED
 	}
-	console_print(id, "[ANPC] Added node %d", anpc_nav_add(feet, flags, radius))
+	console_print(id, "%L", id, "ANPC_NODE_ADDED", anpc_nav_add(feet, flags, radius))
 	return PLUGIN_HANDLED
 }
 
@@ -228,17 +230,17 @@ public command_nav_link(const id, const level, const cid)
 	read_argv(3, value, charsmax(value)); flags = str_to_num(value)
 	if (flags & ANPC_LINK_JUMP)
 	{
-		if (read_argc() > 4 && read_argc() < 7) { console_print(id, "[ANPC] Supply all vx vy vz, or omit all for a computed jump."); return PLUGIN_HANDLED; }
+		if (read_argc() > 4 && read_argc() < 7) { console_print(id, "%L", id, "ANPC_JUMP_VELOCITY"); return PLUGIN_HANDLED; }
 		if (read_argc() >= 7) admin_read_vector(4, velocity)
 	}
 	if (!anpc_nav_node(from, a, af, radius) || !anpc_nav_node(to, b, bf, radius)) return PLUGIN_HANDLED
 	if (!flags && !((af | bf) & ANPC_NODE_LADDER)
 	&& !anpc_nav_walkable(a, b, bool:((af | bf) & ANPC_NODE_CROUCH), id))
 	{
-		console_print(id, "[ANPC] Walking connection has a blocked hull or unsafe floor. Use the appropriate jump/drop/ladder route.")
+		console_print(id, "%L", id, "ANPC_LINK_UNSAFE")
 		return PLUGIN_HANDLED
 	}
-	console_print(id, "[ANPC] Directed link %d -> %d: %d", from, to, anpc_nav_connect(from, to, flags, velocity))
+	console_print(id, "%L", id, "ANPC_LINK_RESULT", from, to, anpc_nav_connect(from, to, flags, velocity))
 	return PLUGIN_HANDLED
 }
 
@@ -248,7 +250,7 @@ public command_nav_unlink(const id, const level, const cid)
 	new value[24], from, to
 	read_argv(1, value, charsmax(value)); from = str_to_num(value)
 	read_argv(2, value, charsmax(value)); to = str_to_num(value)
-	console_print(id, "[ANPC] Unlinked: %d", anpc_nav_disconnect(from, to))
+	console_print(id, "%L", id, "ANPC_UNLINK_RESULT", anpc_nav_disconnect(from, to))
 	return PLUGIN_HANDLED
 }
 
@@ -258,19 +260,19 @@ public command_nav_flags(const id, const level, const cid)
 	new value[24], node, flags
 	read_argv(1, value, charsmax(value)); node = str_to_num(value)
 	read_argv(2, value, charsmax(value)); flags = str_to_num(value)
-	console_print(id, "[ANPC] Flags changed: %d", anpc_nav_set_flags(node, flags))
+	console_print(id, "%L", id, "ANPC_FLAGS_RESULT", anpc_nav_set_flags(node, flags))
 	return PLUGIN_HANDLED
 }
 
 public command_nav_save(const id, const level, const cid)
 {
-	if (cmd_access(id, level, cid, 1) && admin_editor_ready(id)) console_print(id, "[ANPC] Graph saved: %d", anpc_nav_save())
+	if (cmd_access(id, level, cid, 1) && admin_editor_ready(id)) console_print(id, "%L", id, "ANPC_GRAPH_SAVED", anpc_nav_save())
 	return PLUGIN_HANDLED
 }
 
 public command_nav_reload(const id, const level, const cid)
 {
-	if (cmd_access(id, level, cid, 1) && admin_editor_ready(id)) console_print(id, "[ANPC] Graph loaded: %d", anpc_nav_reload())
+	if (cmd_access(id, level, cid, 1) && admin_editor_ready(id)) console_print(id, "%L", id, "ANPC_GRAPH_LOADED", anpc_nav_reload())
 	return PLUGIN_HANDLED
 }
 
@@ -284,12 +286,12 @@ public command_nav_record(const id, const level, const cid)
 		if (gRecorder == id) { remove_task(TASK_RECORD); gRecorder = 0; gRecordedNode = -1; }
 		return PLUGIN_HANDLED
 	}
-	if (gRecorder && gRecorder != id) { console_print(id, "[ANPC] Another admin is recording."); return PLUGIN_HANDLED; }
+	if (gRecorder && gRecorder != id) { console_print(id, "%L", id, "ANPC_RECORDER_BUSY"); return PLUGIN_HANDLED; }
 	gRecorder = id
 	gRecordedNode = -1
 	remove_task(TASK_RECORD)
 	set_task_ex(0.2, "record_step", TASK_RECORD, .flags = SetTask_Repeat)
-	console_print(id, "[ANPC] Recording safe WALK routes. Add directed jumps and ladders explicitly. Save when finished.")
+	console_print(id, "%L", id, "ANPC_RECORDING_STARTED")
 	return PLUGIN_HANDLED
 }
 
@@ -314,7 +316,7 @@ public record_step()
 		if (anpc_nav_walkable(destination, last, duck, id)) anpc_nav_connect(node, gRecordedNode)
 	}
 	gRecordedNode = node
-	console_print(id, "[ANPC] Recorded node %d", node)
+	console_print(id, "%L", id, "ANPC_NODE_RECORDED", node)
 }
 
 public command_nav_show(const id, const level, const cid)
@@ -515,7 +517,7 @@ stock show_nodes(const id)
 	}
 
 	set_hudmessage(0, 255, 255, 0.7, 0.4, 0, 0.0, 0.65, 0.05, 0.05)
-	ShowSyncHudMsg(id, xMsgSyncANPC, "ANPC: nearest anchor %d^n%s %d^nareas %d/%d",nearest,anpc_nav_editing() ? "scan samples" : "anchors",count,areas_shown,anpc_nav_area_count())
+	ShowSyncHudMsg(id, xMsgSyncANPC, "%L", id, "ANPC_HUD_NAVIGATION", nearest, id, anpc_nav_editing() ? "ANPC_SCAN_SAMPLES" : "ANPC_ANCHORS", count, areas_shown, anpc_nav_area_count())
 }
 
 public round_freeze_end_post()
@@ -526,7 +528,7 @@ public round_freeze_end_post()
 public anpc_nav_changed(const revision)
 {
 	if (!anpc_nav_editing() || !gRecorder) return
-	console_print(gRecorder, "[ANPC] Recording stopped: automatic mapper owns navigation.")
+	console_print(gRecorder, "%L", gRecorder, "ANPC_RECORDING_STOPPED")
 	remove_task(TASK_RECORD)
 	gRecorder = 0
 	gRecordedNode = -1
@@ -543,7 +545,7 @@ public command_spawns_save(const id, const level, const cid)
 	if (!dir_exists(directory)) mkdir(directory)
 	formatex(temporary, charsmax(temporary), "%s.tmp", gSpawnPath)
 	new file = fopen(temporary, "wt")
-	if (!file) { console_print(id, "[ANPC] Cannot open spawn file for writing."); return PLUGIN_HANDLED; }
+	if (!file) { console_print(id, "%L", id, "ANPC_SPAWN_FILE_WRITE_FAILED"); return PLUGIN_HANDLED; }
 	fprintf(file, "ANPC_SPAWNS 1 ^"%s^" %d %s^n", gMap, gBspSize, gBspHash)
 	new entity, count, name[48], Float:feet[3], Float:angles[3]
 	while ((entity = rg_find_ent_by_class(entity, ANPC_CLASSNAME)))
@@ -556,7 +558,7 @@ public command_spawns_save(const id, const level, const cid)
 		count++
 	}
 	fclose(file)
-	console_print(id, "[ANPC] Saved %d spawn points: %d", count, anpc_commit_file(temporary, gSpawnPath))
+	console_print(id, "%L", id, "ANPC_SPAWNS_SAVED", count, anpc_commit_file(temporary, gSpawnPath))
 	return PLUGIN_HANDLED
 }
 
@@ -569,7 +571,7 @@ public command_spawns_load(const id, const level, const cid)
 stock admin_load_spawns(const id)
 {
 	new file = fopen(gSpawnPath, "rt")
-	if (!file) { console_print(id, "[ANPC] No saved spawn file for %s.", gMap); return; }
+	if (!file) { console_print(id, "%L", id, "ANPC_NO_SPAWN_FILE", gMap); return; }
 	new line[256], token[7][64], bool:header, bool:valid = true, count
 	// Validate all records BEFORE creating anything; malformed input cannot
 	// leave a half-loaded NPC group.
@@ -612,7 +614,7 @@ stock admin_load_spawns(const id)
 			if (anpc_create(record[0], feet, Float:record[4])) count++
 			else log_amx("Spawn point %d failed: navigation, clearance, type or capacity", i)
 		}
-		console_print(id, "[ANPC] Spawned %d/%d saved NPCs", count, ArraySize(points))
+		console_print(id, "%L", id, "ANPC_SPAWNS_LOADED", count, ArraySize(points))
 	}
 	else log_amx("Invalid spawn file rejected: %s", gSpawnPath)
 	ArrayDestroy(points)

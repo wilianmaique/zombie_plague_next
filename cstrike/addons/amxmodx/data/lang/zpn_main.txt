@@ -1,0 +1,21 @@
+[bp]
+ZPN_HUD_MODE = • Modo: %s
+ZPN_HUD_CLASS = • Classe: %s
+ZPN_HUD_LEVEL_MAX = • Nível: %s, XP: MÁX, %s
+ZPN_HUD_LEVEL = • Nível: %s, XP: %s/%s, %s
+ZPN_HUD_HEALTH = • Vida: %s
+ZPN_HUD_ARMOR = • Colete: %d
+ZPN_HUD_AMMO_PACKS = • Ammo Packs: %s
+ZPN_HUD_SPEED = • Velocidade: %d
+ZPN_ROUND_COUNTDOWN = A rodada começa em: %d
+
+[en]
+ZPN_HUD_MODE = • Mode: %s
+ZPN_HUD_CLASS = • Class: %s
+ZPN_HUD_LEVEL_MAX = • Level: %s, XP: MAX, %s
+ZPN_HUD_LEVEL = • Level: %s, XP: %s/%s, %s
+ZPN_HUD_HEALTH = • Health: %s
+ZPN_HUD_ARMOR = • Armor: %d
+ZPN_HUD_AMMO_PACKS = • Ammo Packs: %s
+ZPN_HUD_SPEED = • Speed: %d
+ZPN_ROUND_COUNTDOWN = Round starts in: %d

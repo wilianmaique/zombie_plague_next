@@ -6,15 +6,17 @@ new class
 
 public plugin_init()
 {
+	register_dictionary("zpn_classes.txt")
 	register_plugin("[ZPN] Class: Zombie Nemesis", "1.0", "Wilian M.")
 }
 
 public plugin_precache()
 {
 	class = zpn_class_init("Nemesis", CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_NAME, "ZPN_CLASS_Z_NEMESIS")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_FIND_NAME, "class_z_nemesis")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_HIDE_MENU, true)
-	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "Kill no infect")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "ZPN_CLASS_Z_NEMESIS_INFO")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL, "zpn_z_default")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL_VIEW, "models/player/zpn_z_default/hand.mdl")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_SPEED, 450.0)

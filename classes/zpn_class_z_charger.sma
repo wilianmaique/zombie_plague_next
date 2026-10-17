@@ -6,13 +6,15 @@ new class
 
 public plugin_init()
 {
+	register_dictionary("zpn_classes.txt")
 	register_plugin("[ZPN] Class: Zombie Charger", "1.0", "Wilian M.")
 }
 
 public register_class()
 {
 	class = zpn_class_init("Charger", CLASS_TEAM_TYPE_ZOMBIE)
-	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "Run, and grab the player")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_NAME, "ZPN_CLASS_Z_CHARGER")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "ZPN_CLASS_Z_CHARGER_INFO")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL, "zpn_charger")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL_VIEW, "models/player/zpn_charger/hand.mdl")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_SPEED, 360.0)

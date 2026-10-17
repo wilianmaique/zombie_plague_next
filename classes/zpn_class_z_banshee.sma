@@ -25,6 +25,7 @@ new class, cvars[eCvars], xBatEnemy[33], Float:xBatTimeout[33]
 public plugin_init()
 {
 	register_plugin("[ZPN] Class: Zombie Banshee", "1.0", "Wilian M.")
+	register_dictionary("zpn_classes.txt")
 	register_clcmd("drop", "clcmd_drop")
 
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false)
@@ -40,7 +41,8 @@ public plugin_init()
 register_class()
 {
 	class = zpn_class_init("Banshee", CLASS_TEAM_TYPE_ZOMBIE)
-	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "Pulling \r[G]")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_NAME, "ZPN_CLASS_Z_BANSHEE")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "ZPN_CLASS_Z_BANSHEE_INFO")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL, "zpn_z_banshee")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL_VIEW, "models/player/zpn_z_banshee/hand.mdl")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_SPEED, 360.0)
@@ -86,7 +88,7 @@ public clcmd_drop(id)
 	
 	if(xBatTimeout[id] > get_gametime())
 	{
-		zpn_print_color(id, print_team_red, "^3Espere ^4%.0f ^3segundos.", xBatTimeout[id] - get_gametime())
+		zpn_print_color(id, print_team_red, "%l", "ZPN_BANSHEE_COOLDOWN", xBatTimeout[id] - get_gametime())
 		return
 	}
 

@@ -8,6 +8,7 @@ new bool:helper_ckeck[33]
 
 public plugin_init()
 {
+	register_dictionary("zpn_first_zombie_helper.txt")
 	register_plugin("[ZPN] Addon: First Zombie Helper", "1.0", "Wilian M.")
 
 	gamemode_infection = zpn_gamemode_find("gm_infection")
@@ -61,10 +62,10 @@ public zpn_round_started_post(const gamemode_id, const start_player)
 		g_helper_count++
 		helper_ckeck[id] = true
 
-		zpn_print_color(id, print_team_red, "^3Você foi escolhido para ajudar o primeiro zombie.")
+		zpn_print_color(id, print_team_red, "%l", "ZPN_HELPER_SELECTED")
 	}
 
-	zpn_print_color(0, print_team_default, "^1Escolhido ^4%d ^1jogadores para ajudar o primeiro zombie.", g_helper_count)
+	zpn_print_color(0, print_team_default, "%l", "ZPN_HELPERS_SELECTED", g_helper_count)
 
 	for(i = 1; i <= MaxClients; i++)
 	{

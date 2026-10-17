@@ -7,7 +7,7 @@ enum _:ePropClasses
 {
 	eClassTypes:CLASS_PROP_TYPE,
 	CLASS_PROP_NAME[64],
-	CLASS_PROP_CUSTOM_NAME[64],
+	CLASS_PROP_NAME_KEY[64],
 	CLASS_PROP_INFO[64],
 	CLASS_PROP_MODEL[64],
 	CLASS_PROP_MODEL_VIEW[64],
@@ -110,7 +110,7 @@ public _zpn_class_init(plugin_id, param_nums)
 	get_string(1, xDataGetClass[CLASS_PROP_NAME], charsmax(xDataGetClass[CLASS_PROP_NAME]))
 	xDataGetClass[CLASS_PROP_TYPE] = eClassTypes:get_param(2)
 
-	copy(xDataGetClass[CLASS_PROP_CUSTOM_NAME], charsmax(xDataGetClass[CLASS_PROP_CUSTOM_NAME]), xDataGetClass[CLASS_PROP_NAME])
+	xDataGetClass[CLASS_PROP_NAME_KEY] = EOS
 	xDataGetClass[CLASS_PROP_INFO] = EOS
 	xDataGetClass[CLASS_PROP_MODEL] = EOS
 	xDataGetClass[CLASS_PROP_MODEL_VIEW] = EOS
@@ -161,7 +161,7 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 	switch(ePropClassRegisters:prop)
 	{
 		case PROP_CLASS_REGISTER_TYPE: return xDataGetClass[CLASS_PROP_TYPE]
-		case PROP_CLASS_REGISTER_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_NAME], get_param_byref(arg_len))
+		case PROP_CLASS_REGISTER_NAME: set_string(arg_value, xDataGetClass[CLASS_PROP_NAME_KEY], get_param_byref(arg_len))
 		case PROP_CLASS_REGISTER_INFO: set_string(arg_value, xDataGetClass[CLASS_PROP_INFO], get_param_byref(arg_len))
 		case PROP_CLASS_REGISTER_MODEL: set_string(arg_value, xDataGetClass[CLASS_PROP_MODEL], get_param_byref(arg_len))
 		case PROP_CLASS_REGISTER_MODEL_VIEW: set_string(arg_value, xDataGetClass[CLASS_PROP_MODEL_VIEW], get_param_byref(arg_len))
@@ -208,6 +208,7 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 
 	switch(ePropClassRegisters:prop)
 	{
+		case PROP_CLASS_REGISTER_NAME: get_string(arg_value, xDataGetClass[CLASS_PROP_NAME_KEY], charsmax(xDataGetClass[CLASS_PROP_NAME_KEY]))
 		case PROP_CLASS_REGISTER_INFO: get_string(arg_value, xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO]))
 		case PROP_CLASS_REGISTER_MODEL: get_string(arg_value, xDataGetClass[CLASS_PROP_MODEL], charsmax(xDataGetClass[CLASS_PROP_MODEL]))
 		case PROP_CLASS_REGISTER_MODEL_VIEW: get_string(arg_value, xDataGetClass[CLASS_PROP_MODEL_VIEW], charsmax(xDataGetClass[CLASS_PROP_MODEL_VIEW]))
@@ -239,7 +240,8 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 
 	// Registered values are defaults: an existing JSON value always takes priority.
 	load_class_setting(xDataGetClass, PROP_CLASS_REGISTER_NAME, class_section, true)
-	load_class_setting(xDataGetClass, ePropClassRegisters:prop, class_section, true)
+	if(prop != _:PROP_CLASS_REGISTER_NAME)
+		load_class_setting(xDataGetClass, ePropClassRegisters:prop, class_section, true)
 	ArraySetArray(aDataClass, class_id, xDataGetClass)
 
 	return true
@@ -258,13 +260,13 @@ load_class_setting(xDataGetClass[ePropClasses], ePropClassRegisters:prop, const 
 	{
 		case PROP_CLASS_REGISTER_NAME:
 		{
-			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "name", xDataGetClass[CLASS_PROP_CUSTOM_NAME], charsmax(xDataGetClass[CLASS_PROP_CUSTOM_NAME])) && save_default)
-				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "name", xDataGetClass[CLASS_PROP_CUSTOM_NAME])
+			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "name_key", xDataGetClass[CLASS_PROP_NAME_KEY], charsmax(xDataGetClass[CLASS_PROP_NAME_KEY])) && save_default)
+				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "name_key", xDataGetClass[CLASS_PROP_NAME_KEY])
 		}
 		case PROP_CLASS_REGISTER_INFO:
 		{
-			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "description", xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO])) && save_default)
-				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "description", xDataGetClass[CLASS_PROP_INFO])
+			if(!json_setting_get_string(PATH_SETTINGS_CLASSES, class_section_final, "description_key", xDataGetClass[CLASS_PROP_INFO], charsmax(xDataGetClass[CLASS_PROP_INFO])) && save_default)
+				json_setting_set_string(PATH_SETTINGS_CLASSES, class_section_final, "description_key", xDataGetClass[CLASS_PROP_INFO])
 		}
 		case PROP_CLASS_REGISTER_MODEL:
 		{
@@ -337,7 +339,7 @@ load_class_setting(xDataGetClass[ePropClasses], ePropClassRegisters:prop, const 
 				if(!parse_hex_color(xDataGetClass[CLASS_PROP_NV_COLOR], xDataGetClass[CLASS_PROP_NV_COLOR_CONVERTED]))
 				{
 					server_print("^n")
-					server_print("Falha ao converter HEX COLOR: %s - %s", xDataGetClass[CLASS_PROP_CUSTOM_NAME], xDataGetClass[CLASS_PROP_NV_COLOR])
+					server_print("Falha ao converter HEX COLOR: %s - %s", xDataGetClass[CLASS_PROP_NAME], xDataGetClass[CLASS_PROP_NV_COLOR])
 					server_print("^n")
 				}
 			}

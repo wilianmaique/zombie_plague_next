@@ -36,9 +36,9 @@ public plugin_precache()
 	gZombieSpawns = ArrayCreate(1, 0)
 
 	gGameMode = zpn_gamemode_init()
-	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_NAME, "Zombie Escape")
+	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_NAME, "ZPN_GM_ESCAPE")
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_FIND_NAME, "gm_escape")
-	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_NOTICE, "Fujam dos zombies!")
+	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_NOTICE, "ZPN_GM_ESCAPE_NOTICE")
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_HUD_COLOR, "#ffb347")
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_CHANCE, 1)
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_MIN_PLAYERS, 1)
@@ -50,6 +50,7 @@ public plugin_precache()
 
 public plugin_init()
 {
+	register_dictionary("zpn_gamemodes.txt")
 	register_plugin("[ZPN] GameMode: Zombie Escape", "1.0", "Wilian M.")
 
 	if(!zpn_is_escape_map())
@@ -598,7 +599,7 @@ public CheckEscapeTeams()
 	if(gSoloRound && playing > 1)
 	{
 		gSoloRound = false
-		zpn_print_color(0, print_team_default, "^3Mais um jogador entrou. Reiniciando a rodada para comecar com todos.")
+		zpn_print_color(0, print_team_default, "%l", "ZPN_ESCAPE_RESTART")
 		rg_round_end(gRoundRestartDelay, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
 		return
 	}
@@ -630,12 +631,12 @@ end_escape_round(bool:humans_won)
 
 	if(humans_won)
 	{
-		zpn_print_color(0, print_team_blue, "^3Os humanos escaparam!")
+		zpn_print_color(0, print_team_blue, "%l", "ZPN_ESCAPE_HUMANS_WIN")
 		rg_round_end(gRoundRestartDelay, WINSTATUS_CTS, ROUND_CTS_WIN, .trigger = true)
 	}
 	else
 	{
-		zpn_print_color(0, print_team_red, "^3Os zombies impediram a fuga!")
+		zpn_print_color(0, print_team_red, "%l", "ZPN_ESCAPE_ZOMBIES_WIN")
 		rg_round_end(gRoundRestartDelay, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN, .trigger = true)
 	}
 }

@@ -75,7 +75,7 @@ enum eWeaponTypes
 
 enum ePropItemRegisters
 {
-	PROP_ITEM_REGISTER_NAME = 0, // string
+	PROP_ITEM_REGISTER_NAME = 0, // string: AMXX dictionary key
 	PROP_ITEM_REGISTER_FIND_NAME, // string
 	PROP_ITEM_REGISTER_CMD_BUY, //
 	PROP_ITEM_REGISTER_COST, // int
@@ -101,8 +101,8 @@ enum eItemBuyResults
 enum ePropClassRegisters
 {
 	PROP_CLASS_REGISTER_TYPE = 0, // eClassesType
-	PROP_CLASS_REGISTER_NAME, // string
-	PROP_CLASS_REGISTER_INFO, // string
+	PROP_CLASS_REGISTER_NAME, // string: AMXX dictionary key (JSON name_key)
+	PROP_CLASS_REGISTER_INFO, // string: AMXX dictionary key (JSON description_key)
 	PROP_CLASS_REGISTER_MODEL, // string
 	PROP_CLASS_REGISTER_MODEL_VIEW, // string
 	PROP_CLASS_REGISTER_BODY, // int
@@ -148,8 +148,8 @@ enum eGameModeMapTypes
 
 enum ePropGameModeRegisters
 {
-	PROP_GAMEMODE_REGISTER_NAME = 0, // string
-	PROP_GAMEMODE_REGISTER_NOTICE, // string
+	PROP_GAMEMODE_REGISTER_NAME = 0, // string: AMXX dictionary key
+	PROP_GAMEMODE_REGISTER_NOTICE, // string: AMXX dictionary key (no arguments)
 	PROP_GAMEMODE_REGISTER_HUD_COLOR, // string, hex format: #ff0000
 	PROP_GAMEMODE_REGISTER_HUD_COLOR_CONVERTED, // array [3]
 	PROP_GAMEMODE_REGISTER_CHANCE, // int

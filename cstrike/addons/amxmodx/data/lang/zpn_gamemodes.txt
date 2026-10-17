@@ -1,0 +1,25 @@
+[bp]
+ZPN_ESCAPE_RESTART = ^3Mais um jogador entrou. A rodada será reiniciada para todos começarem juntos.
+ZPN_ESCAPE_HUMANS_WIN = ^3Os humanos escaparam!
+ZPN_ESCAPE_ZOMBIES_WIN = ^3Os zumbis impediram a fuga!
+ZPN_GM_INFECTION = Infecção
+ZPN_GM_INFECTION_NOTICE = A infecção começou!
+ZPN_GM_FIRST_ZOMBIE = %n^né o primeiro zumbi!
+ZPN_GM_NEMESIS = Nemesis
+ZPN_GM_NEMESIS_NOTICE = O Nemesis está à solta!
+ZPN_GM_NEMESIS_PLAYER = %n^né o Nemesis!
+ZPN_GM_ESCAPE = Fuga dos zumbis
+ZPN_GM_ESCAPE_NOTICE = Fujam dos zumbis!
+
+[en]
+ZPN_ESCAPE_RESTART = ^3Another player joined. The round will restart so everyone can start together.
+ZPN_ESCAPE_HUMANS_WIN = ^3The humans escaped!
+ZPN_ESCAPE_ZOMBIES_WIN = ^3The zombies stopped the escape!
+ZPN_GM_INFECTION = Infection
+ZPN_GM_INFECTION_NOTICE = The infection has begun!
+ZPN_GM_FIRST_ZOMBIE = %n^nis the first zombie!
+ZPN_GM_NEMESIS = Nemesis
+ZPN_GM_NEMESIS_NOTICE = The Nemesis is on the loose!
+ZPN_GM_NEMESIS_PLAYER = %n^nis the Nemesis!
+ZPN_GM_ESCAPE = Zombie Escape
+ZPN_GM_ESCAPE_NOTICE = Escape from the zombies!

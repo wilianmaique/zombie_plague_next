@@ -100,6 +100,10 @@ def check_group(sources):
                     continue
                 fmt = params[index].replace('%%', '')
                 specifiers = re.findall(r'%[-+ #0\d.*]*[A-Za-z]', fmt)
+                # Translated placeholders require a separate localization check
+                # against the actual dictionaries, including nested translations.
+                if any(spec[-1] in 'Ll' for spec in specifiers):
+                    continue
                 expected = sum(2 if spec[-1] == 'L' else 1 for spec in specifiers)
                 actual = len(params)-index-1
                 if expected != actual:

@@ -91,6 +91,9 @@ new bool:gTransformingUser
 public plugin_init()
 {
 	register_plugin("Zombie Plague Next", "1.0", "Wilian M.")
+	register_dictionary("zpn_main.txt")
+	register_dictionary("zpn_classes.txt")
+	register_dictionary("zpn_gamemodes.txt")
 
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Post", true)
@@ -290,25 +293,25 @@ public xHudPlayerInfo(id)
 
 	set_hudmessage(0, 255, 255, 0.025, 0.06, 0, 0.0, 0.0, 0.1, 0.1)
 
-	add(txt, charsmax(txt), fmt("• Modo: %s^n", get_gamemode_name()))
-	add(txt, charsmax(txt), fmt("• Classe: %s^n", get_class_name(id)))
+	add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_MODE", get_gamemode_name(id)))
+	add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_CLASS", get_class_name(id)))
 
 	if(level >= MAX_LEVEL)
-		add(txt, charsmax(txt), fmt("• LVL: %s, XP: MAX, %s^n", format_number_point(level), rankName))
+		add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_LEVEL_MAX", format_number_point(level), rankName))
 	else
 	{
-		add(txt, charsmax(txt), fmt("• LVL: %s, XP: %s/%s, %s^n", format_number_point(level), format_number_point(zpn_level_get_user_xp(id)), format_number_point(zpn_level_get_user_required_xp(id)), rankName))
+		add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_LEVEL", format_number_point(level), format_number_point(zpn_level_get_user_xp(id)), format_number_point(zpn_level_get_user_required_xp(id)), rankName))
 	}
 
-	add(txt, charsmax(txt), fmt("• Vida: %s^n", format_number_point(floatround(get_entvar(id, var_health)))))
+	add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_HEALTH", format_number_point(floatround(get_entvar(id, var_health)))))
 
 	if(!zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-		add(txt, charsmax(txt), fmt("• Colete: %d^n", get_entvar(id, var_armorvalue)))
+		add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_ARMOR", floatround(get_entvar(id, var_armorvalue))))
 
-	add(txt, charsmax(txt), fmt("• Ammo Packs: %s^n", format_number_point(zpn_ammo_pack_get_user_ap(id))))
-	add(txt, charsmax(txt), fmt("• Velocidade: %d", get_user_speed(id)))
+	add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_AMMO_PACKS", format_number_point(zpn_ammo_pack_get_user_ap(id))))
+	add(txt, charsmax(txt), fmt("%L", id, "ZPN_HUD_SPEED", get_user_speed(id)))
 
-	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], txt)
+	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], "%s", txt)
 
 	ExecuteForward(xForwards[FW_SHOW_HUD_PLAYER_INFO_POST], xForwardReturn, id)
 }
@@ -400,7 +403,7 @@ public CBasePlayer_Spawn_Post(id)
 		// All classes can be limited: do not spawn with an invalid or full class.
 		rg_join_team(id, TEAM_SPECTATOR)
 		remove_task(id + TASK_RESPAWN)
-		client_print_color(id, print_team_red, "%s ^3Nao foi possivel aplicar uma classe. Entre novamente quando houver uma vaga disponivel.", xSettingsVars[CONFIG_PREFIX_CHAT])
+		client_print_color(id, print_team_red, "%s %L", xSettingsVars[CONFIG_PREFIX_CHAT], id, "ZPN_NO_CLASS_SLOT")
 		return
 	}
 
@@ -534,7 +537,7 @@ public xStartCountDown()
 	if(xForwardReturn < ZPN_RETURN_HANDLED)
 	{
 		set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 1.0, 0.05, 0.05, -1, 0, { 100, 200, 50, 100 })
-		ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "Rodada inicia em: %d", countdown)
+		ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%L", LANG_PLAYER, "ZPN_ROUND_COUNTDOWN", countdown)
 		ExecuteForward(xForwards[FW_SHOW_HUD_COUNTDOWN_POST], xForwardReturn, countdown)
 	}
 
@@ -579,10 +582,11 @@ start_round(const gamemode_id, const start_player = 0)
 	if(xForwardReturn < ZPN_RETURN_HANDLED)
 	{
 		new gm_hud_color_converted[4]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_HUD_COLOR_CONVERTED, gm_hud_color_converted, charsmax(gm_hud_color_converted))
-		new gm_hud_notice[32]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_NOTICE, gm_hud_notice, charsmax(gm_hud_notice))
+		new gm_hud_notice[64]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_NOTICE, gm_hud_notice, charsmax(gm_hud_notice))
 
 		set_hudmessage(gm_hud_color_converted[0], gm_hud_color_converted[1], gm_hud_color_converted[2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
-		ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%s", gm_hud_notice)
+		if(gm_hud_notice[0] != EOS)
+			ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%L", LANG_PLAYER, gm_hud_notice)
 		ExecuteForward(xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_POST], xForwardReturn, gamemode_id)
 	}
 
@@ -964,15 +968,32 @@ public _zpn_set_fw_param_int(plugin_id, param_nums)
 
 public _zpn_print_color(plugin_id, param_nums)
 {
+	if(param_nums < 3)
+		return 0
+
 	new id = get_param(1)
 	new sender = get_param(2)
+	if(id < 0 || id > MaxClients)
+	{
+		log_error(AMX_ERR_NATIVE, "Invalid player id %d", id)
+		return 0
+	}
 
-	static msg[192]; msg[0] = EOS;
+	new msg[192], written
+	new first = id ? id : 1, last = id ? id : MaxClients
+	for(new recipient = first; recipient <= last; recipient++)
+	{
+		if(!is_user_connected(recipient) || is_user_bot(recipient) || is_user_hltv(recipient))
+			continue
 
-	if(param_nums == 3) get_string(3, msg, charsmax(msg))
-	else vdformat(msg, charsmax(msg), 3, 4)
-
-	return client_print_color(id, sender, "%s %s", xSettingsVars[CONFIG_PREFIX_CHAT], msg)
+		// vdformat uses the caller's arguments; %l must be resolved for each receiver.
+		SetGlobalTransTarget(recipient)
+		if(param_nums == 3) get_string(3, msg, charsmax(msg))
+		else vdformat(msg, charsmax(msg), 3, 4)
+		written = client_print_color(recipient, sender, "%s %s", xSettingsVars[CONFIG_PREFIX_CHAT], msg)
+	}
+	SetGlobalTransTarget(LANG_SERVER)
+	return written
 }
 
 public bool:_zpn_is_user_zombie(plugin_id, param_nums)
@@ -1440,31 +1461,32 @@ get_user_speed(const this)
 	return floatround(vector_length(velocity))
 }
 
-get_gamemode_name()
+get_gamemode_name(const id)
 {
-	static gm[64]; gm[0] = EOS
-	static gm_name[64]; zpn_gamemode_get_prop(xDataGetGameRule[GAME_RULE_LAST_GAMEMODE], PROP_GAMEMODE_REGISTER_NAME, gm_name, charsmax(gm_name))
-
-	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
-		copy(gm, charsmax(gm), "--")
-	else if(zpn_is_null_string(gm_name))
-		copy(gm, charsmax(gm), "--")
-	else copy(gm, charsmax(gm), gm_name)
+	static gm[96]
+	copy(gm, charsmax(gm), "--")
+	new gamemode = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE], key[64]
+	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && 0 <= gamemode < zpn_gamemode_array_size())
+	{
+		zpn_gamemode_get_prop(gamemode, PROP_GAMEMODE_REGISTER_NAME, key, charsmax(key))
+		if(key[0] != EOS)
+			formatex(gm, charsmax(gm), "%L", id, key)
+	}
 
 	return gm
 }
 
 get_class_name(const this)
 {
-	static class[64], class_id
-
-	class_id = get_user_current_class_index(this)
-	
-	static class_name[64]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, class_name, charsmax(class_name))
-
-	if(zpn_is_null_string(class_name))
-		copy(class, charsmax(class), "--")
-	else copy(class, charsmax(class), class_name)
+	static class[96]
+	copy(class, charsmax(class), "--")
+	new class_id = get_user_current_class_index(this), key[64]
+	if(0 <= class_id < zpn_class_array_size())
+	{
+		zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, key, charsmax(key))
+		if(key[0] != EOS)
+			formatex(class, charsmax(class), "%L", this, key)
+	}
 
 	return class
 }

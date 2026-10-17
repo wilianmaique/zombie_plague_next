@@ -148,9 +148,11 @@ public plugin_natives()
 public plugin_init()
 {
 	register_plugin("Advanced NPC: Autonomous Mapper", ANPC_VERSION, "ZPN")
+	register_dictionary("advanced_npc_mapper.txt")
+	register_dictionary("common.txt")
 	gActiveCvar = create_cvar("anpc_scan_active", "0", FCVAR_SERVER | FCVAR_SPONLY, "Maintenance state controlled by automatic mapper")
 	if (!is_rehlds() || !is_regamedll()) set_fail_state("Automatic mapper requires ReHLDS and ReGameDLL CS")
-	register_concmd("anpc_scan", "command_scan", ADMIN_RCON, "start [new] | stop | pause | resume | save | status | seed [x y z] | watch 0|1 [scout] | blocks 0|1")
+	register_concmd("anpc_scan", "command_scan", ADMIN_RCON, "ANPC_HELP_SCAN", .info_ml = true)
 	bind_pcvar_num(create_cvar("anpc_scan_auto", "0", FCVAR_NONE, "Automatically map when no navigation exists", true, 0.0, true, 1.0), gAuto)
 	bind_pcvar_num(create_cvar("anpc_scan_bots", "8", FCVAR_NONE, "Independent scouts; captured at start, keeps one free player slot", true, 1.0, true, float(SCAN_MAX_BOTS)), gBotLimit)
 	bind_pcvar_num(create_cvar("anpc_scan_beam", "1", FCVAR_NONE, "Show the scout viewing direction while mapping", true, 0.0, true, 1.0), gBeamEnabled)
@@ -259,17 +261,17 @@ public command_scan(const id, const level, const cid)
 	new action[16], option[16]
 	read_argv(1, action, charsmax(action))
 	read_argv(2, option, charsmax(option))
-	if (equal(action, "start")) console_print(id, "[ANPC] Mapper started: %d", scan_start(bool:equal(option, "new")))
-	else if (equal(action, "stop")) console_print(id, "[ANPC] Saving and stopping: %d", scan_stop(true))
+	if (equal(action, "start")) console_print(id, "%L", id, "ANPC_SCAN_STARTED", scan_start(bool:equal(option, "new")))
+	else if (equal(action, "stop")) console_print(id, "%L", id, "ANPC_SCAN_STOPPING", scan_stop(true))
 	else if (equal(action, "pause") && gActive && gSessionStage != ANPC_SCAN_SAVE && gSessionStage != ANPC_SCAN_PAUSED)
 	{
 		scan_pause_team()
-		console_print(id, "[ANPC] Mapper paused; graph ownership and %d scouts are retained.", gBotCount)
+		console_print(id, "%L", id, "ANPC_SCAN_PAUSED", gBotCount)
 	}
 	else if (equal(action, "resume") && gActive && gSessionStage == ANPC_SCAN_PAUSED)
 	{
 		scan_resume_team()
-		console_print(id, "[ANPC] Mapper resumed.")
+		console_print(id, "%L", id, "ANPC_SCAN_RESUMED")
 	}
 	else if (equal(action, "save") && gActive && gSessionStage != ANPC_SCAN_SAVE) scan_begin_save(false)
 	else if (equal(action, "seed") && gActive && gSessionStage != ANPC_SCAN_SAVE && (read_argc() == 5 || (id && is_user_alive(id))))
@@ -281,19 +283,19 @@ public command_scan(const id, const level, const cid)
 			for (new axis = 0; axis < 3; axis++)
 			{
 				read_argv(axis+2,coordinate,charsmax(coordinate))
-				if (!anpc_number(coordinate)) { console_print(id,"[ANPC] Seed coordinates must be finite decimal numbers."); return PLUGIN_HANDLED; }
+				if (!anpc_number(coordinate)) { console_print(id, "%L", id, "ANPC_SEED_INVALID"); return PLUGIN_HANDLED; }
 				feet[axis] = str_to_float(coordinate)
 			}
 		}
 		else anpc_entity_feet(id, feet)
-		console_print(id, "[ANPC] Exploration seed added: %d", scan_add_seed(feet, 0))
+		console_print(id, "%L", id, "ANPC_SEED_ADDED", scan_add_seed(feet, 0))
 	}
 	else if (equal(action, "watch") && id && is_user_connected(id))
 	{
 		new selected[16]
 		read_argv(3, selected, charsmax(selected))
 		new scout = selected[0] ? str_to_num(selected)-1 : 0
-		if (!scan_set_watch(id, bool:str_to_num(option), scout)) console_print(id, "[ANPC] Scout camera unavailable; choose 1..%d.", gBotCount)
+		if (!scan_set_watch(id, bool:str_to_num(option), scout)) console_print(id, "%L", id, "ANPC_CAMERA_UNAVAILABLE", gBotCount)
 	}
 	else if (equal(action, "blocks") && id && is_user_connected(id))
 	{
@@ -301,7 +303,7 @@ public command_scan(const id, const level, const cid)
 		if (enabled != gBlockView[id]) gBlockViewers += enabled ? 1 : -1
 		gBlockView[id] = enabled
 		gNextBlockDraw = 0.0
-		console_print(id, "[ANPC] Analyzed floor blocks: %d (blue squares).", enabled)
+		console_print(id, "%L", id, "ANPC_BLOCKS_VIEW", enabled)
 	}
 	else scan_status(id)
 	return PLUGIN_HANDLED
@@ -446,7 +448,7 @@ stock scan_finish(const bool:saved, const reason[])
 	ExecuteForward(gFinishForward,result,gCompleted,saved,gKnownCount,gLinks)
 	log_amx("Mapper ended: reason=%s; elapsed=%s; stage=%d scouts=%d completed=%d saved=%d nodes=%d links=%d jumps=%d failures=%d episodes=%d",reason,duration,stage,scouts,gCompleted,saved,gKnownCount,gLinks,gJumps,gFailures,gSeedEpisodes)
 	if (gCompleted && saved && !gFinishingMap)
-		client_print(0,print_chat,"[ANPC] Scan completed in %s: %d areas, %d anchors.",duration,anpc_nav_area_count(),gKnownCount)
+		client_print(0, print_chat, "%L", LANG_PLAYER, "ANPC_SCAN_COMPLETE", duration, anpc_nav_area_count(), gKnownCount)
 	if (gRestart && !gFinishingMap) set_cvar_num("sv_restart",1)
 	gFinishing = false
 }
@@ -684,27 +686,40 @@ stock scan_status(const id)
 	scan_duration(scan_elapsed(),duration,charsmax(duration))
 	// Count cached work; asking for status must not classify every map direction.
 	for (new node = 0; node < gKnownCount; node++) if (scan_frontier_weight(node,false)) pending++
-	console_print(id, "[ANPC] Mapper active=%d stage=%d bots=%d nodes=%d/%d links=%d pending-estimate=%d", gActive, gSessionStage, gBotCount, gKnownCount, ANPC_MAX_NODES, gLinks, pending)
-	console_print(id, "[ANPC] Verified walk=%d jump=%d drop=%d ladder=%d | failures=%d hazards=%d warps=%d unsupported=%d", gWalks,gJumps,gDrops,gClimbs,gFailures,gHazards,gWarps,gUnsupported)
-	console_print(id, "[ANPC] Seeds %d/%d episodes=%d | survey %d/%d | active elapsed %s | last checkpoint saved=%d", scan_used_seeds(),gSeedCount,gSeedEpisodes,gSurveyCursor,gSurveyTotal,duration,gSaved)
-	console_print(id, "[ANPC] Resumed memory=%d | trace/frame limit=%d | cooperative budget=%.2f ms",gMemoryLoaded,gTraceLimit,gBudgetMs)
-	console_print(id, "[ANPC] Sweeps=%d known-direction skips=%d long walks=%d deferred returns=%d | distance: explore=%.0f travel/return=%.0f",gSweeps,gKnownSkips,gLongTrials,gReturnTrials,gExploreDistance,gTravelDistance)
-	console_print(id, "[ANPC] Blocks: open=%d detail=%d total=%d (dynamic) | pruned bearings=%d skipped interior trials=%d cost-ranked targets=%d coverage-limit=%d",gBlockOpen,gBlockDetail,gBlockCount,gBlockSkips,gFrontierSkips,gCostSelections,gBlockLimit)
-	console_print(id, "[ANPC] Area rejections: floor=%d plane=%d hull=%d sensitive=%d capacity=%d | crouch retries=%d",gBlockReject[BLOCK_FLOOR],gBlockReject[BLOCK_PLANE],gBlockReject[BLOCK_HULL],gBlockReject[BLOCK_VOLUME],gBlockReject[BLOCK_CAPACITY],gBlockCrouchRetry)
-	console_print(id, "[ANPC] Floor probe failures: support=%d solid-start=%d non-world=%d height=%d",gBlockFloorReject[FLOOR_SUPPORT],gBlockFloorReject[FLOOR_SOLID],gBlockFloorReject[FLOOR_ENTITY],gBlockFloorReject[FLOOR_HEIGHT])
-	console_print(id, "[ANPC] Survey: enabled=%d valid-BSP-bounds=%d step=%.0f",gSurveyEnabled,gSurveyValid,gSurveyStep)
-	console_print(id,"[ANPC] BSP extents: %.0f x %.0f x %.0f units | leaves checked %d/%d seeds=%d",gBoundsMax[0]-gBoundsMin[0],gBoundsMax[1]-gBoundsMin[1],gBoundsMax[2]-gBoundsMin[2],gSurveyLeafCursor,gSurveyLeafTotal,gLeafSeeds)
-	console_print(id,"[ANPC] Local posture checks=%d standing restored=%d",gPostureChecks,gStandRestores)
-	console_print(id, "[ANPC] Navigation areas=%d | suppressed node samples=%d symmetric floor returns=%d local landings=%d",anpc_nav_area_count(),gAreaNodesSkipped,gAreaReturns,gLandingTrials)
-	console_print(id, "[ANPC] Finalization: removed interior samples=%d generated portals=%d portal capacity skips=%d",gPrunedNodes,gPortals,gPortalLimit)
-	console_print(id, "[ANPC] Retained area revalidation: phase=%d source areas=%d/%d",gRestoreAreaPhase,gRestoreAreaCursor,gRestoreAreaCount)
-	console_print(id,"[ANPC] Reused anchors=%d bounded alignments=%d certified route shortcuts=%d",gAnchorReuses,gAlignments,gRouteShortcuts)
-	console_print(id,"[ANPC] Scouts=%d | safe lateral commands=%d | shared trace/CPU limits are not multiplied",gBotCount,gAvoidances)
+	console_print(id, "%L", id, "ANPC_SCAN_STATE", gActive, gSessionStage, gBotCount)
+	console_print(id, "%L", id, "ANPC_SCAN_WORK", gKnownCount, ANPC_MAX_NODES, gLinks, pending)
+	console_print(id, "%L", id, "ANPC_SCAN_MOVEMENT", gWalks, gJumps, gDrops, gClimbs)
+	console_print(id, "%L", id, "ANPC_SCAN_FAILURES", gFailures, gHazards, gWarps, gUnsupported)
+	console_print(id, "%L", id, "ANPC_SCAN_SEEDS", scan_used_seeds(), gSeedCount, gSeedEpisodes)
+	console_print(id, "%L", id, "ANPC_SCAN_SURVEY_PROGRESS", gSurveyCursor, gSurveyTotal)
+	console_print(id, "%L", id, "ANPC_SCAN_CHECKPOINT", duration, gSaved)
+	console_print(id, "%L", id, "ANPC_SCAN_BUDGET", gMemoryLoaded, gTraceLimit, gBudgetMs)
+	console_print(id, "%L", id, "ANPC_SCAN_SWEEPS", gSweeps, gKnownSkips, gLongTrials, gReturnTrials)
+	console_print(id, "%L", id, "ANPC_SCAN_DISTANCE", gExploreDistance, gTravelDistance)
+	console_print(id, "%L", id, "ANPC_SCAN_BLOCKS", gBlockOpen, gBlockDetail, gBlockCount)
+	console_print(id, "%L", id, "ANPC_SCAN_SKIPS", gBlockSkips, gFrontierSkips, gCostSelections)
+	console_print(id, "%L", id, "ANPC_SCAN_COVERAGE_LIMIT", gBlockLimit)
+	console_print(id, "%L", id, "ANPC_SCAN_REJECT_GEOMETRY", gBlockReject[BLOCK_FLOOR], gBlockReject[BLOCK_PLANE], gBlockReject[BLOCK_HULL])
+	console_print(id, "%L", id, "ANPC_SCAN_REJECT_DETAILS", gBlockReject[BLOCK_VOLUME], gBlockReject[BLOCK_CAPACITY], gBlockCrouchRetry)
+	console_print(id, "%L", id, "ANPC_SCAN_FLOOR_FAILURES", gBlockFloorReject[FLOOR_SUPPORT], gBlockFloorReject[FLOOR_SOLID], gBlockFloorReject[FLOOR_ENTITY], gBlockFloorReject[FLOOR_HEIGHT])
+	console_print(id, "%L", id, "ANPC_SCAN_SURVEY", gSurveyEnabled, gSurveyValid, gSurveyStep)
+	console_print(id, "%L", id, "ANPC_SCAN_BSP_SIZE", gBoundsMax[0]-gBoundsMin[0], gBoundsMax[1]-gBoundsMin[1], gBoundsMax[2]-gBoundsMin[2])
+	console_print(id, "%L", id, "ANPC_SCAN_BSP_LEAVES", gSurveyLeafCursor, gSurveyLeafTotal, gLeafSeeds)
+	console_print(id, "%L", id, "ANPC_SCAN_POSTURE", gPostureChecks, gStandRestores)
+	console_print(id, "%L", id, "ANPC_SCAN_AREAS", anpc_nav_area_count(), gAreaNodesSkipped)
+	console_print(id, "%L", id, "ANPC_SCAN_LANDINGS", gAreaReturns, gLandingTrials)
+	console_print(id, "%L", id, "ANPC_SCAN_FINALIZATION", gPrunedNodes, gPortals, gPortalLimit)
+	console_print(id, "%L", id, "ANPC_SCAN_REVALIDATION", gRestoreAreaPhase, gRestoreAreaCursor, gRestoreAreaCount)
+	console_print(id, "%L", id, "ANPC_SCAN_REUSE", gAnchorReuses, gAlignments, gRouteShortcuts)
+	console_print(id, "%L", id, "ANPC_SCAN_SHARED_BUDGET", gBotCount, gAvoidances)
 	for (new scout = 0; scout < gBotCount; scout++)
 	{
 		if (!scan_bot_valid(scout)) continue
 		new Float:feet[3]
 		anpc_entity_feet(gBot[scout],feet)
-		console_print(id,"[ANPC] Scout %d bot=%d stage=%d idle=%d feet %.1f %.1f %.1f | anchor=%d source=%d goal=%d claim=%d motion=%d",scout+1,gBot[scout],gStage[scout],gIdle[scout],feet[0],feet[1],feet[2],gCurrent[scout],gSource[scout],gGoalNode[scout],gClaimNode[scout],gMotion[scout])
+		console_print(id, "%L", id, "ANPC_SCOUT_STATE", scout+1, gBot[scout], gStage[scout], gIdle[scout])
+		console_print(id, "%L", id, "ANPC_SCOUT_POSITION", feet[0], feet[1], feet[2])
+		console_print(id, "%L", id, "ANPC_SCOUT_ROUTE", gCurrent[scout], gSource[scout], gGoalNode[scout])
+		console_print(id, "%L", id, "ANPC_SCOUT_MOTION", gClaimNode[scout], gMotion[scout])
 	}
 }

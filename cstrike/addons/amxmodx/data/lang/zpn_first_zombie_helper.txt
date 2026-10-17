@@ -1,0 +1,7 @@
+[bp]
+ZPN_HELPER_SELECTED = ^3Você foi escolhido para ajudar o primeiro zumbi.
+ZPN_HELPERS_SELECTED = ^1Jogadores escolhidos para ajudar o primeiro zumbi: ^4%d^1.
+
+[en]
+ZPN_HELPER_SELECTED = ^3You have been chosen to help the first zombie.
+ZPN_HELPERS_SELECTED = ^1Players chosen to help the first zombie: ^4%d^1.

@@ -23,38 +23,38 @@ enum _:eForwards
 	FW_LEVEL_CHANGED_POST,
 }
 
-new const xRankNames[][] =
+new const xRankKeys[][] =
 {
-	"Recruta",
-	"Soldado",
-	"Soldado Primeira Classe",
-	"Cabo",
-	"Cabo Veterano",
-	"Sargento",
-	"Sargento de Elite",
-	"Subtenente",
-	"Aspirante",
-	"Segundo Tenente",
-	"Primeiro Tenente",
-	"Capitao",
-	"Major",
-	"Tenente-Coronel",
-	"Coronel",
-	"General de Brigada",
-	"General de Divisao",
-	"General de Exercito",
-	"Comandante",
-	"Comandante Tatico",
-	"Executor",
-	"Vanguarda",
-	"Guardiao",
-	"Predador",
-	"Ceifador",
-	"Carrasco",
-	"Dominador",
-	"Lenda",
-	"Mito",
-	"Apocalipse"
+	"ZPN_RANK_01",
+	"ZPN_RANK_02",
+	"ZPN_RANK_03",
+	"ZPN_RANK_04",
+	"ZPN_RANK_05",
+	"ZPN_RANK_06",
+	"ZPN_RANK_07",
+	"ZPN_RANK_08",
+	"ZPN_RANK_09",
+	"ZPN_RANK_10",
+	"ZPN_RANK_11",
+	"ZPN_RANK_12",
+	"ZPN_RANK_13",
+	"ZPN_RANK_14",
+	"ZPN_RANK_15",
+	"ZPN_RANK_16",
+	"ZPN_RANK_17",
+	"ZPN_RANK_18",
+	"ZPN_RANK_19",
+	"ZPN_RANK_20",
+	"ZPN_RANK_21",
+	"ZPN_RANK_22",
+	"ZPN_RANK_23",
+	"ZPN_RANK_24",
+	"ZPN_RANK_25",
+	"ZPN_RANK_26",
+	"ZPN_RANK_27",
+	"ZPN_RANK_28",
+	"ZPN_RANK_29",
+	"ZPN_RANK_30"
 }
 
 new xCvars[eCvars]
@@ -79,6 +79,7 @@ public plugin_precache()
 public plugin_init()
 {
 	register_plugin("[ZPN] Core: Levels", "1.0", "Wilian M.")
+	register_dictionary("zpn_levels.txt")
 
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "CBasePlayer_TakeDamage_Pre", false)
 	RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false)
@@ -172,9 +173,9 @@ public clcmd_level(id)
 	format_number_point(get_required_xp(xUserLevel[id]), requiredXp, charsmax(requiredXp))
 
 	if(xUserLevel[id] >= MAX_LEVEL)
-		zpn_print_color(id, print_team_default, "^3Level: ^4%d ^1| ^3Patente: ^4%s ^1| ^3XP: ^4MAX", xUserLevel[id], rankName)
+		zpn_print_color(id, print_team_default, "%l", "ZPN_LEVEL_STATUS_MAX", xUserLevel[id], rankName)
 	else
-		zpn_print_color(id, print_team_default, "^3Level: ^4%d ^1| ^3Patente: ^4%s ^1| ^3XP: ^4%s^1/^4%s", xUserLevel[id], rankName, xp, requiredXp)
+		zpn_print_color(id, print_team_default, "%l", "ZPN_LEVEL_STATUS", xUserLevel[id], rankName, xp, requiredXp)
 
 	return PLUGIN_HANDLED
 }
@@ -258,17 +259,21 @@ public bool:_zpn_level_get_user_rank_name(plugin_id, param_nums)
 	if(!zpn_is_valid_player_connected(id))
 		return false
 
-	set_string(2, xRankNames[get_rank_index(xUserLevel[id])], get_param(3))
+	new rankName[64]
+	get_user_rank_name(id, rankName, charsmax(rankName))
+	set_string(2, rankName, get_param(3))
 
 	return true
 }
 
 public bool:_zpn_level_get_rank_name(plugin_id, param_nums)
 {
-	if(param_nums != 3)
+	if(param_nums != 4)
 		return false
 
-	set_string(2, xRankNames[get_rank_index(get_param(1))], get_param(3))
+	new rankName[64]
+	formatex(rankName, charsmax(rankName), "%L", get_param(4), xRankKeys[get_rank_index(get_param(1))])
+	set_string(2, rankName, get_param(3))
 
 	return true
 }
@@ -424,20 +429,20 @@ get_rank_index(level)
 {
 	level = clamp(level, MIN_LEVEL, MAX_LEVEL)
 
-	new rank = ((level - MIN_LEVEL) * sizeof(xRankNames)) / (MAX_LEVEL - MIN_LEVEL + 1)
+	new rank = ((level - MIN_LEVEL) * sizeof(xRankKeys)) / (MAX_LEVEL - MIN_LEVEL + 1)
 
 	if(rank < 0)
 		rank = 0
 
-	if(rank >= sizeof(xRankNames))
-		rank = sizeof(xRankNames) - 1
+	if(rank >= sizeof(xRankKeys))
+		rank = sizeof(xRankKeys) - 1
 
 	return rank
 }
 
 get_user_rank_name(const id, rankName[], len)
 {
-	copy(rankName, len, xRankNames[get_rank_index(xUserLevel[id])])
+	formatex(rankName, len, "%L", id, xRankKeys[get_rank_index(xUserLevel[id])])
 }
 
 multiply_xp(const amount)
@@ -458,7 +463,7 @@ announce_level_up(const id, const oldLevel)
 	new rankName[32]
 	get_user_rank_name(id, rankName, charsmax(rankName))
 
-	zpn_print_color(id, print_team_default, "^3Voce subiu do level ^4%d ^3para ^4%d ^1- ^3Patente: ^4%s^1.", oldLevel, xUserLevel[id], rankName)
+	zpn_print_color(id, print_team_default, "%l", "ZPN_LEVEL_UP", oldLevel, xUserLevel[id], rankName)
 }
 
 reset_user_level(const id)

@@ -8,6 +8,7 @@ new gamemode, synchud
 
 public plugin_init()
 {
+	register_dictionary("zpn_gamemodes.txt")
 	register_plugin("[ZPN] GameMode: Infection", "1.0", "Wilian M.")
 	synchud = CreateHudSyncObj()
 }
@@ -15,9 +16,9 @@ public plugin_init()
 public plugin_precache()
 {
 	gamemode = zpn_gamemode_init()
-	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_NAME, "Infection")
+	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_NAME, "ZPN_GM_INFECTION")
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_FIND_NAME, "gm_infection")
-	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_NOTICE, "Infection Has Started!")
+	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_NOTICE, "ZPN_GM_INFECTION_NOTICE")
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_HUD_COLOR, "#ffffff")
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_CHANCE, 20)
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_MIN_PLAYERS, 1)
@@ -44,7 +45,7 @@ public zpn_round_started_post(const game_id, const start_player)
 	}
 
 	set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 200, 50, 100 })
-	ShowSyncHudMsg(0, synchud, "%n^nÉ o primeiro zombie!", id)
+	ShowSyncHudMsg(0, synchud, "%L", LANG_PLAYER, "ZPN_GM_FIRST_ZOMBIE", id)
 }
 
 infect_first_zombie(const exclude_player)

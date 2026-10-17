@@ -12,6 +12,7 @@ new item
 
 public plugin_init()
 {
+	register_dictionary("zpn_items.txt")
 	register_plugin("[ZPN] Item: Frost Nade", "1.0", "Wilian M.")
 
 	RegisterHookChain(RG_CGrenade_ExplodeFlashbang, "Grenade_ExplodeFlashbang_Pre", false)
@@ -23,7 +24,7 @@ public plugin_precache()
 	item = zpn_item_init()
 	zpn_item_set_prop(item, PROP_ITEM_REGISTER_TEAM, CLASS_TEAM_TYPE_HUMAN)
 	zpn_item_set_prop(item, PROP_ITEM_REGISTER_FIND_NAME, "item_h_frostnade")
-	zpn_item_set_prop(item, PROP_ITEM_REGISTER_NAME, "Frost Nade")
+	zpn_item_set_prop(item, PROP_ITEM_REGISTER_NAME, "ZPN_ITEM_FROSTNADE")
 	zpn_item_set_prop(item, PROP_ITEM_REGISTER_COST, 0)
 }
 

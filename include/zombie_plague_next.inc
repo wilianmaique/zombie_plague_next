@@ -322,6 +322,8 @@ forward zpn_user_infect_attempt(const this, const infector, const class_id);
  *
  * @note preview is true while building or refreshing the shop. The forward may
  *       run more than once for the same item; avoid purchase side effects then.
+ * @note Translate extra_text for id before appending it (e.g. fmt("%L", id, key)).
+ *       It is already formatted display text, not a dictionary key.
  * @note During preview, append text with add(extra_text, maxlen, "..."). The
  *       shop places it immediately after the item name. Multiple plugins may
  *       append to the same buffer.
@@ -529,7 +531,11 @@ native zpn_class_random_class_id(eClassTypes:type);
  *       keys without a corresponding zpn_class_set_prop() call. Missing keys
  *       keep the core defaults and are not added to the file at this stage.
  *
- * @param name      Default display name
+ * @note Set PROP_CLASS_REGISTER_NAME to a dictionary key before other properties.
+ *       NAME and INFO getters return dictionary keys; translate with the viewer's
+ *       language when displaying them. JSON uses name_key and description_key.
+ *
+ * @param name      Stable identifier used for the classes.json section
  * @param type      Class type
  *
  * @return          New class index, or -1 on failure
@@ -1052,7 +1058,7 @@ native zpn_level_get_user_required_xp(const id);
 native zpn_level_get_rank_index(const level);
 
 /**
- * Copies a client's rank name.
+ * Copies a client's rank name in that client's language.
  *
  * @param id        Client index
  * @param rank      Output buffer
@@ -1068,10 +1074,11 @@ native bool:zpn_level_get_user_rank_name(const id, rank[], len);
  * @param level     Level to inspect
  * @param rank      Output buffer
  * @param len       Output buffer length
+ * @param lang      Client index whose language to use, or LANG_SERVER
  *
  * @return          true on success, false otherwise
  */
-native bool:zpn_level_get_rank_name(const level, rank[], len);
+native bool:zpn_level_get_rank_name(const level, rank[], len, const lang = LANG_SERVER);
 
 /**
  * Retrieves a client data property.
@@ -1153,6 +1160,14 @@ native bool:zpn_transform_user(const id, const eClassTypes:class_type, const cla
  *
  * @note This wraps client_print_color() and prepends the configured chat prefix.
  * @note Use 0 as id to send to all connected clients.
+ * @note %l is translated for each recipient, including broadcasts. For %L use
+ *       an explicit client index, LANG_SERVER or a language code. LANG_PLAYER
+ *       is implicit state established by AMXX output natives, not vdformat().
+ * @note Examples: zpn_print_color(0, print_team_default, "%l", "ZPN_ESCAPE_HUMANS_WIN");
+ *       zpn_print_color(id, print_team_default, "%L", id, "ZPN_CLASS_APPLIED", name);
+ *       Already formatted strings must be passed as "%s", text.
+ * @note The caller registers its dictionary. Chat is limited by CS SayText;
+ *       the configured prefix also consumes that limit.
  *
  * @param id        Client index, or 0 for all clients
  * @param sender    Client index or print_team_* constant used for team color

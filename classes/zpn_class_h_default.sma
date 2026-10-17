@@ -6,15 +6,17 @@ new class
 
 public plugin_init()
 {
+	register_dictionary("zpn_classes.txt")
 	register_plugin("[ZPN] Class: Human Default", "1.0", "Wilian M.")
 }
 
 public plugin_precache()
 {
 	class = zpn_class_init("Default", CLASS_TEAM_TYPE_HUMAN)
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_NAME, "ZPN_CLASS_H_DEFAULT")
 
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_FIND_NAME, "default")
-	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "Balanced")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "ZPN_CLASS_DEFAULT_INFO")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL, "sas")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_SPEED, 280.0)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_HEALTH, 120.0)

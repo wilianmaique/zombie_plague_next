@@ -37,6 +37,7 @@ new camera_users_xvar = -1
 
 public plugin_init()
 {
+	register_dictionary("zpn_classes.txt")
 	register_plugin("[ZPN] Class: Human Kicker", "1.0", "Wilian M.")
 
 	register_forward(FM_CmdStart, "@CmdStart_Pre", false)
@@ -57,7 +58,8 @@ public plugin_cfg()
 register_class()
 {
 	class = zpn_class_init("Kick", CLASS_TEAM_TYPE_HUMAN)
-	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "You can kick zombies")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_NAME, "ZPN_CLASS_H_KICKER")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_INFO, "ZPN_CLASS_H_KICKER_INFO")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_MODEL, "vip")
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_SPEED, 300.0)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_HEALTH, 180.0)

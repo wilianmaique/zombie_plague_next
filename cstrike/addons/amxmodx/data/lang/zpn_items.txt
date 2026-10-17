@@ -1,0 +1,17 @@
+[bp]
+ZPN_NO_ITEMS = ^3Nenhum item disponível.
+ZPN_ITEM_UNAVAILABLE = ^3Este item não está disponível.
+ZPN_ITEM_BLOCKED = ^3A compra deste item foi bloqueada.
+ZPN_ITEM_MIN_ZOMBIES = ^3Este item exige pelo menos ^4%d ^3zumbis vivos.
+ZPN_ITEM_LIMIT_REACHED = ^3O limite de compras deste item foi atingido.
+ZPN_ITEM_NO_AMMO_PACKS = ^3Você não tem ^4Ammo Packs ^3suficientes.
+ZPN_ITEM_FROSTNADE = Granada congelante
+
+[en]
+ZPN_NO_ITEMS = ^3No items are available.
+ZPN_ITEM_UNAVAILABLE = ^3This item is unavailable.
+ZPN_ITEM_BLOCKED = ^3Purchasing this item has been blocked.
+ZPN_ITEM_MIN_ZOMBIES = ^3This item requires at least ^4%d ^3living zombies.
+ZPN_ITEM_LIMIT_REACHED = ^3The purchase limit for this item has been reached.
+ZPN_ITEM_NO_AMMO_PACKS = ^3You do not have enough ^4Ammo Packs^3.
+ZPN_ITEM_FROSTNADE = Frost grenade

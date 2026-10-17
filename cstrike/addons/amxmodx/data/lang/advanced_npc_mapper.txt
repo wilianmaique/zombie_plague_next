@@ -1,0 +1,83 @@
+[bp]
+ANPC_HELP_SCAN = start [new] | stop | pause | resume | save | status | seed [x y z] | watch 0|1 [batedor] | blocks 0|1
+ANPC_SCAN_STARTED = [ANPC] Mapeamento iniciado: %d
+ANPC_SCAN_STOPPING = [ANPC] Salvando e encerrando o mapeamento: %d
+ANPC_SCAN_PAUSED = [ANPC] Mapeamento pausado; a navegação e %d batedores continuam reservados.
+ANPC_SCAN_RESUMED = [ANPC] Mapeamento retomado.
+ANPC_SEED_INVALID = [ANPC] As coordenadas de exploração devem ser números decimais finitos.
+ANPC_SEED_ADDED = [ANPC] Ponto inicial de exploração adicionado: %d
+ANPC_CAMERA_UNAVAILABLE = [ANPC] Câmera indisponível. Escolha um batedor de 1 a %d.
+ANPC_BLOCKS_VIEW = [ANPC] Exibição dos blocos de piso analisados: %d (quadrados azuis).
+ANPC_SCAN_COMPLETE = [ANPC] Mapeamento concluído em %s: %d áreas e %d pontos de navegação.
+ANPC_SCAN_STATE = [ANPC] Mapeador ativo=%d | etapa=%d | batedores=%d
+ANPC_SCAN_WORK = [ANPC] Pontos %d/%d | conexões=%d | pendências estimadas=%d
+ANPC_SCAN_MOVEMENT = [ANPC] Rotas verificadas: andar=%d saltar=%d cair=%d escada=%d
+ANPC_SCAN_FAILURES = [ANPC] Falhas=%d | riscos=%d | reposicionamentos=%d | sem suporte=%d
+ANPC_SCAN_SEEDS = [ANPC] Pontos iniciais %d/%d | tentativas de exploração=%d
+ANPC_SCAN_SURVEY_PROGRESS = [ANPC] Varredura do mapa %d/%d
+ANPC_SCAN_CHECKPOINT = [ANPC] Tempo ativo: %s | último ponto de controle salvo=%d
+ANPC_SCAN_BUDGET = [ANPC] Memória retomada=%d | traces por frame=%d | orçamento=%.2f ms
+ANPC_SCAN_SWEEPS = [ANPC] Varreduras=%d | direções já conhecidas=%d | rotas longas=%d | retornos adiados=%d
+ANPC_SCAN_DISTANCE = [ANPC] Distância: exploração=%.0f | deslocamento e retorno=%.0f
+ANPC_SCAN_BLOCKS = [ANPC] Blocos: abertos=%d | detalhados=%d | total dinâmico=%d
+ANPC_SCAN_SKIPS = [ANPC] Direções podadas=%d | testes internos evitados=%d | alvos por custo=%d
+ANPC_SCAN_COVERAGE_LIMIT = [ANPC] Limite de cobertura atingido=%d
+ANPC_SCAN_REJECT_GEOMETRY = [ANPC] Áreas rejeitadas: piso=%d | plano=%d | volume do jogador=%d
+ANPC_SCAN_REJECT_DETAILS = [ANPC] Volume sensível=%d | limite de áreas=%d | novas tentativas agachado=%d
+ANPC_SCAN_FLOOR_FAILURES = [ANPC] Falhas do piso: apoio=%d | início sólido=%d | entidade=%d | altura=%d
+ANPC_SCAN_SURVEY = [ANPC] Varredura ativa=%d | limites BSP válidos=%d | passo=%.0f
+ANPC_SCAN_BSP_SIZE = [ANPC] Dimensões do BSP: %.0f x %.0f x %.0f unidades
+ANPC_SCAN_BSP_LEAVES = [ANPC] Folhas do BSP verificadas %d/%d | pontos iniciais=%d
+ANPC_SCAN_POSTURE = [ANPC] Verificações de postura=%d | postura em pé restaurada=%d
+ANPC_SCAN_AREAS = [ANPC] Áreas de navegação=%d | amostras de pontos dispensadas=%d
+ANPC_SCAN_LANDINGS = [ANPC] Retornos simétricos no piso=%d | pousos locais=%d
+ANPC_SCAN_FINALIZATION = [ANPC] Finalização: amostras internas removidas=%d | portais criados=%d | sem espaço=%d
+ANPC_SCAN_REVALIDATION = [ANPC] Revalidação de áreas mantidas: etapa=%d | áreas %d/%d
+ANPC_SCAN_REUSE = [ANPC] Pontos reutilizados=%d | alinhamentos limitados=%d | atalhos verificados=%d
+ANPC_SCAN_SHARED_BUDGET = [ANPC] Batedores=%d | desvios laterais seguros=%d | cotas de traces e CPU compartilhadas
+ANPC_SCOUT_STATE = [ANPC] Batedor %d | bot=%d | etapa=%d | ocioso=%d
+ANPC_SCOUT_POSITION = [ANPC] Posição dos pés: %.1f %.1f %.1f
+ANPC_SCOUT_ROUTE = [ANPC] Ponto atual=%d | origem=%d | destino=%d
+ANPC_SCOUT_MOTION = [ANPC] Ponto reservado=%d | movimento=%d
+
+[en]
+ANPC_HELP_SCAN = start [new] | stop | pause | resume | save | status | seed [x y z] | watch 0|1 [scout] | blocks 0|1
+ANPC_SCAN_STARTED = [ANPC] Mapper started: %d
+ANPC_SCAN_STOPPING = [ANPC] Saving and stopping: %d
+ANPC_SCAN_PAUSED = [ANPC] Mapper paused; graph ownership and %d scouts are retained.
+ANPC_SCAN_RESUMED = [ANPC] Mapper resumed.
+ANPC_SEED_INVALID = [ANPC] Seed coordinates must be finite decimal numbers.
+ANPC_SEED_ADDED = [ANPC] Exploration seed added: %d
+ANPC_CAMERA_UNAVAILABLE = [ANPC] Scout camera unavailable; choose 1..%d.
+ANPC_BLOCKS_VIEW = [ANPC] Analyzed floor blocks: %d (blue squares).
+ANPC_SCAN_COMPLETE = [ANPC] Scan completed in %s: %d areas and %d anchors.
+ANPC_SCAN_STATE = [ANPC] Mapper active=%d | stage=%d | scouts=%d
+ANPC_SCAN_WORK = [ANPC] Nodes %d/%d | links=%d | estimated pending work=%d
+ANPC_SCAN_MOVEMENT = [ANPC] Verified routes: walk=%d jump=%d drop=%d ladder=%d
+ANPC_SCAN_FAILURES = [ANPC] Failures=%d | hazards=%d | warps=%d | unsupported=%d
+ANPC_SCAN_SEEDS = [ANPC] Seeds %d/%d | exploration episodes=%d
+ANPC_SCAN_SURVEY_PROGRESS = [ANPC] Map survey %d/%d
+ANPC_SCAN_CHECKPOINT = [ANPC] Active time: %s | last checkpoint saved=%d
+ANPC_SCAN_BUDGET = [ANPC] Memory resumed=%d | traces per frame=%d | budget=%.2f ms
+ANPC_SCAN_SWEEPS = [ANPC] Sweeps=%d | known directions skipped=%d | long walks=%d | deferred returns=%d
+ANPC_SCAN_DISTANCE = [ANPC] Distance: exploration=%.0f | travel and return=%.0f
+ANPC_SCAN_BLOCKS = [ANPC] Blocks: open=%d | detailed=%d | dynamic total=%d
+ANPC_SCAN_SKIPS = [ANPC] Bearings pruned=%d | interior trials skipped=%d | cost-ranked targets=%d
+ANPC_SCAN_COVERAGE_LIMIT = [ANPC] Coverage limit reached=%d
+ANPC_SCAN_REJECT_GEOMETRY = [ANPC] Area rejections: floor=%d | plane=%d | player hull=%d
+ANPC_SCAN_REJECT_DETAILS = [ANPC] Sensitive volume=%d | area capacity=%d | crouch retries=%d
+ANPC_SCAN_FLOOR_FAILURES = [ANPC] Floor probe failures: support=%d | solid start=%d | entity=%d | height=%d
+ANPC_SCAN_SURVEY = [ANPC] Survey enabled=%d | valid BSP bounds=%d | step=%.0f
+ANPC_SCAN_BSP_SIZE = [ANPC] BSP dimensions: %.0f x %.0f x %.0f units
+ANPC_SCAN_BSP_LEAVES = [ANPC] BSP leaves checked %d/%d | seeds=%d
+ANPC_SCAN_POSTURE = [ANPC] Posture checks=%d | standing posture restored=%d
+ANPC_SCAN_AREAS = [ANPC] Navigation areas=%d | node samples skipped=%d
+ANPC_SCAN_LANDINGS = [ANPC] Symmetric floor returns=%d | local landings=%d
+ANPC_SCAN_FINALIZATION = [ANPC] Finalization: interior samples removed=%d | portals created=%d | capacity skips=%d
+ANPC_SCAN_REVALIDATION = [ANPC] Retained area revalidation: phase=%d | areas %d/%d
+ANPC_SCAN_REUSE = [ANPC] Anchors reused=%d | bounded alignments=%d | verified shortcuts=%d
+ANPC_SCAN_SHARED_BUDGET = [ANPC] Scouts=%d | safe lateral commands=%d | shared trace and CPU budgets
+ANPC_SCOUT_STATE = [ANPC] Scout %d | bot=%d | stage=%d | idle=%d
+ANPC_SCOUT_POSITION = [ANPC] Feet position: %.1f %.1f %.1f
+ANPC_SCOUT_ROUTE = [ANPC] Current anchor=%d | source=%d | goal=%d
+ANPC_SCOUT_MOTION = [ANPC] Claimed anchor=%d | motion=%d

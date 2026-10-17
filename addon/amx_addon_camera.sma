@@ -48,6 +48,7 @@ public plugin_precache()
 public plugin_init()
 {
 	register_plugin("AMXX Camera", "1.1", "Vexd | Wilian M.")
+	register_dictionary("amx_camera.txt")
 
 	register_clcmd("say /cam", "command_camera_menu")
 	register_clcmd("say /camera", "command_camera_menu")
@@ -81,15 +82,15 @@ public command_camera_menu(const id)
 
 show_camera_menu(const id)
 {
-	new menu = menu_create("\ySelecione uma camera", "camera_menu_handler")
+	new menu = menu_create(fmt("\y%L", id, "CAMERA_MENU_TITLE"), "camera_menu_handler")
 
-	menu_additem(menu, "Camera 3D", "1")
-	menu_additem(menu, "Camera 3D de lado", "2")
-	menu_additem(menu, "Camera 3D de cima", "3")
-	menu_additem(menu, "Camera 3D de frente", "4")
-	menu_additem(menu, "Camera padrao", "0")
+	menu_additem(menu, fmt("%L", id, "CAMERA_THIRD_PERSON"), "1")
+	menu_additem(menu, fmt("%L", id, "CAMERA_SIDE"), "2")
+	menu_additem(menu, fmt("%L", id, "CAMERA_TOP"), "3")
+	menu_additem(menu, fmt("%L", id, "CAMERA_FRONT"), "4")
+	menu_additem(menu, fmt("%L", id, "CAMERA_DEFAULT"), "0")
 
-	menu_setprop(menu, MPROP_EXITNAME, "Cancelar")
+	menu_setprop(menu, MPROP_EXITNAME, fmt("%L", id, "CAMERA_CANCEL"))
 	menu_display(id, menu)
 }
 
