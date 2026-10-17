@@ -20,6 +20,7 @@ enum
 
 new gGameMode
 new bool:gReady, bool:gActive, bool:gFinishPending, bool:gRoundClosing, bool:gEscapeRoundStarted
+new bool:gSoloRound
 new gRoundEndedForward, gForwardReturn
 new Array:gHumanSpawns, Array:gZombieSpawns
 new gLastHumanSpawn = -1, gLastZombieSpawn = -1
@@ -40,7 +41,7 @@ public plugin_precache()
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_NOTICE, "Fujam dos zombies!")
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_HUD_COLOR, "#ffb347")
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_CHANCE, 1)
-	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_MIN_PLAYERS, 2)
+	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_MIN_PLAYERS, 1)
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_ROUND_TIME, 15.0)
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_DEATHMATCH, GAMEMODE_DEATHMATCH_ONLY_TR)
 	zpn_gamemode_set_prop(gGameMode, PROP_GAMEMODE_REGISTER_RESPAWN_TIME, 5.0)
@@ -70,6 +71,7 @@ public plugin_init()
 	gReady = true
 	RegisterHookChain(RG_CSGameRules_GetPlayerSpawnSpot, "GetPlayerSpawnSpot_Pre", false)
 	RegisterHookChain(RG_CSGameRules_RestartRound, "RestartRound_Pre", false)
+	RegisterHookChain(RG_CBasePlayer_GetIntoGame, "CBasePlayer_GetIntoGame_Post", true)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false)
 	RegisterHookChain(RG_RoundEnd, "RoundEnd_Post", true)
@@ -356,8 +358,9 @@ public zpn_round_started_post(const gamemode_id, const start_player)
 	gRoundClosing = false
 	new players[32], count
 	get_players_ex(players, count, GetPlayers_ExcludeDead | GetPlayers_ExcludeHLTV)
+	gSoloRound = (count == 1)
 
-	if(count < 2)
+	if(!count)
 	{
 		gActive = false
 		rg_round_end(gRoundRestartDelay, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
@@ -365,7 +368,7 @@ public zpn_round_started_post(const gamemode_id, const start_player)
 	}
 
 	new wanted = floatround(float(count) * gFirstRatio, floatround_ceil)
-	wanted = clamp(max(wanted, gMinFirst), 1, count - 1)
+	wanted = clamp(max(wanted, gMinFirst), 1, max(1, count - 1))
 	if(start_player)
 		wanted = 1
 
@@ -548,6 +551,14 @@ public zpn_user_humanized_post(const id, const class_id)
 	schedule_team_check()
 }
 
+public CBasePlayer_GetIntoGame_Post(const id)
+{
+	if(GetHookChainReturn(ATYPE_BOOL))
+		schedule_team_check()
+
+	return HC_CONTINUE
+}
+
 public client_disconnected(id)
 {
 	schedule_team_check()
@@ -561,14 +572,21 @@ schedule_team_check()
 
 public CheckEscapeTeams()
 {
-	if(!gActive)
+	if(!gActive || get_member_game(m_bRoundTerminating))
 		return
 
-	new humans, zombies
+	new humans, zombies, playing
 	for(new id = 1; id <= MaxClients; id++)
 	{
 		if(!is_user_connected(id))
 			continue
+
+		new TeamName:team = get_member(id, m_iTeam)
+		if((team != TEAM_CT && team != TEAM_TERRORIST) || get_member(id, m_iJoiningState) != JOINED)
+			continue
+
+		// Dead participants still count, so eliminating the last human ends a multiplayer round.
+		playing++
 
 		if(zpn_is_user_zombie(id))
 			zombies++
@@ -576,12 +594,23 @@ public CheckEscapeTeams()
 			humans++
 	}
 
+	// Start everyone together when a solo round gains another participant, even a dead one.
+	if(gSoloRound && playing > 1)
+	{
+		gSoloRound = false
+		zpn_print_color(0, print_team_default, "^3Mais um jogador entrou. Reiniciando a rodada para comecar com todos.")
+		rg_round_end(gRoundRestartDelay, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
+		return
+	}
+	gSoloRound = (playing == 1)
+
 	if(!humans && !zombies)
 	{
 		gActive = false
 		rg_round_end(gRoundRestartDelay, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
 	}
-	else if(!humans)
+	// A solo zombie can keep playing and respawn without restarting the round.
+	else if(!humans && playing > 1)
 		end_escape_round(false)
 	else if(!zombies)
 		end_escape_round(true)
@@ -614,6 +643,7 @@ end_escape_round(bool:humans_won)
 public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 {
 	gActive = false
+	gSoloRound = false
 	gFinishPending = false
 	gRoundClosing = true
 	remove_task(TASK_ESCAPE_TIMEOUT)
@@ -642,6 +672,7 @@ public RestartRound_Pre()
 {
 	gEscapeRoundStarted = false
 	gActive = false
+	gSoloRound = false
 	gFinishPending = false
 	gRoundClosing = false
 	remove_task(TASK_ESCAPE_TIMEOUT)
