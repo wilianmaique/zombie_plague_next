@@ -101,6 +101,7 @@ public OnConfigsExecuted()
 		return
 
 	amx_immutable_cvar_set("mp_round_infinite", "1")
+	amx_immutable_cvar_set("mp_roundover", "0")
 	amx_immutable_cvar_set("mp_autoteambalance", "0")
 }
 
