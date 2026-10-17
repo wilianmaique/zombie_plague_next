@@ -32,3 +32,4 @@
 - Avoid large refactors when the request is narrow.
 - Remove obsolete code when replacing it with the intended structure.
 - When editing includes, natives, or forwards, verify they work with the project's target AMXX and ReAPI versions.
+- Not edit README.md

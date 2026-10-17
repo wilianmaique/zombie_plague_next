@@ -12,6 +12,7 @@
 stock const MAX_LEVEL = 10000
 #define ZPN_ITEM_EXTRA_TEXT_SIZE 64
 
+stock const FOLDER_CVARS_CONFIG[] = "zombie_plague_next";
 stock const PATH_SETTINGS_CONFIG[] = "zombie_plague_next/configs.json";
 stock const PATH_SETTINGS_CLASSES[] = "zombie_plague_next/classes.json";
 stock const PATH_SETTINGS_ITEMS[] = "zombie_plague_next/items.json";
@@ -156,8 +157,7 @@ enum ePropPlayerDataRegisters
 	PROP_PD_REGISTER_CLASS_TIMEOUT, // float
 	PROP_PD_REGISTER_LAST_LEAP_TIMEOUT, // float, next allowed leap time (get_gametime), managed by zpn_leap
 	PROP_PD_REGISTER_IS_LAST_HUMAN,
-	PROP_PD_REGISTER_NV_ON, // bool
-	PROP_PD_REGISTER_NV_SPAM, // float
+	PROP_PD_REGISTER_NV_ON, // bool, toggle preference managed by zpn_nightvision; rendering requires a living player
 	PROP_PD_REGISTER_AMMO_PACKS, // int
 	PROP_PD_REGISTER_DMG_DEALT, // float
 	PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS, // int

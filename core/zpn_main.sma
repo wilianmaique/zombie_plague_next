@@ -18,7 +18,6 @@ enum
 	TASK_COUNTDOWN = 1515,
 	TASK_HUD_PLAYER_INFO = 1600,
 	TASK_RESPAWN = 1700,
-	TASK_NV = 1800,
 	TASK_FROZEN = 1900,
 	TASK_SCORE_ATTRIB = 2000,
 }
@@ -31,10 +30,6 @@ enum _:eCvars
 	CVAR_CLASS_SELECT_INSTANT,
 	Float:CVAR_CLASS_SELECT_INSTANT_TIMEOUT,
 	CVAR_RESPAWN_IN_LAST_H,
-	CVAR_DEFAULT_NV_H[12],
-	CVAR_DEFAULT_NV_Z[12],
-	P_CVAR_DEFAULT_NV_H,
-	P_CVAR_DEFAULT_NV_Z,
 }
 
 enum _:eForwards
@@ -84,8 +79,6 @@ enum _:eGameRules
 	Array:GAME_RULE_PRIMARY_WEAPONS,
 	Array:GAME_RULE_SECONDARY_WEAPONS,
 	GAME_RULE_LAST_GAMEMODE,
-	GAME_RULE_DEFAULT_NV_H[3],
-	GAME_RULE_DEFAULT_NV_Z[3],
 	Array:GAME_RULE_FROZEN_HIT_SOUNDS,
 	Array:GAME_RULE_ESCAPE_KEEP_ENTITIES
 }
@@ -124,11 +117,9 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Post", true)
 	RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "RCBasePlayer_HasRestrictItem_Pre", false)
-	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RG_HandleMenu_ChooseAppearance, "HandleMenu_ChooseAppearance_Post", true)
 
-	register_clcmd("nightvision", "clcmd_nightvision")
 	xBuyItemCallback = menu_makecallback("_buy_items_callback")
 
 	for(new i = 0; i < eSyncHuds; i++)
@@ -200,12 +191,6 @@ public HandleMenu_ChooseAppearance_Post(const this, const slot)
 		check_game()
 }
 
-public clcmd_nightvision(id)
-{
-	zpn_player_data_set_prop(id, PROP_PD_REGISTER_NV_ON, !zpn_player_data_get_prop(id, PROP_PD_REGISTER_NV_ON))
-	return PLUGIN_HANDLED
-}
-
 public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
 	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
@@ -231,17 +216,6 @@ public respawn_user(this)
 
 	if(!is_user_alive(this))
 		rg_round_respawn(this)
-}
-
-public CBasePlayer_PreThink(const this)
-{
-	if(!zpn_is_valid_player_alive(this))
-		return
-
-	if(zpn_player_data_get_prop(this, PROP_PD_REGISTER_NV_ON) && zpn_player_data_get_prop(this, PROP_PD_REGISTER_NV_SPAM) < get_gametime())
-		set_user_nv(this)
-	
-	zpn_player_data_set_prop(this, PROP_PD_REGISTER_NV_SPAM, get_gametime() + 0.001)
 }
 
 public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:flDamage, bitsDamageType)
@@ -1158,27 +1132,6 @@ public plugin_precache()
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 	bind_pcvar_num(create_cvar("zpn_weapon_weight_discount_speed", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
 	//bind_pcvar_num(create_cvar("zpn_respawn_in_last_human", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_RESPAWN_IN_LAST_H])
-	bind_pcvar_string(xCvars[P_CVAR_DEFAULT_NV_H] = create_cvar("zpn_default_nv_h", "#00bbff", .flags = FCVAR_NOEXTRAWHITEPACE), xCvars[CVAR_DEFAULT_NV_H], charsmax(xCvars[CVAR_DEFAULT_NV_H]))
-	bind_pcvar_string(xCvars[P_CVAR_DEFAULT_NV_Z] = create_cvar("zpn_default_nv_z", "#27e30e", .flags = FCVAR_NOEXTRAWHITEPACE), xCvars[CVAR_DEFAULT_NV_Z], charsmax(xCvars[CVAR_DEFAULT_NV_Z]))
-	hook_cvar_change(xCvars[P_CVAR_DEFAULT_NV_H], "cvar_nightvision_changed"); hook_cvar_change(xCvars[P_CVAR_DEFAULT_NV_Z], "cvar_nightvision_changed")
-
-	new bool:parse_nv
-	parse_nv = parse_hex_color(xCvars[CVAR_DEFAULT_NV_H], xDataGetGameRule[GAME_RULE_DEFAULT_NV_H])
-
-	if(!parse_nv)
-	{
-		xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][0] = xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][1] = 0
-		xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][2] = 100
-	}
-
-	parse_nv = parse_hex_color(xCvars[CVAR_DEFAULT_NV_Z], xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z])
-
-	if(!parse_nv)
-	{
-		xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][0] = 100
-		xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][1] = xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][2] = 0
-	}
-
 	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", xSettingsVars[CONFIG_DEBUG_ON]))
 	{
 		xSettingsVars[CONFIG_DEBUG_ON] = 0
@@ -1312,33 +1265,6 @@ public plugin_precache()
 			continue
 
 		precache_sound(sound)
-	}
-}
-
-public cvar_nightvision_changed(pcvar, const old_value[], const new_value[])
-{
-	new bool:parse_nv
-
-	if(pcvar == xCvars[P_CVAR_DEFAULT_NV_H])
-	{
-		parse_nv = parse_hex_color(new_value, xDataGetGameRule[GAME_RULE_DEFAULT_NV_H])
-
-		if(!parse_nv)
-		{
-			xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][0] = xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][1] = 0
-			xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][2] = 100
-		}
-	}
-
-	if(pcvar == xCvars[P_CVAR_DEFAULT_NV_Z])
-	{
-		parse_nv = parse_hex_color(new_value, xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z])
-
-		if(!parse_nv)
-		{
-			xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][0] = 100
-			xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][1] = xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][2] = 0
-		}
 	}
 }
 
@@ -1785,49 +1711,6 @@ public remove_user_frozen(this)
 
 	if(task_exists(this + TASK_FROZEN))
 		remove_task(this + TASK_FROZEN)
-}
-
-public set_user_nv(id)
-{
-	static Float:o[3]; get_entvar(id, var_origin, o)
-	static rgb[3]
-	
-	rgb[0] = 0; rgb[1] = 0; rgb[2] = 0
-	get_user_nv_color(id, rgb)
-
-	message_begin(MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, .player = id)
-	write_byte(TE_DLIGHT)
-	write_coord_f(o[0])
-	write_coord_f(o[1])
-	write_coord_f(o[2])
-	write_byte(40) // radius
-	write_byte(rgb[0])
-	write_byte(rgb[1])
-	write_byte(rgb[2])
-	write_byte(1) // life
-	write_byte(0) // decay
-	message_end()
-}
-
-get_user_nv_color(id, outRgb[3])
-{
-	static class_id; class_id = get_user_current_class_index(id)
-	static nv_color[12]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NV_COLOR, nv_color)
-
-	if(!zpn_is_null_string(nv_color))
-	{
-		static nv_color_converted[4]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NV_COLOR_CONVERTED, nv_color_converted, charsmax(nv_color_converted))
-		
-		outRgb[0] = nv_color_converted[0]
-		outRgb[1] = nv_color_converted[1]
-		outRgb[2] = nv_color_converted[2]
-	}
-	else
-	{
-		outRgb[0] = zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][0] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][0]
-		outRgb[1] = zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][1] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][1]
-		outRgb[2] = zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? xDataGetGameRule[GAME_RULE_DEFAULT_NV_Z][2] : xDataGetGameRule[GAME_RULE_DEFAULT_NV_H][2]
-	}
 }
 
 get_user_speed(const this)

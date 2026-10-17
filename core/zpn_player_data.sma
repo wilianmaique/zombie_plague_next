@@ -14,7 +14,6 @@ enum _:ePropPlayerData
 	Float:PD_PROP_LAST_LEAP_TIMEOUT,
 	bool:PD_PROP_IS_LAST_HUMAN,
 	bool:PD_PROP_NV_ON,
-	Float:PD_PROP_NV_SPAM,
 	PD_PROP_AMMO_PACKS,
 	Float:PD_PROP_DMG_DEALT,
 	PD_PROP_NEXT_ZOMBIE_CLASS,
@@ -76,7 +75,6 @@ public any:_zpn_player_data_get_prop(plugin_id, param_nums)
 		case PROP_PD_REGISTER_LAST_LEAP_TIMEOUT: return xPlayerData[player][PD_PROP_LAST_LEAP_TIMEOUT]
 		case PROP_PD_REGISTER_IS_LAST_HUMAN: return xPlayerData[player][PD_PROP_IS_LAST_HUMAN]
 		case PROP_PD_REGISTER_NV_ON: return xPlayerData[player][PD_PROP_NV_ON]
-		case PROP_PD_REGISTER_NV_SPAM: return xPlayerData[player][PD_PROP_NV_SPAM]
 		case PROP_PD_REGISTER_AMMO_PACKS: return xPlayerData[player][PD_PROP_AMMO_PACKS]
 		case PROP_PD_REGISTER_DMG_DEALT: return xPlayerData[player][PD_PROP_DMG_DEALT]
 		case PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS: return xPlayerData[player][PD_PROP_NEXT_ZOMBIE_CLASS]
@@ -139,7 +137,6 @@ public any:_zpn_player_data_set_prop(plugin_id, param_nums)
 		case PROP_PD_REGISTER_LAST_LEAP_TIMEOUT: xPlayerData[player][PD_PROP_LAST_LEAP_TIMEOUT] = get_float_byref(arg_value)
 		case PROP_PD_REGISTER_IS_LAST_HUMAN: xPlayerData[player][PD_PROP_IS_LAST_HUMAN] = bool:get_param_byref(arg_value)
 		case PROP_PD_REGISTER_NV_ON: xPlayerData[player][PD_PROP_NV_ON] = bool:get_param_byref(arg_value)
-		case PROP_PD_REGISTER_NV_SPAM: xPlayerData[player][PD_PROP_NV_SPAM] = get_float_byref(arg_value)
 		case PROP_PD_REGISTER_AMMO_PACKS: xPlayerData[player][PD_PROP_AMMO_PACKS] = get_param_byref(arg_value)
 		case PROP_PD_REGISTER_DMG_DEALT: xPlayerData[player][PD_PROP_DMG_DEALT] = get_float_byref(arg_value)
 		case PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS: xPlayerData[player][PD_PROP_NEXT_ZOMBIE_CLASS] = get_param_byref(arg_value)
