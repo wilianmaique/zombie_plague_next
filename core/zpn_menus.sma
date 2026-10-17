@@ -20,11 +20,27 @@ enum _:eForwards
 	FW_SHOW_MENU_SECONDARY_WEAPON_POST,
 }
 
+enum eMenuParents
+{
+	MENU_PARENT_NONE,
+	MENU_PARENT_GAME,
+	MENU_PARENT_ADMIN,
+	MENU_PARENT_ADMIN_SPECIAL_CLASSES,
+	MENU_PARENT_CLASS_TYPE,
+	MENU_PARENT_PRIMARY_WEAPON,
+}
+
 new xForwards[eForwards] = { -1, ... }
 new xMenuPrefix[32], xBuyItemCallback
+new xAdminMenuFlags[27], xAdminAccessCallback, xAdminPlayerCallback
+new xDisplayedMenu[33] = { -1, ... }
+new eMenuParents:xMenuParent[33], eMenuParents:xMenuReturn[33]
+new xMenuParentData[33], xMenuReturnData[33], xMenuReturnUserid[33]
 
 public plugin_precache()
 {
+	bind_pcvar_string(create_cvar("zpn_admin_menu_flags", "d"), xAdminMenuFlags, charsmax(xAdminMenuFlags))
+
 	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", xMenuPrefix, charsmax(xMenuPrefix)))
 	{
 		copy(xMenuPrefix, charsmax(xMenuPrefix), "!y[!rZM!y]")
@@ -52,6 +68,10 @@ public plugin_init()
 	register_clcmd("jointeam", "clcmd_changeteam")
 
 	xBuyItemCallback = menu_makecallback("_buy_items_callback")
+	xAdminAccessCallback = menu_makecallback("_admin_access_callback")
+	xAdminPlayerCallback = menu_makecallback("_admin_player_callback")
+
+	AutoExecConfig(true, "zpn_menus", FOLDER_CVARS_CONFIG)
 
 	xForwards[FW_SHOW_MENU_GAME_PRE] = CreateMultiForward("zpn_show_menu_game_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_SHOW_MENU_GAME_POST] = CreateMultiForward("zpn_show_menu_game_post", ET_IGNORE, FP_CELL)
@@ -155,7 +175,7 @@ bool:show_menu_game(const id)
 	menu_additem(menu, "Selecionar Armas")
 	menu_additem(menu, "Loja De Itens")
 	menu_additem(menu, "Selecionar Classes^n")
-	menu_additem(menu, "\yAdministração")
+	menu_additem(menu, "Administração", .callback = xAdminAccessCallback)
 	display_menu(id, menu)
 
 	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_POST], forward_return, id)
@@ -164,7 +184,7 @@ bool:show_menu_game(const id)
 
 public _show_menu_game(id, menu, item)
 {
-	menu_destroy(menu)
+	close_menu(id, menu, item)
 	if(!is_menu_client(id) || item < 0)
 		return PLUGIN_HANDLED
 
@@ -173,9 +193,235 @@ public _show_menu_game(id, menu, item)
 		case 0: select_weapon_menu(id, ZPN_WEAPON_PRIMARY)
 		case 1: buy_items(id)
 		case 2: select_class_type(id)
-		case 3: client_print(id, print_chat, "admin")
+		case 3: admin_menu(id)
 	}
 
+	return PLUGIN_HANDLED
+}
+
+bool:has_admin_menu_access(const id)
+{
+	if(!is_menu_client(id))
+		return false
+
+	new flags = read_flags(xAdminMenuFlags)
+	return flags != 0 && (get_user_flags(id) & flags) == flags
+}
+
+public _admin_access_callback(id, menu, item)
+{
+	return has_admin_menu_access(id) ? ITEM_ENABLED : ITEM_DISABLED
+}
+
+bool:admin_menu(const id)
+{
+	if(!has_admin_menu_access(id))
+		return false
+
+	new menu = menu_create(fmt("%s \yAdministração", xMenuPrefix), "_admin_menu")
+	menu_additem(menu, "Transformar: \rZombie \w/ \yHumano")
+	menu_additem(menu, "Transformar em \rZombie Especial")
+	menu_additem(menu, "Transformar em \yHumano Especial")
+	display_menu(id, menu, .parent = MENU_PARENT_GAME)
+	return true
+}
+
+public _admin_menu(id, menu, item)
+{
+	close_menu(id, menu, item)
+	if(item < 0 || !has_admin_menu_access(id))
+		return PLUGIN_HANDLED
+
+	switch(item)
+	{
+		case 0: admin_players(id)
+		case 1: admin_special_classes(id, CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
+		case 2: admin_special_classes(id, CLASS_TEAM_TYPE_HUMAN_SPECIAL)
+	}
+	return PLUGIN_HANDLED
+}
+
+bool:admin_special_classes(const id, const eClassTypes:type)
+{
+	if(!has_admin_menu_access(id)
+	|| (type != CLASS_TEAM_TYPE_ZOMBIE_SPECIAL && type != CLASS_TEAM_TYPE_HUMAN_SPECIAL))
+		return false
+
+	new menu = menu_create(fmt("%s \yClasses %s Especiais", xMenuPrefix, type == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL ? "\rZombies" : "\yHumanas"), "_admin_special_classes")
+	new name[64], count
+	for(new class_id = 0; class_id < zpn_class_array_size(); class_id++)
+	{
+		if(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) != type)
+			continue
+
+		// Hidden special classes belong in administration, even when players cannot select them.
+		zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
+		menu_additem(menu, fmt("%s%s", type == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL ? "\r" : "\y", name), fmt("%d %d", type, class_id))
+		count++
+	}
+
+	if(!count)
+	{
+		zpn_print_color(id, print_team_red, "^3Nenhuma classe especial cadastrada para esta raça.")
+		menu_destroy(menu)
+		return admin_menu(id)
+	}
+
+	display_menu(id, menu, .parent = MENU_PARENT_ADMIN)
+	return true
+}
+
+public _admin_special_classes(id, menu, item)
+{
+	new info[32], type_text[12], class_text[12]
+	if(!read_menu_selection(id, menu, item, info, charsmax(info)) || !has_admin_menu_access(id))
+		return PLUGIN_HANDLED
+
+	parse(info, type_text, charsmax(type_text), class_text, charsmax(class_text))
+	new class_id = str_to_num(class_text)
+	if(is_admin_special_class(class_id)
+	&& zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == eClassTypes:str_to_num(type_text))
+		admin_players(id, class_id)
+
+	return PLUGIN_HANDLED
+}
+
+bool:is_admin_special_class(const class_id)
+{
+	if(!(0 <= class_id < zpn_class_array_size()))
+		return false
+
+	new eClassTypes:type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+	return type == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL || type == CLASS_TEAM_TYPE_HUMAN_SPECIAL
+}
+
+bool:admin_players(const id, const class_id = -1, const page = 0)
+{
+	if(!has_admin_menu_access(id) || (class_id != -1 && !is_admin_special_class(class_id)))
+		return false
+
+	new name[64]
+	if(class_id == -1)
+		copy(name, charsmax(name), "\rZombie \w/ \yHumano")
+	else
+		zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
+
+	new menu = menu_create(fmt("%s \yTransformar: %s%s", xMenuPrefix, class_id != -1 && zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL ? "\r" : "\y", name), "_admin_players")
+	new count
+	for(new target = 1; target <= MaxClients; target++)
+	{
+		if(!is_user_alive(target) || is_user_hltv(target))
+			continue
+
+		menu_additem(menu, " ", fmt("%d %d %d", get_user_userid(target), class_id, _:zpn_is_user_zombie(target)), .callback = xAdminPlayerCallback)
+		count++
+	}
+
+	if(!count)
+	{
+		zpn_print_color(id, print_team_red, "^3Nenhum jogador vivo disponível.")
+		menu_destroy(menu)
+		if(class_id != -1)
+			return admin_special_classes(id, eClassTypes:zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE))
+		return admin_menu(id)
+	}
+
+	display_menu(id, menu, page, class_id == -1 ? MENU_PARENT_ADMIN : MENU_PARENT_ADMIN_SPECIAL_CLASSES, class_id)
+	return true
+}
+
+public _admin_player_callback(id, menu, item)
+{
+	if(!has_admin_menu_access(id) || item < 0)
+		return ITEM_DISABLED
+
+	new info[48], userid_text[12], class_text[12], state_text[4]
+	if(!menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info)))
+		return ITEM_DISABLED
+
+	parse(info, userid_text, charsmax(userid_text), class_text, charsmax(class_text), state_text, charsmax(state_text))
+	new target = find_player_ex(FindPlayer_MatchUserId, str_to_num(userid_text))
+	if(!target || !is_user_alive(target))
+	{
+		menu_item_setname(menu, item, "Jogador indisponível")
+		return ITEM_DISABLED
+	}
+
+	new class_id = str_to_num(class_text), name[32], state_label[96], state_color[3] = "\d", text[192]
+	new bool:zombie = zpn_is_user_zombie(target)
+	get_user_name(target, name, charsmax(name))
+	if(get_member_game(m_bRoundTerminating))
+		copy(state_label, charsmax(state_label), "Fim da rodada")
+	else if(!zpn_is_round_started())
+		copy(state_label, charsmax(state_label), "Início do game")
+	else
+	{
+		copy(state_color, charsmax(state_color), zombie ? "\r" : "\y")
+		new current = zpn_get_user_current_class(target)
+		if(is_admin_special_class(current))
+			zpn_class_get_prop(current, PROP_CLASS_REGISTER_NAME, state_label, charsmax(state_label))
+		else
+			copy(state_label, charsmax(state_label), zombie ? "Zombie" : "Humano")
+	}
+
+	new bool:enabled = !get_member_game(m_bRoundTerminating) && !get_member_game(m_bFreezePeriod)
+	if(class_id != -1)
+	{
+		enabled = enabled && is_admin_special_class(class_id) && !zpn_is_user_class(target, class_id) && zpn_class_has_free_slot(class_id, target)
+		if(is_admin_special_class(class_id) && !zpn_class_has_free_slot(class_id, target))
+			add(state_label, charsmax(state_label), " \d/ Classe lotada")
+	}
+
+	formatex(text, charsmax(text), "%s%s %s%s", enabled ? "\w" : "\d", name, state_color, state_label)
+	menu_item_setname(menu, item, text)
+
+	menu_item_setcmd(menu, item, fmt("%d %d %d", get_user_userid(target), class_id, _:zombie))
+	return enabled ? ITEM_ENABLED : ITEM_DISABLED
+}
+
+public _admin_players(id, menu, item)
+{
+	new info[48], userid_text[12], class_text[12], state_text[4]
+	if(!read_menu_selection(id, menu, item, info, charsmax(info)) || !has_admin_menu_access(id))
+		return PLUGIN_HANDLED
+
+	parse(info, userid_text, charsmax(userid_text), class_text, charsmax(class_text), state_text, charsmax(state_text))
+	new userid = str_to_num(userid_text), class_id = str_to_num(class_text)
+	new target = find_player_ex(FindPlayer_MatchUserId, userid)
+	if(!target || !is_user_alive(target))
+		zpn_print_color(id, print_team_red, "^3Este jogador não está mais vivo ou conectado.")
+	else if(get_member_game(m_bRoundTerminating) || get_member_game(m_bFreezePeriod))
+		zpn_print_color(id, print_team_red, "^3Aguarde a contagem ou uma rodada em andamento.")
+	else if(class_id == -1 && _:zpn_is_user_zombie(target) != str_to_num(state_text))
+		zpn_print_color(id, print_team_red, "^3O estado do jogador mudou. A lista foi atualizada.")
+	else
+	{
+		new eClassTypes:type
+		if(class_id == -1)
+			type = zpn_is_user_zombie(target) ? CLASS_TEAM_TYPE_HUMAN : CLASS_TEAM_TYPE_ZOMBIE
+		else if(is_admin_special_class(class_id))
+			type = eClassTypes:zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+		else
+			return PLUGIN_HANDLED
+
+		new name[32], class_name[64]
+		get_user_name(target, name, charsmax(name))
+		if(zpn_transform_user(target, type, class_id))
+		{
+			new current = is_user_connected(target) && get_user_userid(target) == userid ? zpn_get_user_current_class(target) : -1
+			if(0 <= current < zpn_class_array_size())
+			{
+				zpn_class_get_prop(current, PROP_CLASS_REGISTER_NAME, class_name, charsmax(class_name))
+				if(is_menu_client(id))
+					zpn_print_color(id, print_team_default, "^3%s ^1transformado em ^4%s^1.", name, class_name)
+				log_amx("Admin %n transformou %s (#%d) em %s", id, name, userid, class_name)
+			}
+		}
+		else
+			zpn_print_color(id, print_team_red, "^3Não foi possível transformar: verifique as vagas da classe, os jogadores vivos ou bloqueios de outros plugins.")
+	}
+
+	admin_players(id, class_id, item / 7)
 	return PLUGIN_HANDLED
 }
 
@@ -240,7 +486,7 @@ bool:buy_items(const id)
 		menu_additem(menu, item_text, fmt("%d", i), .callback = xBuyItemCallback)
 	}
 
-	display_menu(id, menu)
+	display_menu(id, menu, .parent = MENU_PARENT_GAME)
 	ExecuteForward(xForwards[FW_SHOW_MENU_ITEMS_POST], forward_return, id, item_team)
 	return true
 }
@@ -309,7 +555,7 @@ bool:select_class_type(const id)
 	new menu = menu_create(fmt("%s \yEscolha a raça", xMenuPrefix), "_select_class_type")
 	menu_additem(menu, fmt("Zombie \y(\d%d classes\y)", count_class(CLASS_TEAM_TYPE_ZOMBIE)), fmt("%d", CLASS_TEAM_TYPE_ZOMBIE))
 	menu_additem(menu, fmt("Humano \y(\d%d classes\y)", count_class(CLASS_TEAM_TYPE_HUMAN)), fmt("%d", CLASS_TEAM_TYPE_HUMAN))
-	display_menu(id, menu)
+	display_menu(id, menu, .parent = MENU_PARENT_GAME)
 
 	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_TYPE_POST], forward_return, id)
 	return true
@@ -376,7 +622,7 @@ bool:select_class(const id, const eClassTypes:class_type)
 		menu_additem(menu, item_text, fmt("%d", i))
 	}
 
-	display_menu(id, menu)
+	display_menu(id, menu, .parent = MENU_PARENT_CLASS_TYPE)
 	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_POST], forward_return, id, class_type)
 	return true
 }
@@ -465,7 +711,7 @@ bool:select_weapon_menu(const id, const eWeaponTypes:type)
 		menu_additem(menu, weapon[7], fmt("%d", i))
 	}
 
-	display_menu(id, menu)
+	display_menu(id, menu, .parent = type == ZPN_WEAPON_PRIMARY ? MENU_PARENT_GAME : MENU_PARENT_PRIMARY_WEAPON)
 	ExecuteForward(xForwards[post], forward_return, id)
 	return true
 }
@@ -496,12 +742,62 @@ bool:is_menu_client(const id)
 	return zpn_is_valid_player_connected(id) && !is_user_bot(id) && !is_user_hltv(id)
 }
 
-display_menu(const id, const menu)
+display_menu(const id, const menu, const page = 0, const eMenuParents:parent = MENU_PARENT_NONE, const parent_data = -1)
 {
 	menu_setprop(menu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
 	menu_setprop(menu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
-	menu_setprop(menu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
-	menu_display(id, menu)
+	menu_setprop(menu, MPROP_EXITNAME, fmt("%L", id, parent == MENU_PARENT_NONE ? "EXIT" : "BACK"))
+	menu_display(id, menu, clamp(page, 0, menu_pages(menu) - 1))
+
+	// Displaying a replacement may cancel the old menu; discard its queued return.
+	xMenuReturnUserid[id] = 0
+	xDisplayedMenu[id] = menu
+	xMenuParent[id] = parent
+	xMenuParentData[id] = parent_data
+}
+
+close_menu(const id, const menu, const item)
+{
+	if(xDisplayedMenu[id] == menu)
+	{
+		xDisplayedMenu[id] = -1
+		if(item == MENU_EXIT && xMenuParent[id] != MENU_PARENT_NONE && is_menu_client(id))
+		{
+			xMenuReturn[id] = xMenuParent[id]
+			xMenuReturnData[id] = xMenuParentData[id]
+			xMenuReturnUserid[id] = get_user_userid(id)
+			RequestFrame("return_to_parent_menu", xMenuReturnUserid[id])
+		}
+	}
+	menu_destroy(menu)
+}
+
+public return_to_parent_menu(const userid)
+{
+	new id = find_player_ex(FindPlayer_MatchUserId, userid)
+	if(!is_menu_client(id) || xMenuReturnUserid[id] != userid)
+		return
+
+	xMenuReturnUserid[id] = 0
+	new menu, newmenu
+	player_menu_info(id, menu, newmenu)
+	if(menu > 0 || newmenu >= 0)
+		return
+
+	// MENU_EXIT also covers cancellations; reopen only with no replacement menu.
+	switch(xMenuReturn[id])
+	{
+		case MENU_PARENT_GAME: show_menu_game(id)
+		case MENU_PARENT_ADMIN: admin_menu(id)
+		case MENU_PARENT_ADMIN_SPECIAL_CLASSES:
+		{
+			new class_id = xMenuReturnData[id]
+			if(is_admin_special_class(class_id))
+				admin_special_classes(id, eClassTypes:zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE))
+		}
+		case MENU_PARENT_CLASS_TYPE: select_class_type(id)
+		case MENU_PARENT_PRIMARY_WEAPON: select_weapon_menu(id, ZPN_WEAPON_PRIMARY)
+	}
 }
 
 bool:read_menu_selection(const id, const menu, const item, info[], const maxlen)
@@ -511,7 +807,7 @@ bool:read_menu_selection(const id, const menu, const item, info[], const maxlen)
 		selected = bool:menu_item_getinfo(menu, item, .info = info, .infolen = maxlen)
 
 	// Each menu is created for one display; cancellation also ends its ownership.
-	menu_destroy(menu)
+	close_menu(id, menu, item)
 	return selected
 }
 

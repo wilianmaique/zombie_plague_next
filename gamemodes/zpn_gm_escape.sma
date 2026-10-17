@@ -344,7 +344,7 @@ move_to_spot(const id, const spot)
 	set_entvar(id, var_velocity, zero)
 }
 
-public zpn_round_started_post(const gamemode_id)
+public zpn_round_started_post(const gamemode_id, const start_player)
 {
 	if(!gReady || gamemode_id != gGameMode)
 		return
@@ -354,7 +354,7 @@ public zpn_round_started_post(const gamemode_id)
 	gFinishPending = false
 	gRoundClosing = false
 	new players[32], count
-	get_players(players, count, "ae", "CT")
+	get_players_ex(players, count, GetPlayers_ExcludeDead | GetPlayers_ExcludeHLTV)
 
 	if(count < 2)
 	{
@@ -365,6 +365,8 @@ public zpn_round_started_post(const gamemode_id)
 
 	new wanted = floatround(float(count) * gFirstRatio, floatround_ceil)
 	wanted = clamp(max(wanted, gMinFirst), 1, count - 1)
+	if(start_player)
+		wanted = 1
 
 	for(new i = 0; i < count; i++)
 	{
@@ -375,8 +377,19 @@ public zpn_round_started_post(const gamemode_id)
 	}
 
 	new chosen, spot
+	if(start_player && is_user_alive(start_player) && zpn_is_user_zombie(start_player))
+	{
+		chosen = 1
+		spot = find_free_spawn(start_player, true)
+		if(spot)
+			move_to_spot(start_player, spot)
+	}
+
 	for(new i = 0; i < count && chosen < wanted; i++)
 	{
+		if(players[i] == start_player || zpn_is_user_zombie(players[i]))
+			continue
+
 		spot = find_free_spawn(players[i], true)
 		if(!spot || !zpn_set_user_zombie(players[i], 0, chosen == 0))
 			continue
@@ -525,6 +538,11 @@ public CBasePlayer_Killed_Post(const victim, const attacker, const shouldgib)
 }
 
 public zpn_user_infected_post(const victim, const infector, const class_id)
+{
+	schedule_team_check()
+}
+
+public zpn_user_humanized_post(const id, const class_id)
 {
 	schedule_team_check()
 }

@@ -86,6 +86,7 @@ new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
 new xCvars[eCvars], xSettingsVars[eSettingsConfigs], xMsgSync[eSyncHuds]
 new xDataGetGameRule[eGameRules]
 new bool:gEscapeMap
+new bool:gTransformingUser
 
 public plugin_init()
 {
@@ -110,7 +111,7 @@ public plugin_init()
 		xMsgSync[i] = CreateHudSyncObj()
 
 	// FWS
-	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_USER_SPAWN_POST] = CreateMultiForward("zpn_user_spawn_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_SHOW_HUD_PLAYER_INFO_PRE] = CreateMultiForward("zpn_show_hud_player_info_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_SHOW_HUD_PLAYER_INFO_POST] = CreateMultiForward("zpn_show_hud_player_info_post", ET_IGNORE, FP_CELL)
@@ -500,6 +501,9 @@ public CSGameRules_RestartRound_Post()
 
 public CSGameRules_OnRoundFreezeEnd_Pre()
 {
+	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] || get_member_game(m_bRoundTerminating))
+		return
+
 	if(xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] == -1)
 	{
 		server_print("[ZP NEXT] No gamemodes found.")
@@ -513,6 +517,9 @@ public CSGameRules_OnRoundFreezeEnd_Pre()
 
 public xStartCountDown()
 {
+	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] || get_member_game(m_bRoundTerminating))
+		return
+
 	if(xDataGetGameRule[GAME_RULE_COUNTDOWN] <= 0)
 	{
 		remove_task(TASK_COUNTDOWN)
@@ -555,6 +562,14 @@ public xInitRound()
 		return
 	}
 
+	start_round(gamemode_id)
+}
+
+start_round(const gamemode_id, const start_player = 0)
+{
+	remove_task(TASK_COUNTDOWN)
+	xDataGetGameRule[GAME_RULE_COUNTDOWN] = 0
+	ClearSyncHud(0, xMsgSync[SYNC_HUD_MAIN])
 	xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] = gamemode_id
 	xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gamemode_id
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
@@ -571,7 +586,7 @@ public xInitRound()
 		ExecuteForward(xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_POST], xForwardReturn, gamemode_id)
 	}
 
-	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gamemode_id)
+	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gamemode_id, start_player)
 }
 
 public plugin_precache()
@@ -745,6 +760,7 @@ public plugin_natives()
 
 	register_native("zpn_get_current_gamemode", "_zpn_get_current_gamemode")
 	register_native("zpn_set_user_zombie", "_zpn_set_user_zombie")
+	register_native("zpn_transform_user", "_zpn_transform_user")
 	register_native("zpn_is_user_zombie", "_zpn_is_user_zombie")
 	register_native("zpn_is_user_zombie_special", "_zpn_is_user_zombie_special")
 	register_native("zpn_print_color", "_zpn_print_color")
@@ -1060,7 +1076,120 @@ public bool:_zpn_set_user_zombie(plugin_id, param_nums)
 	return set_user_zombie(id, attacker, set_first)
 }
 
-public bool:set_user_zombie(this, infector, bool:set_first)
+public bool:_zpn_transform_user(plugin_id, param_nums)
+{
+	if(param_nums != 3)
+		return false
+
+	return transform_user(get_param(1), eClassTypes:get_param(2), get_param(3))
+}
+
+bool:transform_user(const id, const eClassTypes:type, class_id)
+{
+	if(gTransformingUser || !zpn_is_valid_player_alive(id)
+	|| get_member_game(m_bRoundTerminating) || get_member_game(m_bFreezePeriod))
+		return false
+
+	new bool:zombie
+	switch(type)
+	{
+		case CLASS_TEAM_TYPE_ZOMBIE, CLASS_TEAM_TYPE_ZOMBIE_SPECIAL: zombie = true
+		case CLASS_TEAM_TYPE_HUMAN, CLASS_TEAM_TYPE_HUMAN_SPECIAL: zombie = false
+		default: return false
+	}
+
+	new eClassTypes:normal_type = zombie ? CLASS_TEAM_TYPE_ZOMBIE : CLASS_TEAM_TYPE_HUMAN
+	if(class_id == -1 && type == normal_type)
+		class_id = resolve_user_class(id, -1, normal_type)
+
+	if(!is_eligible_user_class(id, class_id, normal_type)
+	|| zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) != type
+	|| (type != normal_type && get_user_current_class_index(id) == class_id))
+		return false
+
+	new bool:starting = !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
+	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
+	if(starting)
+	{
+		if(!task_exists(TASK_COUNTDOWN))
+			return false
+
+		gamemode_id = zpn_gamemode_find(gEscapeMap ? "gm_escape" : "gm_infection")
+		new map_type = gEscapeMap ? GAMEMODE_MAP_ESCAPE : GAMEMODE_MAP_NORMAL
+		if(gamemode_id == -1 || !(zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_MAP_TYPES) & map_type)
+		|| get_num_playing_alive() < zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_MIN_PLAYERS)
+		|| (!zombie && get_num_playing_alive() < 2))
+			return false
+
+		if(!zombie)
+		{
+			new bool:has_zombie_candidate
+			for(new player = 1; player <= MaxClients; player++)
+			{
+				if(player != id && is_user_alive(player) && resolve_user_class(player, -1, CLASS_TEAM_TYPE_ZOMBIE) != -1)
+				{
+					has_zombie_candidate = true
+					break
+				}
+			}
+			if(!has_zombie_candidate)
+				return false
+		}
+	}
+
+	gTransformingUser = true
+	new previous_gamemode = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
+	if(starting)
+	{
+		// Class forwards must observe the mode being started, not the previous round's mode.
+		xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = gamemode_id
+		xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = true
+	}
+
+	new bool:first_zombie = starting || (zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_FIRST_ZOMBIE))
+	new bool:applied = zombie ? set_user_zombie(id, 0, first_zombie, class_id) : set_user_human(id, class_id)
+	if(!applied)
+	{
+		if(starting)
+		{
+			xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = previous_gamemode
+			xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
+		}
+		gTransformingUser = false
+		return false
+	}
+
+	remove_task(id + TASK_RESPAWN)
+	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_FREEZED))
+		remove_user_frozen(id + TASK_FROZEN)
+
+	if(starting)
+	{
+		update_users_next_class()
+		start_round(gamemode_id, id)
+	}
+
+	new humans = get_num_alive()
+	for(new player = 1; player <= MaxClients; player++)
+	{
+		if(is_user_connected(player))
+			zpn_player_data_set_prop(player, PROP_PD_REGISTER_IS_LAST_HUMAN, humans == 1 && is_user_alive(player) && !zpn_player_data_get_prop(player, PROP_PD_REGISTER_IS_ZOMBIE))
+	}
+
+	// Escape resolves its own teams, respawns and victory conditions.
+	if(!gEscapeMap && !get_member_game(m_bRoundTerminating))
+	{
+		if(!humans)
+			rg_round_end(2.0, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN, .trigger = true)
+		else if(!get_num_alive(true))
+			rg_round_end(2.0, WINSTATUS_CTS, ROUND_CTS_WIN, .trigger = true)
+	}
+
+	gTransformingUser = false
+	return true
+}
+
+bool:set_user_zombie(this, infector, bool:set_first, const forced_class = -1)
 {
 	if(!zpn_is_valid_player_alive(this))
 		return false
@@ -1069,7 +1198,7 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	xFwIntParam[2] = -1
 	xFwIntParam[3] = -1
 
-	new class_id = get_user_next_class_index(this, CLASS_TEAM_TYPE_ZOMBIE)
+	new class_id = forced_class != -1 ? forced_class : get_user_next_class_index(this, CLASS_TEAM_TYPE_ZOMBIE)
 	if(class_id == -1) class_id = get_user_selected_class_index(this, CLASS_TEAM_TYPE_ZOMBIE)
 	if(class_id == -1) class_id = xFirstClass[_:CLASS_TEAM_TYPE_ZOMBIE]
 
@@ -1080,14 +1209,20 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 
 	ExecuteForward(xForwards[FW_INFECTED_PRE], xForwardReturn, this, infector, class_id)
 
-	if(xFwIntParam[1] != -1) this = xFwIntParam[1]
-	if(xFwIntParam[2] != -1) infector = xFwIntParam[2]
-	if(xFwIntParam[3] != -1) class_id = xFwIntParam[3]
+	if(forced_class == -1)
+	{
+		if(xFwIntParam[1] != -1) this = xFwIntParam[1]
+		if(xFwIntParam[2] != -1) infector = xFwIntParam[2]
+		if(xFwIntParam[3] != -1) class_id = xFwIntParam[3]
+	}
 
 	if(!zpn_is_valid_player_alive(this))
 		return false
 
-	class_id = resolve_user_class(this, class_id, CLASS_TEAM_TYPE_ZOMBIE)
+	if(forced_class == -1)
+		class_id = resolve_user_class(this, class_id, CLASS_TEAM_TYPE_ZOMBIE)
+	else if(!is_eligible_user_class(this, class_id, CLASS_TEAM_TYPE_ZOMBIE))
+		return false
 	if(class_id == -1 || !zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, class_id))
 		return false
 
@@ -1109,6 +1244,8 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_ZOMBIE, true)
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_FIRST_ZOMBIE, set_first)
+	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_LAST_HUMAN, false)
+	zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, -1)
 
 	rg_remove_item(this, "weapon_shield")
 	rg_drop_items_by_slot(this, PRIMARY_WEAPON_SLOT)
@@ -1142,7 +1279,7 @@ public bool:set_user_zombie(this, infector, bool:set_first)
 	return true
 }
 
-public bool:set_user_human(this)
+bool:set_user_human(this, const forced_class = -1)
 {
 	if(!zpn_is_valid_player_alive(this))
 		return false
@@ -1150,19 +1287,25 @@ public bool:set_user_human(this)
 	xFwIntParam[1] = -1
 	xFwIntParam[2] = -1
 
-	new class_id = get_user_next_class_index(this, CLASS_TEAM_TYPE_HUMAN)
+	new class_id = forced_class != -1 ? forced_class : get_user_next_class_index(this, CLASS_TEAM_TYPE_HUMAN)
 	if(class_id == -1) class_id = get_user_selected_class_index(this, CLASS_TEAM_TYPE_HUMAN)
 	if(class_id == -1) class_id = xFirstClass[_:CLASS_TEAM_TYPE_HUMAN]
 
 	ExecuteForward(xForwards[FW_HUMANIZED_PRE], xForwardReturn, this, class_id)
 
-	if(xFwIntParam[1] != -1) this = xFwIntParam[1]
-	if(xFwIntParam[2] != -1) class_id = xFwIntParam[2]
+	if(forced_class == -1)
+	{
+		if(xFwIntParam[1] != -1) this = xFwIntParam[1]
+		if(xFwIntParam[2] != -1) class_id = xFwIntParam[2]
+	}
 
 	if(!zpn_is_valid_player_alive(this))
 		return false
 
-	class_id = resolve_user_class(this, class_id, CLASS_TEAM_TYPE_HUMAN)
+	if(forced_class == -1)
+		class_id = resolve_user_class(this, class_id, CLASS_TEAM_TYPE_HUMAN)
+	else if(!is_eligible_user_class(this, class_id, CLASS_TEAM_TYPE_HUMAN))
+		return false
 	if(class_id == -1 || !zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, class_id))
 		return false
 
@@ -1184,6 +1327,8 @@ public bool:set_user_human(this)
 
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_ZOMBIE, false)
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_LAST_HUMAN, false)
+	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_FIRST_ZOMBIE, false)
+	zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, -1)
 
 	static model[64]; model[0] = EOS
 	
@@ -1209,6 +1354,15 @@ public bool:set_user_human(this)
 	rg_set_user_footsteps(this, zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SILENT_FOOTSTEPS))
 	zpn_reset_user_leap(this)
 	queue_score_attrib_sync(this)
+
+	if(forced_class != -1)
+	{
+		if(!rg_find_weapon_bpack_by_name(this, "weapon_knife"))
+			rg_give_item(this, "weapon_knife")
+		get_selected_weapon(this, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], zpn_player_data_get_prop(this, PROP_PD_REGISTER_PRIMARY_WEAPON), PRIMARY_WEAPON_SLOT)
+		get_selected_weapon(this, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], zpn_player_data_get_prop(this, PROP_PD_REGISTER_SECONDARY_WEAPON), PISTOL_SLOT)
+		deploy_weapon(this)
+	}
 
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
 
@@ -1423,19 +1577,24 @@ get_user_selected_class_index(id, eClassTypes:type)
 	return -1
 }
 
+bool:is_eligible_user_class(const id, const class_id, const eClassTypes:normal_type)
+{
+	if(!(0 <= class_id < zpn_class_array_size()))
+		return false
+
+	new eClassTypes:type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+	new eClassTypes:special_type = normal_type == CLASS_TEAM_TYPE_ZOMBIE ? CLASS_TEAM_TYPE_ZOMBIE_SPECIAL : CLASS_TEAM_TYPE_HUMAN_SPECIAL
+	return (type == special_type || (type == normal_type && zpn_level_get_user_level(id) >= zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LEVEL)))
+		&& zpn_class_has_free_slot(class_id, id)
+}
+
 resolve_user_class(id, class_id, eClassTypes:normal_type)
 {
 	new level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
-	new eClassTypes:special_type = normal_type == CLASS_TEAM_TYPE_ZOMBIE ? CLASS_TEAM_TYPE_ZOMBIE_SPECIAL : CLASS_TEAM_TYPE_HUMAN_SPECIAL
 
 	// Validate the final request after addons and game modes have changed it.
-	if(class_id >= 0 && class_id < zpn_class_array_size())
-	{
-		new eClassTypes:type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
-		if((type == special_type || (type == normal_type && level >= zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LEVEL)))
-			&& zpn_class_has_free_slot(class_id, id))
-			return class_id
-	}
+	if(is_eligible_user_class(id, class_id, normal_type))
+		return class_id
 
 	// Prefer the client's reservation before looking for another normal class.
 	new selected = get_user_next_class_index(id, normal_type)

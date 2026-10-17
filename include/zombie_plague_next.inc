@@ -280,6 +280,8 @@ forward zpn_user_leap_post(const id);
  *       unavailable class falls back to an eligible normal zombie class;
  *       infection fails if none is available. The post-forward reports the
  *       class actually applied.
+ * @note zpn_transform_user() keeps its explicit target and class; parameter
+ *       overrides from this forward are ignored for that operation.
  *
  * @param this      Client index being infected
  * @param infector  Infector client index, or 0 if there is no direct infector
@@ -358,6 +360,8 @@ forward zpn_item_buy_post(const id, const item_id);
  *         2 - human class index
  * @note The final class is checked for capacity after this forward. An
  *       unavailable class falls back to an eligible normal human class.
+ * @note zpn_transform_user() keeps its explicit target and class; parameter
+ *       overrides from this forward are ignored for that operation.
  *
  * @param this      Client index being humanized
  * @param class_id  Human class index that will be applied
@@ -380,10 +384,14 @@ forward zpn_user_humanized_post(const this, const class_id);
  * Called after a round has started and the game mode was selected.
  *
  * @param gamemode_id  Current game mode index
+ * @param start_player Manually transformed client, or 0 for an automatic start.
+ *                     Modes must preserve this client's class. If human, choose
+ *                     the first zombie from other living players; if zombie,
+ *                     use this client instead of randomly infecting another.
  *
  * @noreturn
  */
-forward zpn_round_started_post(const gamemode_id);
+forward zpn_round_started_post(const gamemode_id, const start_player);
 
 /**
  * Called after a Zombie Escape round ends.
@@ -1116,6 +1124,29 @@ native zpn_player_data_set_prop(const player, ePropPlayerDataRegisters:prop, any
  *                  alive, the infection was blocked, or no class is available
  */
 native bool:zpn_set_user_zombie(const this, const attacker, bool:set_first = false);
+
+/**
+ * Immediately transforms a living player, starting the round during countdown.
+ *
+ * @note Callers must enforce their own admin permissions. The core validates
+ *       the target, class, capacity and round state. Special classes ignore
+ *       the normal selection menu's visibility and level requirements.
+ * @note A manual start uses Infection on normal maps or Escape on escape maps,
+ *       cancels the countdown and calls zpn_round_started_post(mode, id) once.
+ *       Starting as human requires another living player for the first zombie.
+ * @note Explicit target/class overrides in infected/humanized pre-forwards are
+ *       ignored; zpn_user_infect_attempt() can still block an infection.
+ *       A full or invalid requested class fails without a fallback class.
+ * @note Does not respawn dead players. Freeze time and round end are rejected.
+ *       Humanization restores the player's saved weapons. Eliminating a side
+ *       resolves the round through the current map's victory rules.
+ *
+ * @param id         Living client index
+ * @param class_type Normal or special human/zombie type
+ * @param class_id   Exact class index; -1 selects an eligible normal class
+ * @return           true if transformed, false if blocked or unavailable
+ */
+native bool:zpn_transform_user(const id, const eClassTypes:class_type, const class_id = -1);
 
 /**
  * Sends a prefixed colored chat message.
