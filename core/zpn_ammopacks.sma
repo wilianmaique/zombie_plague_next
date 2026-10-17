@@ -33,6 +33,8 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false)
 
 	xForwards[FW_AMMO_PACKS_CHANGED_POST] = CreateMultiForward("zpn_ammo_pack_user_ap_changed", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL, FP_CELL, FP_CELL)
+
+	AutoExecConfig(true, "zpn_ammo_packs", FOLDER_CVARS_CONFIG)
 }
 
 public plugin_natives()
