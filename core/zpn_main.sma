@@ -35,18 +35,7 @@ enum _:eCvars
 enum _:eForwards
 {
 	FW_ROUND_STARTED_POST,
-	FW_SHOW_MENU_GAME_PRE,
-	FW_SHOW_MENU_GAME_POST,
-	FW_SHOW_MENU_ITEMS_PRE,
-	FW_SHOW_MENU_ITEMS_POST,
-	FW_SHOW_MENU_CLASS_TYPE_PRE,
-	FW_SHOW_MENU_CLASS_TYPE_POST,
-	FW_SHOW_MENU_CLASS_PRE,
-	FW_SHOW_MENU_CLASS_POST,
-	FW_SHOW_MENU_PRIMARY_WEAPON_PRE,
-	FW_SHOW_MENU_PRIMARY_WEAPON_POST,
-	FW_SHOW_MENU_SECONDARY_WEAPON_PRE,
-	FW_SHOW_MENU_SECONDARY_WEAPON_POST,
+	FW_USER_SPAWN_POST,
 	FW_SHOW_HUD_PLAYER_INFO_PRE,
 	FW_SHOW_HUD_PLAYER_INFO_POST,
 	FW_SHOW_HUD_COUNTDOWN_PRE,
@@ -66,7 +55,6 @@ enum _:eSettingsConfigs
 {
 	CONFIG_DEBUG_ON,
 	CONFIG_DEFAULT_HUMAN_MODEL[32],
-	CONFIG_PREFIX_MENUS[32],
 	CONFIG_PREFIX_CHAT[32],
 }
 
@@ -91,19 +79,17 @@ enum _:eSyncHuds
 
 new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "player/bhit_helmet-1.wav" };
 
-new xFirstClass[2], xClassCount[2]
+new xFirstClass[2]
 new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
 
 new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
 new xCvars[eCvars], xSettingsVars[eSettingsConfigs], xMsgSync[eSyncHuds]
 new xDataGetGameRule[eGameRules]
 new bool:gEscapeMap
-new xBuyItemCallback
 
 public plugin_init()
 {
 	register_plugin("Zombie Plague Next", "1.0", "Wilian M.")
-	register_dictionary("common.txt")
 
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Post", true)
@@ -120,25 +106,12 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RG_HandleMenu_ChooseAppearance, "HandleMenu_ChooseAppearance_Post", true)
 
-	xBuyItemCallback = menu_makecallback("_buy_items_callback")
-
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
 
 	// FWS
 	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL)
-	xForwards[FW_SHOW_MENU_GAME_PRE] = CreateMultiForward("zpn_show_menu_game_pre", ET_CONTINUE, FP_CELL)
-	xForwards[FW_SHOW_MENU_GAME_POST] = CreateMultiForward("zpn_show_menu_game_post", ET_IGNORE, FP_CELL)
-	xForwards[FW_SHOW_MENU_ITEMS_PRE] = CreateMultiForward("zpn_show_menu_items_pre", ET_CONTINUE, FP_CELL, FP_CELL)
-	xForwards[FW_SHOW_MENU_ITEMS_POST] = CreateMultiForward("zpn_show_menu_items_post", ET_IGNORE, FP_CELL, FP_CELL)
-	xForwards[FW_SHOW_MENU_CLASS_TYPE_PRE] = CreateMultiForward("zpn_show_menu_class_type_pre", ET_CONTINUE, FP_CELL)
-	xForwards[FW_SHOW_MENU_CLASS_TYPE_POST] = CreateMultiForward("zpn_show_menu_class_type_post", ET_IGNORE, FP_CELL)
-	xForwards[FW_SHOW_MENU_CLASS_PRE] = CreateMultiForward("zpn_show_menu_class_pre", ET_CONTINUE, FP_CELL, FP_CELL)
-	xForwards[FW_SHOW_MENU_CLASS_POST] = CreateMultiForward("zpn_show_menu_class_post", ET_IGNORE, FP_CELL, FP_CELL)
-	xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_PRE] = CreateMultiForward("zpn_show_menu_primary_weapon_pre", ET_CONTINUE, FP_CELL)
-	xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_POST] = CreateMultiForward("zpn_show_menu_primary_weapon_post", ET_IGNORE, FP_CELL)
-	xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_PRE] = CreateMultiForward("zpn_show_menu_secondary_weapon_pre", ET_CONTINUE, FP_CELL)
-	xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_POST] = CreateMultiForward("zpn_show_menu_secondary_weapon_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_USER_SPAWN_POST] = CreateMultiForward("zpn_user_spawn_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_SHOW_HUD_PLAYER_INFO_PRE] = CreateMultiForward("zpn_show_hud_player_info_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_SHOW_HUD_PLAYER_INFO_POST] = CreateMultiForward("zpn_show_hud_player_info_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_SHOW_HUD_COUNTDOWN_PRE] = CreateMultiForward("zpn_show_hud_countdown_pre", ET_CONTINUE, FP_CELL)
@@ -171,12 +144,6 @@ public plugin_init()
 
 	if(xFirstClass[1] == -1)
 		set_fail_state("[ZP NEXT] Need 1 Class Human")
-
-	xClassCount[0] = count_class(CLASS_TEAM_TYPE_ZOMBIE)
-	xClassCount[1] = count_class(CLASS_TEAM_TYPE_HUMAN)
-
-	register_clcmd("chooseteam", "clcmd_changeteam")
-	register_clcmd("jointeam", "clcmd_changeteam")
 
 	if (xFwSpawn_Pre)
 		unregister_forward(FM_Spawn, xFwSpawn_Pre, false)
@@ -294,21 +261,6 @@ public CBasePlayer_ResetMaxSpeed_Post(const this)
 		set_entvar(this, var_maxspeed, 1.0)
 }
 
-public clcmd_changeteam(id)
-{
-	if(is_user_bot(id))
-		return PLUGIN_CONTINUE
-		
-	new any:team = get_member(id, m_iTeam)
-
-	if(team == TEAM_SPECTATOR || team == TEAM_UNASSIGNED)
-		return PLUGIN_CONTINUE
-
-	show_menu_game(id)
-
-	return PLUGIN_HANDLED
-}
-
 public client_putinserver(id)
 {
 	if(!is_user_bot(id) && !is_user_hltv(id))
@@ -358,394 +310,6 @@ public xHudPlayerInfo(id)
 	ShowSyncHudMsg(id, xMsgSync[SYNC_HUD_PLAYER_INFO], txt)
 
 	ExecuteForward(xForwards[FW_SHOW_HUD_PLAYER_INFO_POST], xForwardReturn, id)
-}
-
-public show_menu_game(id)
-{
-	if(!is_user_connected(id))
-		return
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_PRE], xForwardReturn, id)
-
-	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
-		return
-
-	new xMenu = menu_create(fmt("%s \yZombie Plague Next", xSettingsVars[CONFIG_PREFIX_MENUS]), "_show_menu_game")
-
-	menu_additem(xMenu, "Selecionar Armas")
-	menu_additem(xMenu, "Loja De Itens")
-	menu_additem(xMenu, "Selecionar Classes^n")
-	menu_additem(xMenu, "\yAdministração")
-
-	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
-	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
-	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
-	menu_display(id, xMenu)
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_GAME_POST], xForwardReturn, id)
-}
-
-public _show_menu_game(id, menu, item)
-{
-	if(!is_user_connected(id) || item < 0)
-	{
-		menu_destroy(menu)
-		return
-	}
-
-	menu_destroy(menu)
-
-	switch(item)
-	{
-		case 0:
-		{
-			select_primary_weapon(id)
-		}
-
-		case 1:
-		{
-			buy_items(id)
-		}
-
-		case 2:
-		{
-			select_class_type(id)
-		}
-
-		case 3:
-		{
-			client_print(id, 3, "admin")
-		}
-	}
-}
-
-public buy_items(id)
-{
-	if(!is_user_connected(id))
-		return
-
-	new eClassTypes:itemTeam = get_user_current_class_type(id)
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_ITEMS_PRE], xForwardReturn, id, itemTeam)
-
-	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
-		return
-
-	itemTeam = get_user_current_class_type(id)
-
-	if(count_item(itemTeam) <= 0)
-	{
-		client_print_color(id, print_team_red, "%s ^3Nenhum item encontrado.", xSettingsVars[CONFIG_PREFIX_CHAT])
-		return
-	}
-
-	new xMenu = menu_create(fmt("%s \yLoja de Itens", xSettingsVars[CONFIG_PREFIX_MENUS]), "_buy_items")
-	new item_name[32], item_text[256], extra_text[ZPN_ITEM_EXTRA_TEXT_SIZE]
-	new player_round, round, map
-	new player_limit, round_limit, map_limit, min_zombies
-	new alive_zombies = get_num_alive(true)
-
-	for(new i = 0; i < zpn_item_array_size(); i++)
-	{
-		if(eClassTypes:zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) != itemTeam)
-			continue
-
-		zpn_item_get_prop(i, PROP_ITEM_REGISTER_NAME, item_name, charsmax(item_name))
-		new bool:can_buy = (zpn_item_preview_buy(id, i, extra_text, charsmax(extra_text)) == ITEM_BUY_SUCCESS)
-		zpn_item_get_limit_state(id, i, player_round, round, map)
-
-		player_limit = zpn_item_get_prop(i, PROP_ITEM_REGISTER_LIMIT_PLAYER_PER_ROUND)
-		round_limit = zpn_item_get_prop(i, PROP_ITEM_REGISTER_LIMIT_MAX_PER_ROUND)
-		map_limit = zpn_item_get_prop(i, PROP_ITEM_REGISTER_LIMIT_PER_MAP)
-		min_zombies = zpn_item_get_prop(i, PROP_ITEM_REGISTER_MIN_ZOMBIES)
-
-		if(can_buy)
-			formatex(item_text, charsmax(item_text), "\w%s", item_name)
-		else formatex(item_text, charsmax(item_text), "\d%s", item_name)
-
-		if(extra_text[0] != EOS)
-			add(item_text, charsmax(item_text), fmt(" %s", extra_text))
-
-		if(player_limit > 0)
-			add(item_text, charsmax(item_text), fmt(" \d[LP: %d/%d]", player_round, player_limit))
-
-		if(round_limit > 0)
-			add(item_text, charsmax(item_text), fmt(" \d[LR: %d/%d]", round, round_limit))
-
-		if(map_limit > 0)
-			add(item_text, charsmax(item_text), fmt(" \d[LM: %d/%d]", map, map_limit))
-
-		if(min_zombies > 0)
-			add(item_text, charsmax(item_text), fmt(" \d[Z: %d/%d]", alive_zombies, min_zombies))
-
-		if(can_buy)
-			add(item_text, charsmax(item_text), fmt(" \y(\d%s\y)", format_number_point(zpn_item_get_prop(i, PROP_ITEM_REGISTER_COST))))
-		else add(item_text, charsmax(item_text), fmt(" \d(%s)", format_number_point(zpn_item_get_prop(i, PROP_ITEM_REGISTER_COST))))
-
-		menu_additem(xMenu, item_text, fmt("%d", i), .callback = xBuyItemCallback)
-	}
-
-	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
-	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
-	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
-	menu_display(id, xMenu)
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_ITEMS_POST], xForwardReturn, id, itemTeam)
-}
-
-public _buy_items_callback(id, menu, item)
-{
-	new info[12]
-	if(!menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info)))
-		return ITEM_DISABLED
-
-	new extra_text[ZPN_ITEM_EXTRA_TEXT_SIZE]
-	return zpn_item_preview_buy(id, str_to_num(info), extra_text, charsmax(extra_text)) == ITEM_BUY_SUCCESS ? ITEM_ENABLED : ITEM_DISABLED
-}
-
-public _buy_items(id, menu, item)
-{
-	if(!is_user_connected(id) || item < 0)
-	{
-		menu_destroy(menu)
-		return
-	}
-
-	new info[12]
-	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
-	menu_destroy(menu)
-
-	new item_index = str_to_num(info)
-
-	if(!(0 <= item_index < zpn_item_array_size()))
-		return
-
-	new eClassTypes:item_team = eClassTypes:zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_TEAM)
-	new eClassTypes:class_type = get_user_current_class_type(id)
-
-	if(item_team != class_type)
-		return
-	
-	switch(zpn_item_buy(id, item_index))
-	{
-		case ITEM_BUY_INVALID:
-		{
-			client_print_color(id, print_team_red, "%s ^3Este item não está disponível.", xSettingsVars[CONFIG_PREFIX_CHAT])
-		}
-
-		case ITEM_BUY_BLOCKED:
-		{
-			buy_items(id)
-			client_print_color(id, print_team_red, "%s ^3A compra deste item foi bloqueada.", xSettingsVars[CONFIG_PREFIX_CHAT])
-		}
-
-		case ITEM_BUY_NOT_ENOUGH_ZOMBIES:
-		{
-			buy_items(id)
-			client_print_color(id, print_team_red, "%s ^3Este item exige pelo menos ^4%d zumbis vivos^3.", xSettingsVars[CONFIG_PREFIX_CHAT], zpn_item_get_prop(item_index, PROP_ITEM_REGISTER_MIN_ZOMBIES))
-		}
-
-		case ITEM_BUY_LIMIT_REACHED:
-		{
-			buy_items(id)
-			client_print_color(id, print_team_red, "%s ^3Limite de compras deste item atingido.", xSettingsVars[CONFIG_PREFIX_CHAT])
-		}
-
-		case ITEM_BUY_NO_AMMO_PACKS:
-		{
-			buy_items(id)
-			client_print_color(id, print_team_red, "%s ^3Você não tem ^4Ammo Packs ^3suficiente.", xSettingsVars[CONFIG_PREFIX_CHAT])
-		}
-
-		case ITEM_BUY_SUCCESS: return
-	}
-}
-
-public select_class_type(id)
-{
-	if(!is_user_connected(id))
-		return
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_TYPE_PRE], xForwardReturn, id)
-
-	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
-		return
-
-	new xMenu = menu_create(fmt("%s \yEscolha a raça", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_class_type")
-
-	menu_additem(xMenu, fmt("Zombie \y(\d%d classes\y)", xClassCount[0]), fmt("%d", CLASS_TEAM_TYPE_ZOMBIE))
-	menu_additem(xMenu, fmt("Humano \y(\d%d classes\y)", xClassCount[1]), fmt("%d", CLASS_TEAM_TYPE_HUMAN))
-
-	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
-	menu_display(id, xMenu)
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_TYPE_POST], xForwardReturn, id)
-}
-
-public _select_class_type(id, menu, item)
-{
-	if(!is_user_connected(id) || item < 0)
-	{
-		menu_destroy(menu)
-		return
-	}
-
-	new info[4]
-	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
-	menu_destroy(menu)
-
-	new eClassTypes:class_type = eClassTypes:str_to_num(info)
-
-	if(xClassCount[_:class_type]<= 0)
-	{
-		client_print_color(id, print_team_red, "%s ^3Nenhuma classe encontrada.", xSettingsVars[CONFIG_PREFIX_CHAT])
-		select_class_type(id)
-		return
-	}
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_PRE], xForwardReturn, id, class_type)
-
-	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
-		return
-
-	new xMenu = menu_create(fmt("%s \ySelecionar classe: %s", xSettingsVars[CONFIG_PREFIX_MENUS], class_type == CLASS_TEAM_TYPE_ZOMBIE ? "\rZombie" : "\yHumano"), "_select_class")
-	
-	new eClassTypes:type, name[32], class_info[32]
-	new item_text[160], level_text[32], limit_text[32], selected_text[12], required_level, limit, occupied, user_level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
-	new bool:hide_menu = false, locked = false
-
-	for(new i = 0; i < zpn_class_array_size(); i++)
-	{
-		type = zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE)
-		hide_menu = zpn_class_get_prop(i, PROP_CLASS_REGISTER_HIDE_MENU)
-		required_level = zpn_class_get_prop(i, PROP_CLASS_REGISTER_LEVEL)
-		limit = zpn_class_get_prop(i, PROP_CLASS_REGISTER_LIMIT)
-		occupied = limit > 0 ? zpn_class_get_user_count(i) : 0
-		locked = user_level < required_level || !zpn_class_has_free_slot(i, id)
-		zpn_class_get_prop(i, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
-		zpn_class_get_prop(i, PROP_CLASS_REGISTER_INFO, class_info, charsmax(class_info))
-
-		if(type == class_type && !hide_menu)
-		{
-			if(required_level > 0)
-				formatex(level_text, charsmax(level_text), " \d(Lvl: %d)", required_level)
-			else level_text[0] = EOS
-
-			if(limit > 0)
-				formatex(limit_text, charsmax(limit_text), " \d(Lmt: %d/%d)", occupied, limit)
-			else limit_text[0] = EOS
-
-			new selected = get_user_next_class_index(id, class_type)
-			if(selected == -1) selected = get_user_selected_class_index(id, class_type)
-
-			if(i == selected)
-				copy(selected_text, charsmax(selected_text), " \r•")
-			else selected_text[0] = EOS
-
-			formatex(item_text, charsmax(item_text), "%s%s \y(\d%s\y)%s%s%s", locked ? "\d" : "\w", name, class_info, level_text, limit_text, selected_text)
-			menu_additem(xMenu, item_text, fmt("%d", i))
-		}
-	}
-
-	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
-	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
-	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
-	menu_display(id, xMenu)
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_CLASS_POST], xForwardReturn, id, class_type)
-}
-
-public _select_class(id, menu, item)
-{
-	if(!is_user_connected(id))
-	{
-		menu_destroy(menu)
-		return
-	}
-
-	if(item < 0)
-	{
-		menu_destroy(menu)
-		return
-	}
-
-	new info[12]
-	menu_item_getinfo(menu, item, .info = info, .infolen = charsmax(info))
-	menu_destroy(menu)
-
-	new class_id = str_to_num(info)
-
-	if(class_id < 0 || class_id >= zpn_class_array_size())
-		return
-
-	new eClassTypes:type, name[32], class_info[32]
-	new required_level, user_level
-	new Float:speed, Float:gravity, Float:health
-
-	type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
-
-	if((type != CLASS_TEAM_TYPE_ZOMBIE && type != CLASS_TEAM_TYPE_HUMAN) || zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HIDE_MENU))
-		return
-
-	speed = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED)
-	gravity = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY)
-	health = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
-	required_level = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LEVEL)
-	user_level = zpn_player_data_get_prop(id, PROP_PD_REGISTER_LEVEL)
-	zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
-	zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_INFO, class_info, charsmax(class_info))
-
-	if(user_level < required_level)
-	{
-		client_print_color(id, print_team_red, "%s ^3Voce precisa estar no ^4Level %d ^3para usar esta classe. Seu level: ^4%d^1.", xSettingsVars[CONFIG_PREFIX_CHAT], required_level, user_level)
-		return
-	}
-
-	if(!zpn_class_has_free_slot(class_id, id))
-	{
-		client_print_color(id, print_team_red, "%s ^3A classe ^4%s ^3esta lotada (^4%d/%d^3).", xSettingsVars[CONFIG_PREFIX_CHAT], name, zpn_class_get_user_count(class_id), zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LIMIT))
-		return
-	}
-
-	if(xCvars[CVAR_CLASS_SELECT_INSTANT] && zpn_player_data_get_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT) > get_gametime())
-	{
-		client_print_color(id, print_team_default, "%s ^3Espere: ^4%.0f ^3segundos para alterar de classe novamente.", xSettingsVars[CONFIG_PREFIX_CHAT], zpn_player_data_get_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT) - get_gametime())
-		return
-	}
-	
-	new ePropPlayerDataRegisters:next_prop = type == CLASS_TEAM_TYPE_ZOMBIE ? PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS : PROP_PD_REGISTER_NEXT_HUMAN_CLASS
-	if(!zpn_player_data_set_prop(id, next_prop, class_id))
-		return
-
-	new bool:applied = false
-
-	if(xCvars[CVAR_CLASS_SELECT_INSTANT])
-	{
-		new bool:same_team = (bool:zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) == (type == CLASS_TEAM_TYPE_ZOMBIE))
-		if(is_user_alive(id) && same_team)
-			applied = type == CLASS_TEAM_TYPE_ZOMBIE ? set_user_zombie(id, 0, false) : set_user_human(id)
-		else
-		{
-			new ePropPlayerDataRegisters:selected_prop = type == CLASS_TEAM_TYPE_ZOMBIE ? PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS : PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS
-			if(zpn_player_data_set_prop(id, selected_prop, class_id))
-				zpn_player_data_set_prop(id, next_prop, -1)
-		}
-
-		zpn_player_data_set_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT, get_gametime() + xCvars[CVAR_CLASS_SELECT_INSTANT_TIMEOUT])
-	}
-
-	if(applied)
-	{
-		class_id = get_user_current_class_index(id)
-		zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, name, charsmax(name))
-		speed = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_SPEED)
-		gravity = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_GRAVITY)
-		health = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HEALTH)
-		client_print_color(id, print_team_default, "%s ^3Agora sua classe e: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], name)
-	}
-	else client_print_color(id, print_team_default, "%s ^3Classe reservada para a proxima aplicacao: ^4%s^1.", xSettingsVars[CONFIG_PREFIX_CHAT], name)
-
-	client_print_color(id, print_team_default, "%s ^3Vida: ^1%s ^4- ^3Gravidade: ^1%d ^4- ^3Velocidade: ^1%0.0f", xSettingsVars[CONFIG_PREFIX_CHAT], format_number_point(floatround(health)), floatround(gravity * 800.0), speed)
 }
 
 public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
@@ -851,9 +415,7 @@ public CBasePlayer_Spawn_Post(id)
 	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		deploy_weapon(id)
 
-	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON) == -1 && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-		select_primary_weapon(id)
-	else if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON) != -1 && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON) != -1 && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
 	{
 		get_selected_weapon(id, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], zpn_player_data_get_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON), PRIMARY_WEAPON_SLOT)
 
@@ -862,6 +424,9 @@ public CBasePlayer_Spawn_Post(id)
 	}
 
 	queue_score_attrib_sync(id)
+
+	new forward_return
+	ExecuteForward(xForwards[FW_USER_SPAWN_POST], forward_return, id)
 }
 
 public RCBasePlayer_HasRestrictItem_Pre(const this, ItemID:item, ItemRestType:typ)
@@ -880,120 +445,10 @@ public RCBasePlayer_HasRestrictItem_Pre(const this, ItemID:item, ItemRestType:ty
 	return HC_CONTINUE
 }
 
-public select_primary_weapon(id)
-{
-	if(!is_user_connected(id))
-		return
-
-	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
-	{
-		client_print_color(id, print_team_red, "%s ^3Seleção de armas resetadas! ^1Espere o fim da rodada.", xSettingsVars[CONFIG_PREFIX_CHAT])
-		return
-	}
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_PRE], xForwardReturn, id)
-
-	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
-		return
-
-	new xMenu = menu_create(fmt("%s \ySelecionar arma primária", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_primary_weapon")
-	new xWpn[32]
-
-	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS]); i++)
-	{
-		ArrayGetString(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], i, xWpn, charsmax(xWpn))
-		mb_strtotitle(xWpn[7])
-		menu_additem(xMenu, xWpn[7], fmt("%d", i))
-	}
-
-	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
-	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
-	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
-	menu_display(id, xMenu)
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_PRIMARY_WEAPON_POST], xForwardReturn, id)
-}
-
-public _select_primary_weapon(id, menu, item)
-{
-	if(!is_user_connected(id))
-	{
-		menu_destroy(menu)
-		return
-	}
-
-	if(item < 0 || zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-	{
-		menu_destroy(menu)
-		return
-	}
-	
-	new xInfo[11], xWpnArrayIndex
-	menu_item_getinfo(menu, item, _, xInfo, charsmax(xInfo))
-	menu_destroy(menu)
-
-	xWpnArrayIndex = str_to_num(xInfo)
-	zpn_player_data_set_prop(id, PROP_PD_REGISTER_PRIMARY_WEAPON, xWpnArrayIndex)
-	
-	get_selected_weapon(id, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], xWpnArrayIndex, PRIMARY_WEAPON_SLOT)
-	select_secondary_weapon(id)
-}
-
-public select_secondary_weapon(id)
-{
-	if(!is_user_connected(id))
-		return
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_PRE], xForwardReturn, id)
-
-	if(xForwardReturn >= ZPN_RETURN_HANDLED || !is_user_connected(id))
-		return
-
-	new xMenu = menu_create(fmt("%s \ySelecionar arma secundária", xSettingsVars[CONFIG_PREFIX_MENUS]), "_select_secondary_weapon")
-	static xWpn[32]
-
-	for(new i = 0; i < ArraySize(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS]); i++)
-	{
-		ArrayGetString(xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], i, xWpn, charsmax(xWpn))
-		mb_strtotitle(xWpn[7])
-		menu_additem(xMenu, xWpn[7], fmt("%d", i))
-	}
-
-	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
-	menu_setprop(xMenu, MPROP_BACKNAME, fmt("%L", id, "BACK"))
-	menu_setprop(xMenu, MPROP_EXITNAME, fmt("%L", id, "EXIT"))
-	menu_display(id, xMenu)
-
-	ExecuteForward(xForwards[FW_SHOW_MENU_SECONDARY_WEAPON_POST], xForwardReturn, id)
-}
-
-public _select_secondary_weapon(id, menu, item)
-{
-	if(!is_user_connected(id))
-	{
-		menu_destroy(menu)
-		return
-	}
-
-	if(item < 0 || zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
-	{
-		menu_destroy(menu)
-		return
-	}
-	
-	new xInfo[11], xWpnArrayIndex
-	menu_item_getinfo(menu, item, _, xInfo, charsmax(xInfo))
-	menu_destroy(menu)
-	
-	xWpnArrayIndex = str_to_num(xInfo)
-	zpn_player_data_set_prop(id, PROP_PD_REGISTER_SECONDARY_WEAPON, xWpnArrayIndex)
-
-	get_selected_weapon(id, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], xWpnArrayIndex, PISTOL_SLOT)
-}
-
 public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const InventorySlotType:slot)
 {
-	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+	if(!zpn_is_valid_player_alive(id) || zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE)
+	|| WpnType == Invalid_Array || !(0 <= xWpnArrayIndex < ArraySize(WpnType)))
 		return
 
 	new xWpn[32]
@@ -1168,15 +623,7 @@ public plugin_precache()
 		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Chat", "!y[!gZM!y]")
 	}
 
-	update_prefix_color(xSettingsVars[CONFIG_PREFIX_CHAT], charsmax(xSettingsVars[CONFIG_PREFIX_CHAT]))
-
-	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", xSettingsVars[CONFIG_PREFIX_MENUS], charsmax(xSettingsVars[CONFIG_PREFIX_MENUS])))
-	{
-		xSettingsVars[CONFIG_PREFIX_MENUS] = "!y[!rZM!y]"
-		json_setting_set_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Prefix Menus", "!y[!rZM!y]")
-	}
-
-	update_prefix_color(xSettingsVars[CONFIG_PREFIX_MENUS], charsmax(xSettingsVars[CONFIG_PREFIX_MENUS]), true)
+	update_chat_prefix_color(xSettingsVars[CONFIG_PREFIX_CHAT], charsmax(xSettingsVars[CONFIG_PREFIX_CHAT]))
 
 	if(!json_setting_get_string(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Default Human Model", xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL], charsmax(xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])))
 	{
@@ -1308,10 +755,130 @@ public plugin_natives()
 	register_native("zpn_get_user_next_class", "_zpn_get_user_next_class")
 	register_native("zpn_get_user_current_class", "_zpn_get_user_current_class")
 	register_native("zpn_is_user_class", "_zpn_is_user_class")
+	register_native("zpn_select_user_class", "_zpn_select_user_class")
+	register_native("zpn_weapon_count", "_zpn_weapon_count")
+	register_native("zpn_weapon_get_name", "_zpn_weapon_get_name")
+	register_native("zpn_select_user_weapon", "_zpn_select_user_weapon")
 	register_native("zpn_send_weapon_deploy", "_zpn_send_weapon_deploy")
 	register_native("zpn_set_user_frozen", "_zpn_set_user_frozen")
 	register_native("zpn_is_user_freezed", "_zpn_is_user_freezed")
 	register_native("zpn_remove_user_frozen", "_zpn_remove_user_frozen")
+}
+
+public eClassSelectResults:_zpn_select_user_class(plugin_id, param_nums)
+{
+	if(param_nums != 2)
+		return CLASS_SELECT_INVALID
+
+	return select_user_class(get_param(1), get_param(2))
+}
+
+eClassSelectResults:select_user_class(const id, const class_id)
+{
+	if(!zpn_is_valid_player_connected(id) || class_id < 0 || class_id >= zpn_class_array_size())
+		return CLASS_SELECT_INVALID
+
+	new eClassTypes:type = zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+	if((type != CLASS_TEAM_TYPE_ZOMBIE && type != CLASS_TEAM_TYPE_HUMAN)
+	|| zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_HIDE_MENU))
+		return CLASS_SELECT_INVALID
+
+	if(zpn_level_get_user_level(id) < zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_LEVEL))
+		return CLASS_SELECT_LEVEL_REQUIRED
+
+	if(!zpn_class_has_free_slot(class_id, id))
+		return CLASS_SELECT_LIMIT_REACHED
+
+	if(xCvars[CVAR_CLASS_SELECT_INSTANT] && zpn_player_data_get_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT) > get_gametime())
+		return CLASS_SELECT_COOLDOWN
+
+	new ePropPlayerDataRegisters:next_prop = type == CLASS_TEAM_TYPE_ZOMBIE ? PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS : PROP_PD_REGISTER_NEXT_HUMAN_CLASS
+	if(!zpn_player_data_set_prop(id, next_prop, class_id))
+		return CLASS_SELECT_LIMIT_REACHED
+
+	new bool:applied = false
+	if(xCvars[CVAR_CLASS_SELECT_INSTANT])
+	{
+		new bool:same_team = (bool:zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) == (type == CLASS_TEAM_TYPE_ZOMBIE))
+		if(is_user_alive(id) && same_team)
+			applied = type == CLASS_TEAM_TYPE_ZOMBIE ? set_user_zombie(id, 0, false) : set_user_human(id)
+		else
+		{
+			new ePropPlayerDataRegisters:selected_prop = type == CLASS_TEAM_TYPE_ZOMBIE ? PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS : PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS
+			if(zpn_player_data_set_prop(id, selected_prop, class_id))
+				zpn_player_data_set_prop(id, next_prop, -1)
+		}
+
+		if(!is_user_connected(id))
+			return CLASS_SELECT_INVALID
+
+		zpn_player_data_set_prop(id, PROP_PD_REGISTER_CLASS_TIMEOUT, get_gametime() + xCvars[CVAR_CLASS_SELECT_INSTANT_TIMEOUT])
+	}
+
+	return applied ? CLASS_SELECT_APPLIED : CLASS_SELECT_RESERVED
+}
+
+public _zpn_weapon_count(plugin_id, param_nums)
+{
+	if(param_nums != 1)
+		return 0
+
+	new Array:weapons = get_weapon_array(eWeaponTypes:get_param(1))
+	return weapons == Invalid_Array ? 0 : ArraySize(weapons)
+}
+
+public bool:_zpn_weapon_get_name(plugin_id, param_nums)
+{
+	if(param_nums != 4 || get_param(4) < 0)
+		return false
+
+	new Array:weapons = get_weapon_array(eWeaponTypes:get_param(1))
+	new weapon_index = get_param(2), name[32]
+	if(weapons == Invalid_Array || !(0 <= weapon_index < ArraySize(weapons)))
+	{
+		set_string(3, "", get_param(4))
+		return false
+	}
+
+	ArrayGetString(weapons, weapon_index, name, charsmax(name))
+	set_string(3, name, get_param(4))
+	return true
+}
+
+public bool:_zpn_select_user_weapon(plugin_id, param_nums)
+{
+	if(param_nums != 3)
+		return false
+
+	new id = get_param(1)
+	if(!zpn_is_valid_player_connected(id) || xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
+	|| zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+		return false
+
+	new TeamName:team = get_member(id, m_iTeam)
+	if(team != TEAM_CT && team != TEAM_TERRORIST)
+		return false
+
+	new eWeaponTypes:type = eWeaponTypes:get_param(2)
+	new Array:weapons = get_weapon_array(type), weapon_index = get_param(3)
+	if(weapons == Invalid_Array || !(0 <= weapon_index < ArraySize(weapons)))
+		return false
+
+	new ePropPlayerDataRegisters:prop = type == ZPN_WEAPON_PRIMARY ? PROP_PD_REGISTER_PRIMARY_WEAPON : PROP_PD_REGISTER_SECONDARY_WEAPON
+	zpn_player_data_set_prop(id, prop, weapon_index)
+	get_selected_weapon(id, weapons, weapon_index, type == ZPN_WEAPON_PRIMARY ? PRIMARY_WEAPON_SLOT : PISTOL_SLOT)
+	return true
+}
+
+Array:get_weapon_array(const eWeaponTypes:type)
+{
+	switch(type)
+	{
+		case ZPN_WEAPON_PRIMARY: return xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS]
+		case ZPN_WEAPON_SECONDARY: return xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS]
+	}
+
+	return Invalid_Array
 }
 
 public bool:_zpn_is_user_freezed(plugin_id, param_nums)
@@ -1807,21 +1374,11 @@ deploy_weapon(const this)
 	if(!is_nullent(activeItem)) ExecuteHamB(Ham_Item_Deploy, activeItem)
 }
 
-update_prefix_color(string[], len, bool:menu = false)
+update_chat_prefix_color(string[], len)
 {
-	if(menu)
-	{
-		replace_string(string, len, "!y", "\y")
-		replace_string(string, len, "!d", "\d")
-		replace_string(string, len, "!r", "\r")
-		replace_string(string, len, "!w", "\w")
-	}
-	else
-	{
-		replace_string(string, len, "!y", "^1")
-		replace_string(string, len, "!t", "^3")
-		replace_string(string, len, "!g", "^4")
-	}
+	replace_string(string, len, "!y", "^1")
+	replace_string(string, len, "!t", "^3")
+	replace_string(string, len, "!g", "^4")
 }
 
 format_number_point(const number)
@@ -1853,30 +1410,6 @@ check_game()
 
 	if(get_num_alive(true) <= 0 && xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		rg_round_end(2.0, WINSTATUS_DRAW, ROUND_GAME_RESTART, .trigger = true)
-}
-
-count_item(eClassTypes:item_team)
-{
-	new count = 0
-
-	for(new i = 0; i < zpn_item_array_size(); i++)
-	{
-		if(eClassTypes:zpn_item_get_prop(i, PROP_ITEM_REGISTER_TEAM) == item_team) count ++;
-	}
-
-	return count
-}
-
-count_class(eClassTypes:class_type)
-{
-	new count = 0
-
-	for(new i = 0; i < zpn_class_array_size(); i++)
-	{
-		if(zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE) == class_type) count ++;
-	}
-
-	return count
 }
 
 get_user_selected_class_index(id, eClassTypes:type)
@@ -1923,16 +1456,6 @@ resolve_user_class(id, class_id, eClassTypes:normal_type)
 	}
 
 	return -1
-}
-
-eClassTypes:get_user_current_class_type(id)
-{
-	new class_id = get_user_current_class_index(id)
-
-	if(class_id != -1)
-		return eClassTypes:zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
-
-	return zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? CLASS_TEAM_TYPE_ZOMBIE : CLASS_TEAM_TYPE_HUMAN
 }
 
 get_user_next_class_index(id, eClassTypes:type)

@@ -18,7 +18,7 @@
 #endif
 
 /**
- * Called before the main game menu is displayed.
+ * Called before the main game menu is displayed by zpn_menus.
  *
  * @note A plugin can display its own menu and return ZPN_RETURN_HANDLED or
  *       higher to suppress the default menu.
@@ -148,6 +148,18 @@ forward zpn_show_menu_secondary_weapon_pre(const id);
  * @noreturn
  */
 forward zpn_show_menu_secondary_weapon_post(const id);
+
+/**
+ * Called after the main core finishes a playable client's spawn.
+ *
+ * @note Runs after a human/zombie class, the knife and saved weapons have
+ *       been applied. Not called for spectators or a failed class application.
+ * @note zpn_menus uses this to offer weapons when no primary is selected.
+ *
+ * @param id        Client index
+ * @noreturn
+ */
+forward zpn_user_spawn_post(const id);
 
 /**
  * Called before each draw of the default player information HUD.
@@ -439,6 +451,60 @@ forward zpn_level_user_level_changed(const id, const level, const old_level);
 native zpn_set_fw_param_int(const param, const value);
 
 /**
+ * Displays the main game menu. Requires zpn_menus.
+ *
+ * @note All zpn_show_menu_* natives run their corresponding pre/post forwards.
+ *       They return false for bots, HLTV, disconnected clients, suppressed
+ *       menus or unavailable content. Do not reopen the same default menu
+ *       from its own pre/post forward.
+ *
+ * @param id        Client index
+ * @return          true if the default menu was displayed, false otherwise
+ */
+native bool:zpn_show_menu_game(const id);
+
+/**
+ * Displays the current class team's extra-item shop. Requires zpn_menus.
+ *
+ * @param id        Client index
+ * @return          true if displayed, false if unavailable or suppressed
+ */
+native bool:zpn_show_menu_items(const id);
+
+/**
+ * Displays the zombie/human class type menu. Requires zpn_menus.
+ *
+ * @param id        Client index
+ * @return          true if displayed, false if unavailable or suppressed
+ */
+native bool:zpn_show_menu_class_type(const id);
+
+/**
+ * Displays the selectable classes for one type. Requires zpn_menus.
+ *
+ * @param id         Client index
+ * @param class_type CLASS_TEAM_TYPE_ZOMBIE or CLASS_TEAM_TYPE_HUMAN
+ * @return           true if displayed, false if invalid, empty or suppressed
+ */
+native bool:zpn_show_menu_class(const id, const eClassTypes:class_type);
+
+/**
+ * Displays primary weapon selection before the round starts. Requires zpn_menus.
+ *
+ * @param id        Client index
+ * @return          true if displayed, false if unavailable or suppressed
+ */
+native bool:zpn_show_menu_primary_weapon(const id);
+
+/**
+ * Displays secondary weapon selection before the round starts. Requires zpn_menus.
+ *
+ * @param id        Client index
+ * @return          true if displayed, false if unavailable or suppressed
+ */
+native bool:zpn_show_menu_secondary_weapon(const id);
+
+/**
  * Returns a random registered class index for the given class type.
  *
  * @param type      Class type
@@ -540,6 +606,56 @@ native zpn_get_user_next_class(const id, eClassTypes:type);
  * @return          Current class index, or -1 if the client is not connected
  */
 native zpn_get_user_current_class(const id);
+
+/**
+ * Selects or reserves a normal class using the main core's selection rules.
+ *
+ * @note Checks class visibility, type, level, capacity and instant-selection
+ *       cooldown. With instant selection enabled, applies the class to a living
+ *       client on the matching team, running the normal infection/humanization
+ *       forwards. Otherwise the choice is saved for the next application.
+ * @note CLASS_SELECT_RESERVED also covers an accepted choice whose immediate
+ *       application was blocked by an infection forward. No chat/menu is sent.
+ *
+ * @param id        Connected client index
+ * @param class_id  Registered class index
+ * @return          Result from eClassSelectResults
+ */
+native eClassSelectResults:zpn_select_user_class(const id, const class_id);
+
+/**
+ * Counts configured primary or secondary weapons in the main core.
+ *
+ * @param type      ZPN_WEAPON_PRIMARY or ZPN_WEAPON_SECONDARY
+ * @return          Configured weapon count, or 0 for an invalid type
+ */
+native zpn_weapon_count(const eWeaponTypes:type);
+
+/**
+ * Copies a configured weapon classname without exposing the core's array.
+ *
+ * @param type         ZPN_WEAPON_PRIMARY or ZPN_WEAPON_SECONDARY
+ * @param weapon_index Zero-based index in that configured weapon list
+ * @param name         Output buffer, e.g. weapon_ak47
+ * @param maxlen       Maximum output length, excluding the terminator
+ * @return             true on success, false for an invalid type/index/length;
+ *                     invalid type/index clears the output
+ */
+native bool:zpn_weapon_get_name(const eWeaponTypes:type, const weapon_index, name[], const maxlen);
+
+/**
+ * Saves a human's weapon choice and equips it if the client is alive.
+ *
+ * @note Checks the configured list, team and round state again when selecting.
+ *       Selection is only accepted before the ZPN round starts. A dead client's
+ *       accepted choice is equipped on their next spawn. Requires the main core.
+ *
+ * @param id           Connected, non-zombie client on a playing team
+ * @param type         ZPN_WEAPON_PRIMARY or ZPN_WEAPON_SECONDARY
+ * @param weapon_index Zero-based index in that configured weapon list
+ * @return             true if the choice was saved, false if invalid/disallowed
+ */
+native bool:zpn_select_user_weapon(const id, const eWeaponTypes:type, const weapon_index);
 
 /**
  * Returns whether a client currently has the given class applied.
