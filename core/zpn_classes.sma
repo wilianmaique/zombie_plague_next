@@ -1,7 +1,35 @@
 #include <amxmodx>
+#include <reapi>
 #include <regex>
 #include <api_json_settings>
+#include <zombie_plague_next>
 #include <zombie_plague_next_const>
+
+enum _:eClassSounds
+{
+	CLASS_SOUND_PAIN,
+	CLASS_SOUND_DIE
+}
+
+new const CLASS_SOUND_KEYS[eClassSounds][] = { "pain", "die" }
+
+new const DEFAULT_ZOMBIE_PAIN_SOUNDS[][] =
+{
+	"zpn/zombie_pain1.wav",
+	"zpn/zombie_pain2.wav",
+	"zpn/zombie_pain3.wav",
+	"zpn/zombie_pain4.wav",
+	"zpn/zombie_pain5.wav"
+}
+
+new const DEFAULT_ZOMBIE_DIE_SOUNDS[][] =
+{
+	"zpn/zombie_die1.wav",
+	"zpn/zombie_die2.wav",
+	"zpn/zombie_die3.wav",
+	"zpn/zombie_die4.wav",
+	"zpn/zombie_die5.wav"
+}
 
 enum _:ePropClasses
 {
@@ -33,15 +61,30 @@ enum _:ePropClasses
 	Float:CLASS_PROP_LEAP_FORCE,
 	Float:CLASS_PROP_LEAP_HEIGHT,
 	Float:CLASS_PROP_LEAP_COOLDOWN,
-	Float:CLASS_PROP_LEAP_MIN_SPEED
+	Float:CLASS_PROP_LEAP_MIN_SPEED,
+	Array:CLASS_PROP_SOUNDS[eClassSounds]
 }
 
 new Array:aDataClass, Array:aIndexClassesZombies, Array:aIndexClassesHumans
+new Array:aDefaultZombieSounds[eClassSounds]
+new bool:gClassPrecache
 
 public plugin_init()
 {
 	register_plugin("[ZPN] Core: Classes", "1.0", "Wilian M.")
+	gClassPrecache = false
 
+	if(!is_regamedll() || !is_rehlds())
+	{
+		set_fail_state("[ZPN] Class sounds require ReGameDLL_CS and ReHLDS")
+		return
+	}
+
+	RegisterHookChain(RG_CBasePlayer_Pain, "CBasePlayer_Pain_Pre", false)
+	RegisterHookChain(RG_CBasePlayer_DeathSound, "CBasePlayer_DeathSound_Pre", false)
+	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
+
+	save_class_sound_defaults()
 	get_classes_index()
 
 	// LOG
@@ -83,16 +126,176 @@ public plugin_natives()
 
 public plugin_precache()
 {
+	gClassPrecache = true
 	aDataClass = ArrayCreate(ePropClasses, 0)
 	aIndexClassesZombies = ArrayCreate(1, 0)
 	aIndexClassesHumans = ArrayCreate(1, 0)
+
+	load_default_zombie_sounds()
 }
 
 public plugin_end()
 {
+	new xDataGetClass[ePropClasses]
+	for(new i = 0; i < ArraySize(aDataClass); i++)
+	{
+		ArrayGetArray(aDataClass, i, xDataGetClass)
+		for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
+			ArrayDestroy(xDataGetClass[CLASS_PROP_SOUNDS][sound_type])
+	}
+
+	for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
+		ArrayDestroy(aDefaultZombieSounds[sound_type])
+
 	ArrayDestroy(aDataClass)
 	ArrayDestroy(aIndexClassesZombies)
 	ArrayDestroy(aIndexClassesHumans)
+}
+
+public CBasePlayer_Pain_Pre(const this, HitBoxGroup:lastHitGroup, bool:hasArmour)
+{
+	return emit_zombie_class_sound(this, CLASS_SOUND_PAIN) ? HC_SUPERCEDE : HC_CONTINUE
+}
+
+public CBasePlayer_DeathSound_Pre(const this)
+{
+	return get_zombie_class_id(this) != -1 ? HC_SUPERCEDE : HC_CONTINUE
+}
+
+public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
+{
+	if(!IsReapiHookOriginalWasCalled(RG_CBasePlayer_Killed) || is_user_alive(this))
+		return
+
+	// Gib deaths skip DeathSound, so emit once after the actual death instead.
+	emit_zombie_class_sound(this, CLASS_SOUND_DIE)
+}
+
+load_default_zombie_sounds()
+{
+	for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
+		aDefaultZombieSounds[sound_type] = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
+
+	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_PAIN_SOUNDS); i++)
+		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_PAIN], DEFAULT_ZOMBIE_PAIN_SOUNDS[i])
+
+	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_DIE_SOUNDS); i++)
+		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_DIE], DEFAULT_ZOMBIE_DIE_SOUNDS[i])
+
+	for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
+	{
+		// Save missing defaults, then reload to honor existing arrays, including [].
+		json_setting_set_string_arr(PATH_SETTINGS_CLASSES, SETTINGS_SECTION_CLASSES_ZOMBIE_SOUNDS, CLASS_SOUND_KEYS[sound_type], aDefaultZombieSounds[sound_type])
+		ArrayClear(aDefaultZombieSounds[sound_type])
+		json_setting_get_string_arr(PATH_SETTINGS_CLASSES, SETTINGS_SECTION_CLASSES_ZOMBIE_SOUNDS, CLASS_SOUND_KEYS[sound_type], aDefaultZombieSounds[sound_type])
+		precache_class_sounds(aDefaultZombieSounds[sound_type], SETTINGS_SECTION_CLASSES_ZOMBIE_SOUNDS, CLASS_SOUND_KEYS[sound_type])
+	}
+}
+
+save_class_sound_defaults()
+{
+	// All classes have finished plugin_precache and supplied their defaults now.
+	new xDataGetClass[ePropClasses], class_section[128], sounds_section[128]
+	for(new i = 0; i < ArraySize(aDataClass); i++)
+	{
+		ArrayGetArray(aDataClass, i, xDataGetClass)
+		get_class_settings_section(xDataGetClass, class_section, charsmax(class_section))
+		formatex(sounds_section, charsmax(sounds_section), "%s.sounds", class_section)
+
+		for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
+		{
+			new Array:sounds = xDataGetClass[CLASS_PROP_SOUNDS][sound_type]
+			if(sounds != Invalid_Array)
+				json_setting_set_string_arr(PATH_SETTINGS_CLASSES, sounds_section, CLASS_SOUND_KEYS[sound_type], sounds)
+		}
+	}
+}
+
+load_class_sound_setting(xDataGetClass[ePropClasses], const sound_type, const class_section[], bool:save_default)
+{
+	new Array:sounds = xDataGetClass[CLASS_PROP_SOUNDS][sound_type]
+	if(sounds == Invalid_Array)
+		return
+
+	new sounds_section[128]
+	formatex(sounds_section, charsmax(sounds_section), "%s.sounds", class_section)
+	if(save_default)
+		json_setting_set_string_arr(PATH_SETTINGS_CLASSES, sounds_section, CLASS_SOUND_KEYS[sound_type], sounds)
+
+	// The getter appends and returns false for []; clear first so JSON still wins.
+	ArrayClear(sounds)
+	json_setting_get_string_arr(PATH_SETTINGS_CLASSES, sounds_section, CLASS_SOUND_KEYS[sound_type], sounds)
+	precache_class_sounds(sounds, sounds_section, CLASS_SOUND_KEYS[sound_type])
+}
+
+copy_class_sounds(Array:source, Array:destination)
+{
+	new sound[MAX_RESOURCE_PATH_LENGTH]
+	new count = ArraySize(source)
+	ArrayClear(destination)
+	for(new i = 0; i < count; i++)
+	{
+		ArrayGetString(source, i, sound, charsmax(sound))
+		ArrayPushString(destination, sound)
+	}
+}
+
+precache_class_sounds(Array:sounds, const section[], const key[])
+{
+	new sound[MAX_RESOURCE_PATH_LENGTH], path[MAX_RESOURCE_PATH_LENGTH + 6]
+	for(new i = ArraySize(sounds) - 1; i >= 0; i--)
+	{
+		ArrayGetString(sounds, i, sound, charsmax(sound))
+		formatex(path, charsmax(path), "sound/%s", sound)
+		new len = strlen(sound)
+		if(len < 5 || !equali(sound[len - 4], ".wav") || !file_exists(path, true))
+		{
+			log_amx("[ZPN] Ignoring invalid sound in %s / %s: ^"%s^"", section, key, sound)
+			ArrayDeleteItem(sounds, i)
+			continue
+		}
+
+		precache_sound(sound)
+	}
+}
+
+get_zombie_class_id(const id)
+{
+	// Death callbacks also need the current class after the player has died.
+	if(!zpn_is_valid_player_connected(id))
+		return -1
+
+	new class_id = zpn_get_user_current_class(id)
+	if(!(0 <= class_id < ArraySize(aDataClass)))
+		return -1
+
+	new eClassTypes:type = eClassTypes:ArrayGetCell(aDataClass, class_id, CLASS_PROP_TYPE)
+	if(type != CLASS_TEAM_TYPE_ZOMBIE && type != CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
+		return -1
+
+	return class_id
+}
+
+bool:emit_zombie_class_sound(const id, const sound_type)
+{
+	new class_id = get_zombie_class_id(id)
+	if(class_id == -1)
+		return false
+
+	new Array:sounds = Array:ArrayGetCell(aDataClass, class_id, CLASS_PROP_SOUNDS + sound_type)
+	if(ArraySize(sounds) == 0)
+		sounds = aDefaultZombieSounds[sound_type]
+
+	new count = ArraySize(sounds)
+	if(count > 0)
+	{
+		new sound[MAX_RESOURCE_PATH_LENGTH]
+		ArrayGetString(sounds, random_num(0, count - 1), sound, charsmax(sound))
+		rh_emit_sound2(id, 0, CHAN_VOICE, sound)
+	}
+
+	// An empty shared array silences the event instead of restoring human voices.
+	return true
 }
 
 public _zpn_class_array_size(plugin_id, param_nums)
@@ -138,6 +341,13 @@ public _zpn_class_init(plugin_id, param_nums)
 
 	new class_section[128]
 	get_class_settings_section(xDataGetClass, class_section, charsmax(class_section))
+
+	if(xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE
+	|| xDataGetClass[CLASS_PROP_TYPE] == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
+	{
+		for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
+			xDataGetClass[CLASS_PROP_SOUNDS][sound_type] = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
+	}
 
 	for(new prop = 0; prop < _:ePropClassRegisters; prop++)
 		load_class_setting(xDataGetClass, ePropClassRegisters:prop, class_section)
@@ -188,6 +398,19 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_LEAP_HEIGHT: return xDataGetClass[CLASS_PROP_LEAP_HEIGHT]
 		case PROP_CLASS_REGISTER_LEAP_COOLDOWN: return xDataGetClass[CLASS_PROP_LEAP_COOLDOWN]
 		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED: return xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED]
+		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS:
+		{
+			if(param_nums != 3)
+				return false
+
+			new sound_type = prop == _:PROP_CLASS_REGISTER_PAIN_SOUNDS ? CLASS_SOUND_PAIN : CLASS_SOUND_DIE
+			new Array:sounds = xDataGetClass[CLASS_PROP_SOUNDS][sound_type]
+			new Array:output = Array:get_param_byref(arg_value)
+			if(sounds == Invalid_Array || output == Invalid_Array)
+				return false
+
+			copy_class_sounds(sounds, output)
+		}
 	}
 
 	return true
@@ -233,6 +456,34 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_LEAP_HEIGHT: xDataGetClass[CLASS_PROP_LEAP_HEIGHT] = floatmax(0.0, get_float_byref(arg_value))
 		case PROP_CLASS_REGISTER_LEAP_COOLDOWN: xDataGetClass[CLASS_PROP_LEAP_COOLDOWN] = floatmax(0.0, get_float_byref(arg_value))
 		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED: xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = floatmax(0.0, get_float_byref(arg_value))
+		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS:
+		{
+			if(param_nums != 3)
+				return false
+
+			if(!gClassPrecache)
+			{
+				log_error(AMX_ERR_NATIVE, "[ZPN] Class sound properties must be set during plugin_precache")
+				return false
+			}
+
+			new sound_type = prop == _:PROP_CLASS_REGISTER_PAIN_SOUNDS ? CLASS_SOUND_PAIN : CLASS_SOUND_DIE
+			new Array:sounds = xDataGetClass[CLASS_PROP_SOUNDS][sound_type]
+			if(sounds == Invalid_Array)
+			{
+				log_error(AMX_ERR_NATIVE, "[ZPN] Class sound properties require a zombie or special-zombie class")
+				return false
+			}
+
+			new Array:input = Array:get_param_byref(arg_value)
+			if(input == Invalid_Array)
+			{
+				log_error(AMX_ERR_NATIVE, "[ZPN] Class sound properties require a valid string array")
+				return false
+			}
+
+			copy_class_sounds(input, sounds)
+		}
 	}
 
 	new class_section[128]
@@ -410,6 +661,11 @@ load_class_setting(xDataGetClass[ePropClasses], ePropClassRegisters:prop, const 
 				json_setting_set_float(PATH_SETTINGS_CLASSES, class_section_final, "leap_min_speed", xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED])
 
 			xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = floatmax(0.0, xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED])
+		}
+		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS:
+		{
+			new sound_type = prop == PROP_CLASS_REGISTER_PAIN_SOUNDS ? CLASS_SOUND_PAIN : CLASS_SOUND_DIE
+			load_class_sound_setting(xDataGetClass, sound_type, class_section_final, save_default)
 		}
 	}
 }

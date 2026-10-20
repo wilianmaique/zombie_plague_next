@@ -30,6 +30,13 @@ public plugin_precache()
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_LEAP_HEIGHT, 350.0)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_LEAP_COOLDOWN, 0.0)
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_LEAP_MIN_SPEED, 10.0)
+
+	new Array:pain_sounds = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
+	ArrayPushString(pain_sounds, "zpn/nemesis_pain1.wav")
+	ArrayPushString(pain_sounds, "zpn/nemesis_pain2.wav")
+	ArrayPushString(pain_sounds, "zpn/nemesis_pain3.wav")
+	zpn_class_set_prop(class, PROP_CLASS_REGISTER_PAIN_SOUNDS, pain_sounds)
+	ArrayDestroy(pain_sounds)
 }
 
 public zpn_user_infect_attempt(const this, const infector, const class_id)

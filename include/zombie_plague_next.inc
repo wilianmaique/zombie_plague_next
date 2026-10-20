@@ -529,7 +529,16 @@ native zpn_class_random_class_id(eClassTypes:type);
  * @note This should be called from plugin_precache().
  * @note Loads supported properties from classes.json immediately, including
  *       keys without a corresponding zpn_class_set_prop() call. Missing keys
- *       keep the core defaults and are not added to the file at this stage.
+ *       keep the core defaults and are not saved at this stage. Missing sound
+ *       arrays are saved after every class has finished plugin_precache().
+ * @note Zombie and special-zombie sounds are configured in classes.json:
+ *       "Default Sounds Zombies" owns shared "pain" and "die" string arrays.
+ *       Each zombie class gets a "sounds" object with "pain" and "die" arrays;
+ *       zpn_class_set_prop() can supply these defaults from the class plugin.
+ *       An empty class array inherits the shared array for that event; a
+ *       nonempty array replaces it. An empty shared array silences the event.
+ *       Paths are relative to sound/ and must refer to existing .wav files.
+ *       Files are loaded/precached at map startup; restart the map after edits.
  *
  * @note Set PROP_CLASS_REGISTER_NAME to a dictionary key before other properties.
  *       NAME and INFO getters return dictionary keys; translate with the viewer's
@@ -547,15 +556,20 @@ native zpn_class_init(const name[], eClassTypes:type);
  *
  * @note For string properties, pass an output buffer and its maximum length
  *       after the property id.
- * @note For array properties, pass an output array and its maximum length after
- *       the property id.
+ * @note For fixed array properties, pass an output array and its maximum length
+ *       after the property id.
+ * @note For PAIN_SOUNDS and DIE_SOUNDS, pass only a destination Array: handle
+ *       created with cellsize MAX_RESOURCE_PATH_LENGTH. Its contents are
+ *       replaced with a copy of the class override; an empty result means the
+ *       shared sounds are inherited. The caller owns the destination handle.
  *
  * @param class_id  Class index
  * @param prop      Property to retrieve, from ePropClassRegisters
- * @param ...       Output buffer and length for string or array properties
+ * @param ...       Output buffer and length, or a destination sound-array handle
  *
  * @return          Property value for scalar properties, 1 for copied
  *                  string/array properties, or 0 if class storage is unavailable
+ *                  or the sound-array arguments/class type are invalid
  * @error           If class_id is not a valid class index, an error can be
  *                  thrown by the underlying array access.
  */
@@ -570,6 +584,21 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
  *       ePropClassRegisters in zombie_plague_next_const.inc.
  * @note The supplied value is a default: a valid value in classes.json takes
  *       priority. Missing settings are saved using the supplied default.
+ * @note PROP_CLASS_REGISTER_PAIN_SOUNDS and PROP_CLASS_REGISTER_DIE_SOUNDS
+ *       accept one Array: handle of strings (cellsize MAX_RESOURCE_PATH_LENGTH).
+ *       Use these only for zombie/special-zombie classes in plugin_precache().
+ *       The contents are copied; the caller can reuse/destroy the handle after
+ *       this call. JSON arrays, including [], take priority. An empty class
+ *       array inherits the shared sounds for that event.
+ *
+ *       new Array:sounds = ArrayCreate(MAX_RESOURCE_PATH_LENGTH)
+ *       ArrayPushString(sounds, "zpn/zombie_pain1.wav")
+ *       zpn_class_set_prop(class_id, PROP_CLASS_REGISTER_PAIN_SOUNDS, sounds)
+ *       ArrayClear(sounds)
+ *       ArrayPushString(sounds, "zpn/zombie_die1.wav")
+ *       zpn_class_set_prop(class_id, PROP_CLASS_REGISTER_DIE_SOUNDS, sounds)
+ *       ArrayDestroy(sounds)
+ *
  * @note Leap properties are applied when the client receives the class, before
  *       the infected/humanized post-forward. To update an existing client after
  *       changing class properties, call zpn_reset_user_leap().
@@ -578,9 +607,12 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
  * @param prop      Property to set, from ePropClassRegisters
  * @param ...       New property value
  *
- * @return          1 on success, 0 if class storage is unavailable
+ * @return          1 on success, 0 if class storage is unavailable or the
+ *                  sound-array argument count is invalid
  * @error           If class_id is not a valid class index, an error can be
  *                  thrown by the underlying array access.
+ *                  Sound properties also throw for an invalid handle, a human
+ *                  class, or calls outside plugin_precache().
  */
 native zpn_class_set_prop(const class_id, ePropClassRegisters:prop, any:...);
 

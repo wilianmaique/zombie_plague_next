@@ -21,6 +21,7 @@ stock const PATH_SETTINGS_ESCAPE[] = "zombie_plague_next/escape.json";
 stock const SETTINGS_SECTION_CONFIG[] = "Main Config";
 stock const SETTINGS_SECTION_CLASSES_ZOMBIE[] = "Zombies";
 stock const SETTINGS_SECTION_CLASSES_ZOMBIE_SP[] = "Zombies Special";
+stock const SETTINGS_SECTION_CLASSES_ZOMBIE_SOUNDS[] = "Default Sounds Zombies";
 stock const SETTINGS_SECTION_CLASSES_HUMAN[] = "Humans";
 stock const SETTINGS_SECTION_CLASSES_HUMAN_SP[] = "Humans Special";
 
@@ -128,6 +129,8 @@ enum ePropClassRegisters
 	PROP_CLASS_REGISTER_LEAP_HEIGHT, // float, default: 300.0
 	PROP_CLASS_REGISTER_LEAP_COOLDOWN, // float, seconds, default: 5.0
 	PROP_CLASS_REGISTER_LEAP_MIN_SPEED, // float, default: 80.0
+	PROP_CLASS_REGISTER_PAIN_SOUNDS, // Array: string list, zombie classes only; empty = shared pain sounds
+	PROP_CLASS_REGISTER_DIE_SOUNDS, // Array: string list, zombie classes only; empty = shared die sounds
 }
 
 enum eGameModeDeathMatchTypes
