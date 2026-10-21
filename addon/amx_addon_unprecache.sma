@@ -44,11 +44,12 @@ public plugin_precache()
 	RegisterHookChain(RH_PF_precache_model_I, "precache_model_pre", false)
 	RegisterHookChain(RH_PF_precache_sound_I, "precache_sound_pre", false)
 	RegisterHookChain(RH_PF_precache_generic_I, "precache_generic_pre", false)
+	RegisterHookChain(RH_SV_StartSound, "start_sound_pre", false)
 }
 
 public plugin_init()
 {
-	register_plugin("AMXX Unprecache", "1.1", "Wilian M.")
+	register_plugin("AMXX Unprecache", "1.2", "Wilian M.")
 	register_srvcmd("amx_unprecache_status", "command_unprecache_status", ADMIN_CFG, "UNPRECACHE_STATUS_HELP", true)
 
 	log_amx("%L", LANG_SERVER, "UNPRECACHE_SUMMARY", TrieGetSize(blocked_resources), blocked_model_count, blocked_sound_count, blocked_generic_count)
@@ -74,6 +75,16 @@ public precache_generic_pre(const path[])
 public precache_sound_pre(const path[])
 {
 	return block_precache(path, BLOCKED_SOUND)
+}
+
+public start_sound_pre(const recipients, const entity, const channel, const sample[], const volume, Float:attenuation, const fFlags, const pitch)
+{
+	new path[RESOURCE_PATH_LENGTH]
+	if(!get_resource_path(sample, BLOCKED_SOUND, path, charsmax(path)))
+		return HC_CONTINUE
+
+	// Stop configured sounds before SV_BuildSoundMsg checks their precache index.
+	return TrieKeyExists(blocked_resources, path) ? HC_SUPERCEDE : HC_CONTINUE
 }
 
 public resource_added_pre(ResourceType_t:type, const filename[], size, flags, index)
@@ -240,7 +251,7 @@ bool:get_resource_path(const resource[], const type, path[], const maxlen)
 	if(!resource[0] || strlen(resource) + prefix_length > maxlen)
 		return false
 
-	// precache_sound paths are relative to sound/, unlike the INI/generic paths.
+	// Sound precache/emission paths are relative to sound/, unlike INI/generic paths.
 	if(type == BLOCKED_SOUND)
 		formatex(path, maxlen, "%s%s", sound_directory, resource)
 	else
