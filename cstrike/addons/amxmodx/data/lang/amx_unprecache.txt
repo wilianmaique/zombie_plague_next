@@ -1,0 +1,29 @@
+[bp]
+UNPRECACHE_REHLDS_REQUIRED = O AMXX Unprecache requer ReHLDS para interceptar as tabelas de precache.
+UNPRECACHE_OPEN_FAILED = Não foi possível abrir a lista de unprecache: %s
+UNPRECACHE_LINE_TOO_LONG = Linha %d ignorada em %s: a linha é longa demais.
+UNPRECACHE_INVALID_PATH = Linha %d inválida em %s: use .mdl/.spr em models/ ou sprites/, ou .wav/.mp3 em sound/, sem coringas, com até 63 bytes por caminho.
+UNPRECACHE_STATUS_HELP = - mostra a ocupação de models/sprites e os precaches bloqueados neste mapa
+UNPRECACHE_MODEL_TABLE = Models/sprites: antes (estimado) %d/%d | depois %d/%d | livres %d | entradas evitadas %d.
+UNPRECACHE_MODEL_TABLE_NOTE = Antes = ocupação atual + entradas evitadas. O índice 0 reservado está incluído; models e sprites compartilham a tabela.
+UNPRECACHE_MODEL_TABLE_PENDING = A lista de recursos do engine ainda não está disponível. Consulte o comando após o carregamento do mapa.
+UNPRECACHE_SUMMARY = Caminhos configurados: %d | Models/sprites bloqueados: %d | Sons bloqueados: %d | Recursos genéricos bloqueados: %d.
+UNPRECACHE_STATUS_NOTE = Os totais de bloqueio contam caminhos distintos. Recursos já registrados não são removidos. Alterações no INI valem no próximo mapa.
+UNPRECACHE_STATUS_ENTRY = %s | precache_model: %L | precache_sound: %L | precache_generic: %L
+UNPRECACHE_BLOCKED = bloqueado
+UNPRECACHE_NOT_INTERCEPTED = nenhuma chamada interceptada
+
+[en]
+UNPRECACHE_REHLDS_REQUIRED = AMXX Unprecache requires ReHLDS to intercept the precache tables.
+UNPRECACHE_OPEN_FAILED = Could not open the unprecache list: %s
+UNPRECACHE_LINE_TOO_LONG = Skipped line %d in %s: the line is too long.
+UNPRECACHE_INVALID_PATH = Invalid line %d in %s: use .mdl/.spr under models/ or sprites/, or .wav/.mp3 under sound/, without wildcards, up to 63 bytes per path.
+UNPRECACHE_STATUS_HELP = - shows model/sprite table usage and precaches blocked on this map
+UNPRECACHE_MODEL_TABLE = Models/sprites: before (estimated) %d/%d | after %d/%d | free %d | entries avoided %d.
+UNPRECACHE_MODEL_TABLE_NOTE = Before = current usage + entries avoided. Reserved index 0 is included; models and sprites share the table.
+UNPRECACHE_MODEL_TABLE_PENDING = The engine resource list is not available yet. Run the command after the map has loaded.
+UNPRECACHE_SUMMARY = Configured paths: %d | Blocked model/sprite paths: %d | Blocked sound paths: %d | Blocked generic paths: %d.
+UNPRECACHE_STATUS_NOTE = Blocked totals count distinct paths. Previously registered resources are not removed. INI changes take effect on the next map.
+UNPRECACHE_STATUS_ENTRY = %s | precache_model: %L | precache_sound: %L | precache_generic: %L
+UNPRECACHE_BLOCKED = blocked
+UNPRECACHE_NOT_INTERCEPTED = no call intercepted
