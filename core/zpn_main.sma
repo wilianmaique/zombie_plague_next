@@ -1415,7 +1415,6 @@ public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 
 	set_entvar(this, var_velocity, 1.0)
 	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) | PLAYER_PREVENT_JUMP)
-	set_member(this, m_bIsDefusing, true)
 	rg_reset_maxspeed(this)
 	set_user_rendering(this, kRenderFxGlowShell, 0, 150, 255, kRenderNormal, 10)
 
@@ -1450,7 +1449,6 @@ public remove_user_frozen(this)
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_FREEZED, false)
 
 	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) & ~PLAYER_PREVENT_JUMP)
-	set_member(this, m_bIsDefusing, false)
 	rg_reset_maxspeed(this)
 	set_user_rendering(this, kRenderFxNone, 0, 0, 0, kRenderNormal, 0)
 
