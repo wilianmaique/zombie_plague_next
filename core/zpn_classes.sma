@@ -7,11 +7,15 @@
 
 enum _:eClassSounds
 {
+	// Keep the same order as the sound properties in ePropClassRegisters.
 	CLASS_SOUND_PAIN,
-	CLASS_SOUND_DIE
+	CLASS_SOUND_DIE,
+	CLASS_SOUND_ATTACK,
+	CLASS_SOUND_SWING,
+	CLASS_SOUND_WALL
 }
 
-new const CLASS_SOUND_KEYS[eClassSounds][] = { "pain", "die" }
+new const CLASS_SOUND_KEYS[eClassSounds][] = { "pain", "die", "attack", "swing", "wall" }
 
 new const DEFAULT_ZOMBIE_PAIN_SOUNDS[][] =
 {
@@ -29,6 +33,27 @@ new const DEFAULT_ZOMBIE_DIE_SOUNDS[][] =
 	"zpn/zombie_die3.wav",
 	"zpn/zombie_die4.wav",
 	"zpn/zombie_die5.wav"
+}
+
+new const DEFAULT_ZOMBIE_ATTACK_SOUNDS[][] =
+{
+	"zpn/zombi_attack_1.wav",
+	"zpn/zombi_attack_2.wav",
+	"zpn/zombi_attack_3.wav"
+}
+
+new const DEFAULT_ZOMBIE_SWING_SOUNDS[][] =
+{
+	"zpn/zombi_swing_1.wav",
+	"zpn/zombi_swing_2.wav",
+	"zpn/zombi_swing_3.wav"
+}
+
+new const DEFAULT_ZOMBIE_WALL_SOUNDS[][] =
+{
+	"zpn/zombi_wall_1.wav",
+	"zpn/zombi_wall_2.wav",
+	"zpn/zombi_wall_3.wav"
 }
 
 enum _:ePropClasses
@@ -74,15 +99,10 @@ public plugin_init()
 	register_plugin("[ZPN] Core: Classes", "1.0", "Wilian M.")
 	gClassPrecache = false
 
-	if(!is_regamedll() || !is_rehlds())
-	{
-		set_fail_state("[ZPN] Class sounds require ReGameDLL_CS and ReHLDS")
-		return
-	}
-
 	RegisterHookChain(RG_CBasePlayer_Pain, "CBasePlayer_Pain_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_DeathSound, "CBasePlayer_DeathSound_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
+	RegisterHookChain(RH_SV_StartSound, "SV_StartSound_Pre", false)
 
 	save_class_sound_defaults()
 	get_classes_index()
@@ -171,6 +191,26 @@ public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 	emit_zombie_class_sound(this, CLASS_SOUND_DIE)
 }
 
+public SV_StartSound_Pre(const recipients, const entity, const channel, const sample[], const volume, Float:attenuation, const fFlags, const pitch)
+{
+	if(!equal(sample, "weapons/knife_", 14))
+		return HC_CONTINUE
+
+	new sound_type
+	if(equal(sample, "weapons/knife_slash1.wav") || equal(sample, "weapons/knife_slash2.wav"))
+		sound_type = CLASS_SOUND_SWING
+	else if(equal(sample, "weapons/knife_hitwall1.wav"))
+		sound_type = CLASS_SOUND_WALL
+	else if(equal(sample, "weapons/knife_hit1.wav") || equal(sample, "weapons/knife_hit2.wav")
+	|| equal(sample, "weapons/knife_hit3.wav") || equal(sample, "weapons/knife_hit4.wav")
+	|| equal(sample, "weapons/knife_stab.wav"))
+		sound_type = CLASS_SOUND_ATTACK
+	else
+		return HC_CONTINUE
+
+	return emit_zombie_class_sound(entity, sound_type, channel, float(volume) / 255.0, attenuation, fFlags, pitch, recipients == 1 ? SND_EMIT2_INVOKER : 0) ? HC_SUPERCEDE : HC_CONTINUE
+}
+
 load_default_zombie_sounds()
 {
 	for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
@@ -181,6 +221,15 @@ load_default_zombie_sounds()
 
 	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_DIE_SOUNDS); i++)
 		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_DIE], DEFAULT_ZOMBIE_DIE_SOUNDS[i])
+
+	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_ATTACK_SOUNDS); i++)
+		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_ATTACK], DEFAULT_ZOMBIE_ATTACK_SOUNDS[i])
+
+	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_SWING_SOUNDS); i++)
+		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_SWING], DEFAULT_ZOMBIE_SWING_SOUNDS[i])
+
+	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_WALL_SOUNDS); i++)
+		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_WALL], DEFAULT_ZOMBIE_WALL_SOUNDS[i])
 
 	for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
 	{
@@ -276,25 +325,27 @@ get_zombie_class_id(const id)
 	return class_id
 }
 
-bool:emit_zombie_class_sound(const id, const sound_type)
+bool:emit_zombie_class_sound(const id, const sound_type, const channel = CHAN_VOICE, Float:volume = VOL_NORM, Float:attenuation = ATTN_NORM, const flags = 0, const pitch = PITCH_NORM, const emit_flags = 0)
 {
 	new class_id = get_zombie_class_id(id)
+
 	if(class_id == -1)
 		return false
 
 	new Array:sounds = Array:ArrayGetCell(aDataClass, class_id, CLASS_PROP_SOUNDS + sound_type)
+
 	if(ArraySize(sounds) == 0)
 		sounds = aDefaultZombieSounds[sound_type]
 
 	new count = ArraySize(sounds)
+
 	if(count > 0)
 	{
 		new sound[MAX_RESOURCE_PATH_LENGTH]
 		ArrayGetString(sounds, random_num(0, count - 1), sound, charsmax(sound))
-		rh_emit_sound2(id, 0, CHAN_VOICE, sound)
+		rh_emit_sound2(id, 0, channel, sound, volume, attenuation, flags, pitch, emit_flags)
 	}
 
-	// An empty shared array silences the event instead of restoring human voices.
 	return true
 }
 
@@ -398,14 +449,16 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_LEAP_HEIGHT: return xDataGetClass[CLASS_PROP_LEAP_HEIGHT]
 		case PROP_CLASS_REGISTER_LEAP_COOLDOWN: return xDataGetClass[CLASS_PROP_LEAP_COOLDOWN]
 		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED: return xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED]
-		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS:
+		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS,
+		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS:
 		{
 			if(param_nums != 3)
 				return false
 
-			new sound_type = prop == _:PROP_CLASS_REGISTER_PAIN_SOUNDS ? CLASS_SOUND_PAIN : CLASS_SOUND_DIE
+			new sound_type = prop - _:PROP_CLASS_REGISTER_PAIN_SOUNDS
 			new Array:sounds = xDataGetClass[CLASS_PROP_SOUNDS][sound_type]
 			new Array:output = Array:get_param_byref(arg_value)
+
 			if(sounds == Invalid_Array || output == Invalid_Array)
 				return false
 
@@ -456,7 +509,8 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_LEAP_HEIGHT: xDataGetClass[CLASS_PROP_LEAP_HEIGHT] = floatmax(0.0, get_float_byref(arg_value))
 		case PROP_CLASS_REGISTER_LEAP_COOLDOWN: xDataGetClass[CLASS_PROP_LEAP_COOLDOWN] = floatmax(0.0, get_float_byref(arg_value))
 		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED: xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = floatmax(0.0, get_float_byref(arg_value))
-		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS:
+		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS,
+		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS:
 		{
 			if(param_nums != 3)
 				return false
@@ -467,8 +521,9 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 				return false
 			}
 
-			new sound_type = prop == _:PROP_CLASS_REGISTER_PAIN_SOUNDS ? CLASS_SOUND_PAIN : CLASS_SOUND_DIE
+			new sound_type = prop - _:PROP_CLASS_REGISTER_PAIN_SOUNDS
 			new Array:sounds = xDataGetClass[CLASS_PROP_SOUNDS][sound_type]
+
 			if(sounds == Invalid_Array)
 			{
 				log_error(AMX_ERR_NATIVE, "[ZPN] Class sound properties require a zombie or special-zombie class")
@@ -476,6 +531,7 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 			}
 
 			new Array:input = Array:get_param_byref(arg_value)
+			
 			if(input == Invalid_Array)
 			{
 				log_error(AMX_ERR_NATIVE, "[ZPN] Class sound properties require a valid string array")
@@ -662,9 +718,10 @@ load_class_setting(xDataGetClass[ePropClasses], ePropClassRegisters:prop, const 
 
 			xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = floatmax(0.0, xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED])
 		}
-		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS:
+		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS,
+		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS:
 		{
-			new sound_type = prop == PROP_CLASS_REGISTER_PAIN_SOUNDS ? CLASS_SOUND_PAIN : CLASS_SOUND_DIE
+			new sound_type = _:prop - _:PROP_CLASS_REGISTER_PAIN_SOUNDS
 			load_class_sound_setting(xDataGetClass, sound_type, class_section_final, save_default)
 		}
 	}

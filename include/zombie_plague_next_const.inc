@@ -131,6 +131,9 @@ enum ePropClassRegisters
 	PROP_CLASS_REGISTER_LEAP_MIN_SPEED, // float, default: 80.0
 	PROP_CLASS_REGISTER_PAIN_SOUNDS, // Array: string list, zombie classes only; empty = shared pain sounds
 	PROP_CLASS_REGISTER_DIE_SOUNDS, // Array: string list, zombie classes only; empty = shared die sounds
+	PROP_CLASS_REGISTER_ATTACK_SOUNDS, // Array: string list, zombie classes only; empty = shared body-hit sounds
+	PROP_CLASS_REGISTER_SWING_SOUNDS, // Array: string list, zombie classes only; empty = shared missed-attack sounds
+	PROP_CLASS_REGISTER_WALL_SOUNDS, // Array: string list, zombie classes only; empty = shared wall-hit sounds
 }
 
 enum eGameModeDeathMatchTypes
