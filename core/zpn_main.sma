@@ -49,6 +49,12 @@ enum _:eForwards
 	FW_INFECT_ATTEMPT,
 	FW_USER_FROZEN_PRE,
 	FW_USER_FROZEN_POST,
+	FW_USER_FLAME_PRE,
+	FW_USER_FLAME_POST,
+	FW_USER_FLAME_TICK_PRE,
+	FW_USER_FLAME_TICK_POST,
+	FW_USER_FLAME_REMOVE_PRE,
+	FW_USER_FLAME_REMOVE_POST,
 }
 
 enum _:eSettingsConfigs
@@ -88,9 +94,36 @@ new xDataGetGameRule[eGameRules]
 new bool:gEscapeMap
 new bool:gTransformingUser
 
+#define FLAME_THINK_INTERVAL 0.05
+#define FLAME_TICK_INTERVAL 0.2
+#define FLAME_FRAMERATE 20.0
+
+new const FLAME_CLASSNAME[] = "zpn_flame"
+
+enum _:eFlameData
+{
+	FLAME_ENTITY,
+	FLAME_USERID,
+	FLAME_TOKEN,
+	FLAME_ATTACKER,
+	FLAME_ATTACKER_USERID,
+	FLAME_FRAMES,
+	Float:FLAME_EXPIRES,
+	Float:FLAME_NEXT_TICK,
+	Float:FLAME_DAMAGE,
+	Float:FLAME_SLOWDOWN,
+	bool:FLAME_CAN_KILL,
+}
+
+new gFlameData[MAX_PLAYERS + 1][eFlameData], gFlameRevision[MAX_PLAYERS + 1]
+new bool:gFlameApplying[MAX_PLAYERS + 1], bool:gFlameRemoving[MAX_PLAYERS + 1]
+new bool:gFlameReady, bool:gFlameRoundCleanup
+new Array:gDefaultFlameSprites, Array:gClassFlameSprites
+
 public plugin_init()
 {
 	register_plugin("Zombie Plague Next", "1.0", "Wilian M.")
+
 	register_dictionary("zpn_main.txt")
 	register_dictionary("zpn_classes.txt")
 	register_dictionary("zpn_gamemodes.txt")
@@ -129,6 +162,13 @@ public plugin_init()
 	xForwards[FW_HUMANIZED_POST] = CreateMultiForward("zpn_user_humanized_post", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_USER_FROZEN_PRE] = CreateMultiForward("zpn_user_frozen_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_USER_FROZEN_POST] = CreateMultiForward("zpn_user_frozen_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_USER_FLAME_PRE] = CreateMultiForward("zpn_user_flame_pre", ET_CONTINUE, FP_CELL, FP_CELL, FP_VAL_BYREF, FP_VAL_BYREF, FP_VAL_BYREF, FP_CELL, FP_CELL)
+	xForwards[FW_USER_FLAME_POST] = CreateMultiForward("zpn_user_flame_post", ET_IGNORE, FP_CELL, FP_CELL, FP_FLOAT, FP_FLOAT, FP_FLOAT, FP_CELL, FP_CELL)
+	xForwards[FW_USER_FLAME_TICK_PRE] = CreateMultiForward("zpn_user_flame_tick_pre", ET_CONTINUE, FP_CELL, FP_CELL, FP_VAL_BYREF)
+	xForwards[FW_USER_FLAME_TICK_POST] = CreateMultiForward("zpn_user_flame_tick_post", ET_IGNORE, FP_CELL, FP_CELL, FP_FLOAT)
+	xForwards[FW_USER_FLAME_REMOVE_PRE] = CreateMultiForward("zpn_user_flame_remove_pre", ET_CONTINUE, FP_CELL, FP_CELL)
+	xForwards[FW_USER_FLAME_REMOVE_POST] = CreateMultiForward("zpn_user_flame_remove_post", ET_IGNORE, FP_CELL, FP_CELL)
+	gFlameReady = true
 	
 	xMsgScoreAttrib = get_user_msgid("ScoreAttrib")
 
@@ -164,6 +204,9 @@ public HandleMenu_ChooseAppearance_Post(const this, const slot)
 
 public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
+	if(IsReapiHookOriginalWasCalled(RG_CBasePlayer_Killed) && !is_user_alive(this))
+		remove_user_flame(this, ZPN_FLAME_REMOVE_DEATH)
+
 	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
 
 	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && 0 <= gamemode_id < zpn_gamemode_array_size()
@@ -194,8 +237,19 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 	if(victim == attacker || !zpn_is_valid_player_alive(attacker) || !zpn_is_valid_player_alive(victim) || !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		return HC_CONTINUE
 
+	// Damage hooks may already have extinguished the effect; its entity is
+	// still a flame inflictor until ReGameDLL completes the deferred removal.
+	new bool:flame_damage
+	if((bitsDamageType & DMG_BURN) && pevInflictor > MaxClients && !is_nullent(pevInflictor))
+	{
+		new classname[32]
+		get_entvar(pevInflictor, var_classname, classname, charsmax(classname))
+		flame_damage = equal(classname, FLAME_CLASSNAME) != 0
+	}
+
 	// is zombie
-	if(zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_IS_ZOMBIE) && !zpn_player_data_get_prop(victim, PROP_PD_REGISTER_IS_ZOMBIE))
+	if(zpn_player_data_get_prop(attacker, PROP_PD_REGISTER_IS_ZOMBIE) && !zpn_player_data_get_prop(victim, PROP_PD_REGISTER_IS_ZOMBIE)
+	&& !flame_damage)
 	{
 		if(get_num_alive() == 1 && !xCvars[CVAR_LAST_HUMAN_INFECT])
 			return HC_CONTINUE
@@ -267,10 +321,21 @@ public CBasePlayer_ResetMaxSpeed_Post(const this)
 
 public client_putinserver(id)
 {
+	remove_user_flame(id, ZPN_FLAME_REMOVE_DISCONNECT)
+
 	if(!is_user_bot(id) && !is_user_hltv(id))
 		set_task_ex(0.1, "xHudPlayerInfo", id + TASK_HUD_PLAYER_INFO, .flags = SetTask_Repeat)
 
 	check_game()
+}
+
+public client_disconnected(id)
+{
+	remove_user_flame(id, ZPN_FLAME_REMOVE_DISCONNECT)
+	remove_task(id + TASK_HUD_PLAYER_INFO)
+	remove_task(id + TASK_RESPAWN)
+	remove_task(id + TASK_FROZEN)
+	remove_task(id + TASK_SCORE_ATTRIB)
 }
 
 public xHudPlayerInfo(id)
@@ -318,11 +383,14 @@ public xHudPlayerInfo(id)
 
 public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 {
+	new bool:was_cleaning_flames = gFlameRoundCleanup
+	gFlameRoundCleanup = true
 	remove_task(TASK_COUNTDOWN)
 
 	for(new i = 1; i <= MaxClients; i++)
 	{
 		remove_task(i + TASK_RESPAWN)
+		remove_user_flame(i, ZPN_FLAME_REMOVE_ROUND_END)
 
 		if(!is_user_connected(i))
 			continue
@@ -337,6 +405,7 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 	if(zpn_gamemode_array_size() <= 0)
 		xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = -1
 	else xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] = 0
+	gFlameRoundCleanup = was_cleaning_flames
 }
 
 public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponModel[], iAnim, szAnimExt[], skiplocal)
@@ -380,6 +449,9 @@ public CBasePlayer_Spawn_Pre(id)
 
 public CBasePlayer_Spawn_Post(id)
 {
+	if(IsReapiHookOriginalWasCalled(RG_CBasePlayer_Spawn) && zpn_is_valid_player_connected(id))
+		remove_user_flame(id, ZPN_FLAME_REMOVE_SPAWN)
+
 	if(!zpn_is_valid_player_alive(id))
 		return
 
@@ -474,6 +546,8 @@ public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const 
 
 public CSGameRules_RestartRound_Pre()
 {
+	new bool:was_cleaning_flames = gFlameRoundCleanup
+	gFlameRoundCleanup = true
 	remove_task(TASK_COUNTDOWN)
 	
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
@@ -481,6 +555,7 @@ public CSGameRules_RestartRound_Pre()
 	for(new id = 1; id <= MaxClients; id++)
 	{
 		remove_task(id + TASK_RESPAWN)
+		remove_user_flame(id, ZPN_FLAME_REMOVE_ROUND_END)
 
 		if(!is_user_connected(id))
 			continue
@@ -489,6 +564,7 @@ public CSGameRules_RestartRound_Pre()
 		zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, -1)
 	}
 	update_users_next_class()
+	gFlameRoundCleanup = was_cleaning_flames
 }
 
 public CSGameRules_RestartRound_Post()
@@ -597,6 +673,14 @@ start_round(const gamemode_id, const start_player = 0)
 
 public plugin_precache()
 {
+	gDefaultFlameSprites = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
+	gClassFlameSprites = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
+	ArrayPushString(gDefaultFlameSprites, "sprites/zpn/flame.spr")
+	json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Default Sprite Flame", gDefaultFlameSprites)
+	ArrayClear(gDefaultFlameSprites)
+	json_setting_get_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Default Sprite Flame", gDefaultFlameSprites)
+	precache_flame_sprites(gDefaultFlameSprites, "Main Config / Default Sprite Flame")
+
 	new i, mapName[32]
 	for(i = 0; i < sizeof(CS_SOUNDS); i++) precache_sound(CS_SOUNDS[i])
 
@@ -754,6 +838,13 @@ public Spawn_Pre(this)
 
 public plugin_end()
 {
+	gFlameReady = false
+	for(new id = 1; id <= MaxClients; id++)
+		remove_user_flame(id, ZPN_FLAME_REMOVE_SHUTDOWN)
+
+	ArrayDestroy(gDefaultFlameSprites)
+	ArrayDestroy(gClassFlameSprites)
+
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_USELESS_ENTITIES])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_ESCAPE_KEEP_ENTITIES])
 	ArrayDestroy(xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS])
@@ -786,6 +877,10 @@ public plugin_natives()
 	register_native("zpn_set_user_frozen", "_zpn_set_user_frozen")
 	register_native("zpn_is_user_freezed", "_zpn_is_user_freezed")
 	register_native("zpn_remove_user_frozen", "_zpn_remove_user_frozen")
+	register_native("zpn_set_user_flame", "_zpn_set_user_flame")
+	register_native("zpn_remove_user_flame", "_zpn_remove_user_flame")
+	register_native("zpn_is_user_burning", "_zpn_is_user_burning")
+	register_native("zpn_get_user_flame_time", "_zpn_get_user_flame_time")
 }
 
 public eClassSelectResults:_zpn_select_user_class(plugin_id, param_nums)
@@ -1250,6 +1345,11 @@ bool:set_user_zombie(this, infector, bool:set_first, const forced_class = -1)
 	if(class_id == -1 || !zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, class_id))
 		return false
 
+	new flame_userid = get_user_userid(this)
+	remove_user_flame(this, ZPN_FLAME_REMOVE_CLASS_CHANGE)
+	if(!zpn_is_valid_player_alive(this) || get_user_userid(this) != flame_userid)
+		return false
+
 	if(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE)
 	{
 		zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS, class_id)
@@ -1333,6 +1433,11 @@ bool:set_user_human(this, const forced_class = -1)
 	if(class_id == -1 || !zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, class_id))
 		return false
 
+	new flame_userid = get_user_userid(this)
+	remove_user_flame(this, ZPN_FLAME_REMOVE_CLASS_CHANGE)
+	if(!zpn_is_valid_player_alive(this) || get_user_userid(this) != flame_userid)
+		return false
+
 	if(zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_HUMAN)
 	{
 		zpn_player_data_set_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS, class_id)
@@ -1391,6 +1496,345 @@ bool:set_user_human(this, const forced_class = -1)
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
 
 	return true
+}
+
+public bool:_zpn_set_user_flame(plugin_id, param_nums)
+{
+	if(param_nums != 7)
+		return false
+
+	return set_user_flame(get_param(1), get_param_f(2), get_param(3), get_param_f(4), get_param_f(5), bool:get_param(6), bool:get_param(7))
+}
+
+public bool:_zpn_remove_user_flame(plugin_id, param_nums)
+{
+	if(param_nums != 1 || !zpn_is_valid_player_connected(get_param(1)))
+		return false
+
+	return remove_user_flame(get_param(1), ZPN_FLAME_REMOVE_NATIVE)
+}
+
+public bool:_zpn_is_user_burning(plugin_id, param_nums)
+{
+	return param_nums == 1 && is_user_burning(get_param(1))
+}
+
+public Float:_zpn_get_user_flame_time(plugin_id, param_nums)
+{
+	if(param_nums != 1 || !is_user_burning(get_param(1)))
+		return 0.0
+
+	return floatmax(0.0, gFlameData[get_param(1)][FLAME_EXPIRES] - get_gametime())
+}
+
+bool:is_flame_entity(const ent, const id)
+{
+	if(is_nullent(ent) || (get_entvar(ent, var_flags) & FL_KILLME) || get_entvar(ent, var_owner) != id
+	|| get_entvar(ent, var_iuser1) != gFlameData[id][FLAME_USERID]
+	|| get_entvar(ent, var_iuser2) != gFlameData[id][FLAME_TOKEN])
+		return false
+
+	new classname[32]
+	get_entvar(ent, var_classname, classname, charsmax(classname))
+	return equal(classname, FLAME_CLASSNAME)
+}
+
+bool:is_user_burning(const id)
+{
+	return zpn_is_valid_player_alive(id)
+		&& get_user_userid(id) == gFlameData[id][FLAME_USERID]
+		&& gFlameData[id][FLAME_EXPIRES] > get_gametime()
+		&& is_flame_entity(gFlameData[id][FLAME_ENTITY], id)
+}
+
+eFlameRemoveReasons:get_flame_stop_reason(const id)
+{
+	if(!zpn_is_valid_player_connected(id) || get_user_userid(id) != gFlameData[id][FLAME_USERID])
+		return ZPN_FLAME_REMOVE_DISCONNECT
+	if(!is_user_alive(id))
+		return ZPN_FLAME_REMOVE_DEATH
+	if(!is_flame_entity(gFlameData[id][FLAME_ENTITY], id))
+		return ZPN_FLAME_REMOVE_ENTITY_LOST
+	if(get_entvar(id, var_waterlevel) > 0)
+		return ZPN_FLAME_REMOVE_WATER
+	if((get_entvar(id, var_flags) & FL_GODMODE) || Float:get_entvar(id, var_takedamage) == DAMAGE_NO)
+		return ZPN_FLAME_REMOVE_PROTECTED
+	if(get_gametime() >= gFlameData[id][FLAME_EXPIRES])
+		return ZPN_FLAME_REMOVE_EXPIRED
+
+	return ZPN_FLAME_REMOVE_NONE
+}
+
+bool:can_apply_user_flame(const id)
+{
+	return 1 <= id <= MaxClients && gFlameReady && !gFlameRoundCleanup && !gFlameRemoving[id]
+		&& zpn_is_valid_player_alive(id) && !get_member_game(m_bRoundTerminating)
+		&& get_entvar(id, var_waterlevel) == 0
+		&& !(get_entvar(id, var_flags) & FL_GODMODE) && Float:get_entvar(id, var_takedamage) != DAMAGE_NO
+}
+
+bool:valid_flame_damage(const Float:damage)
+{
+	// Reject NaN/infinity explicitly: Pawn's floatcmp does not order NaN safely.
+	return (_:damage & 0x7F800000) != 0x7F800000 && 0.0 <= damage <= 1000000.0
+}
+
+bool:valid_flame_parameters(const Float:time, const Float:damage, const Float:slowdown)
+{
+	return (_:time & 0x7F800000) != 0x7F800000 && (_:slowdown & 0x7F800000) != 0x7F800000
+		&& 0.1 <= time <= 3600.0 && valid_flame_damage(damage) && 0.0 <= slowdown <= 1.0
+}
+
+bool:set_user_flame(const id, Float:time, const attacker, Float:damage, Float:slowdown, const bool:reset_time, const bool:can_kill)
+{
+	if(!(1 <= id <= MaxClients) || gFlameApplying[id] || !can_apply_user_flame(id)
+	|| !valid_flame_parameters(time, damage, slowdown)
+	|| (attacker != 0 && !zpn_is_valid_player_connected(attacker)))
+		return false
+
+	new userid = get_user_userid(id)
+	new attacker_userid = attacker ? get_user_userid(attacker) : 0
+
+	// Reconcile a stale/expired effect before considering another application.
+	if(gFlameData[id][FLAME_ENTITY])
+	{
+		new eFlameRemoveReasons:reason = get_flame_stop_reason(id)
+		if(reason != ZPN_FLAME_REMOVE_NONE)
+			remove_user_flame(id, reason)
+		else if(!reset_time)
+			return false
+	}
+
+	if(!can_apply_user_flame(id) || get_user_userid(id) != userid
+	|| (attacker && (!is_user_connected(attacker) || get_user_userid(attacker) != attacker_userid)))
+		return false
+
+	new revision = gFlameRevision[id], forward_return
+	gFlameApplying[id] = true
+	ExecuteForward(xForwards[FW_USER_FLAME_PRE], forward_return, id, attacker, time, damage, slowdown, reset_time, can_kill)
+
+	// Addons may kill, transform, disconnect or remove the target in a forward.
+	if(forward_return >= ZPN_RETURN_HANDLED || gFlameRevision[id] != revision
+	|| !can_apply_user_flame(id) || get_user_userid(id) != userid
+	|| !valid_flame_parameters(time, damage, slowdown)
+	|| (gFlameData[id][FLAME_ENTITY] && !is_flame_entity(gFlameData[id][FLAME_ENTITY], id))
+	|| (attacker && (!is_user_connected(attacker) || get_user_userid(attacker) != attacker_userid)))
+	{
+		gFlameApplying[id] = false
+		return false
+	}
+
+	new ent = gFlameData[id][FLAME_ENTITY]
+	new Float:now = get_gametime()
+	if(!ent)
+	{
+		new class_id = get_user_current_class_index(id)
+		ArrayClear(gClassFlameSprites)
+		if(0 <= class_id < zpn_class_array_size())
+			zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_FLAME_SPRITES, gClassFlameSprites)
+
+		new Array:sprites = ArraySize(gClassFlameSprites) ? gClassFlameSprites : gDefaultFlameSprites
+		new count = ArraySize(sprites), sprite[MAX_RESOURCE_PATH_LENGTH]
+		if(!count)
+		{
+			gFlameApplying[id] = false
+			return false
+		}
+		ArrayGetString(sprites, random_num(0, count - 1), sprite, charsmax(sprite))
+
+		ent = rg_create_entity("env_sprite", false)
+		if(is_nullent(ent))
+		{
+			gFlameApplying[id] = false
+			return false
+		}
+
+		set_entvar(ent, var_model, sprite)
+		set_entvar(ent, var_iuser1, userid)
+		set_entvar(ent, var_iuser2, revision)
+		set_entvar(ent, var_spawnflags, SF_SPRITE_STARTON | SF_SPRITE_TEMPORARY)
+		new spawn_result = dllfunc(DLLFunc_Spawn, ent)
+		if(is_nullent(ent))
+		{
+			gFlameApplying[id] = false
+			return false
+		}
+		if(spawn_result < 0 || (get_entvar(ent, var_flags) & FL_KILLME) || get_entvar(ent, var_iuser1) != userid
+		|| get_entvar(ent, var_iuser2) != revision || gFlameRevision[id] != revision
+		|| !can_apply_user_flame(id) || get_user_userid(id) != userid
+		|| (attacker && (!is_user_connected(attacker) || get_user_userid(attacker) != attacker_userid)))
+		{
+			if(get_entvar(ent, var_iuser1) == userid && get_entvar(ent, var_iuser2) == revision)
+				rg_remove_entity(ent)
+			gFlameApplying[id] = false
+			return false
+		}
+
+		gFlameData[id][FLAME_ENTITY] = ent
+		gFlameData[id][FLAME_USERID] = userid
+		gFlameData[id][FLAME_TOKEN] = ++gFlameRevision[id]
+		gFlameData[id][FLAME_FRAMES] = max(1, engfunc(EngFunc_ModelFrames, get_entvar(ent, var_modelindex)))
+		gFlameData[id][FLAME_NEXT_TICK] = now + FLAME_TICK_INTERVAL
+		set_entvar(ent, var_classname, FLAME_CLASSNAME)
+		set_entvar(ent, var_owner, id)
+		set_entvar(ent, var_iuser1, userid)
+		set_entvar(ent, var_iuser2, gFlameData[id][FLAME_TOKEN])
+		set_entvar(ent, var_aiment, id)
+		set_entvar(ent, var_movetype, MOVETYPE_FOLLOW)
+		set_entvar(ent, var_solid, SOLID_NOT)
+		set_entvar(ent, var_rendermode, kRenderTransAdd)
+		set_entvar(ent, var_renderamt, 255.0)
+		set_entvar(ent, var_scale, random_float(0.5, 1.2))
+		set_entvar(ent, var_frame, 0.0)
+		set_entvar(ent, var_framerate, FLAME_FRAMERATE)
+		set_entvar(ent, var_animtime, now)
+		SetThink(ent, "Flame_Think")
+		set_entvar(ent, var_nextthink, now + FLAME_THINK_INTERVAL)
+	}
+	else
+	{
+		// Refreshing keeps the chosen sprite, animation and next damage deadline.
+		++gFlameRevision[id]
+	}
+
+	gFlameData[id][FLAME_ATTACKER] = attacker
+	gFlameData[id][FLAME_ATTACKER_USERID] = attacker_userid
+	gFlameData[id][FLAME_EXPIRES] = now + time
+	gFlameData[id][FLAME_DAMAGE] = damage
+	gFlameData[id][FLAME_SLOWDOWN] = slowdown
+	gFlameData[id][FLAME_CAN_KILL] = can_kill
+	ExecuteForward(xForwards[FW_USER_FLAME_POST], forward_return, id, attacker, time, damage, slowdown, reset_time, can_kill)
+	gFlameApplying[id] = false
+	return true
+}
+
+bool:remove_user_flame(const id, const eFlameRemoveReasons:reason)
+{
+	if(!(1 <= id <= MaxClients))
+		return false
+
+	// Forced lifecycle cleanup also invalidates an application still in its pre-forward.
+	if(reason != ZPN_FLAME_REMOVE_NATIVE)
+		++gFlameRevision[id]
+
+	new ent = gFlameData[id][FLAME_ENTITY]
+	if(!ent || (gFlameRemoving[id] && reason == ZPN_FLAME_REMOVE_NATIVE))
+		return false
+
+	new bool:was_removing = gFlameRemoving[id]
+	new forward_return, revision = gFlameRevision[id]
+	gFlameRemoving[id] = true
+	if(!was_removing)
+		ExecuteForward(xForwards[FW_USER_FLAME_REMOVE_PRE], forward_return, id, reason)
+
+	if(gFlameData[id][FLAME_ENTITY] != ent || gFlameRevision[id] != revision
+	|| (reason == ZPN_FLAME_REMOVE_NATIVE && forward_return >= ZPN_RETURN_HANDLED))
+	{
+		gFlameRemoving[id] = was_removing
+		return false
+	}
+
+	new bool:owned = is_flame_entity(ent, id)
+	arrayset(gFlameData[id], 0, eFlameData)
+	++gFlameRevision[id]
+	if(owned)
+	{
+		SetThink(ent, "")
+		set_entvar(ent, var_effects, get_entvar(ent, var_effects) | EF_NODRAW)
+		set_entvar(ent, var_aiment, 0)
+		set_entvar(ent, var_owner, 0)
+		set_entvar(ent, var_movetype, MOVETYPE_NONE)
+		rg_remove_entity(ent)
+	}
+
+	ExecuteForward(xForwards[FW_USER_FLAME_REMOVE_POST], forward_return, id, reason)
+	gFlameRemoving[id] = was_removing
+	return true
+}
+
+get_flame_attacker(const id)
+{
+	new attacker = gFlameData[id][FLAME_ATTACKER]
+	return zpn_is_valid_player_connected(attacker) && get_user_userid(attacker) == gFlameData[id][FLAME_ATTACKER_USERID] ? attacker : 0
+}
+
+public Flame_Think(const ent)
+{
+	if(is_nullent(ent))
+		return
+
+	new id = get_entvar(ent, var_owner)
+	if(!(1 <= id <= MaxClients) || gFlameData[id][FLAME_ENTITY] != ent || !is_flame_entity(ent, id))
+		return
+
+	new eFlameRemoveReasons:reason = get_flame_stop_reason(id)
+	if(reason != ZPN_FLAME_REMOVE_NONE)
+	{
+		remove_user_flame(id, reason)
+		return
+	}
+
+	new Float:now = get_gametime()
+	new Float:frames = float(gFlameData[id][FLAME_FRAMES])
+	new Float:frame = get_entvar(ent, var_frame), Float:last_time = get_entvar(ent, var_animtime)
+	frame += FLAME_FRAMERATE * (now - last_time)
+	frame -= frames * float(floatround(frame / frames, floatround_floor))
+	set_entvar(ent, var_frame, frame)
+	set_entvar(ent, var_animtime, now)
+	set_entvar(ent, var_nextthink, now + FLAME_THINK_INTERVAL)
+
+	if(now < gFlameData[id][FLAME_NEXT_TICK])
+		return
+	gFlameData[id][FLAME_NEXT_TICK] = now + FLAME_TICK_INTERVAL
+
+	new userid = gFlameData[id][FLAME_USERID], revision = gFlameRevision[id]
+	new attacker = get_flame_attacker(id), forward_return
+	new Float:damage = gFlameData[id][FLAME_DAMAGE]
+	ExecuteForward(xForwards[FW_USER_FLAME_TICK_PRE], forward_return, id, attacker, damage)
+	if(gFlameRevision[id] != revision || gFlameData[id][FLAME_ENTITY] != ent)
+		return
+
+	reason = get_flame_stop_reason(id)
+	if(reason != ZPN_FLAME_REMOVE_NONE)
+	{
+		remove_user_flame(id, reason)
+		return
+	}
+	if(forward_return >= ZPN_RETURN_HANDLED || !valid_flame_damage(damage))
+		return
+
+	// Match the original effect: only grounded, normal zombies are slowed down.
+	new class_id = get_user_current_class_index(id)
+	if(gFlameData[id][FLAME_SLOWDOWN] < 1.0 && (get_entvar(id, var_flags) & FL_ONGROUND)
+	&& 0 <= class_id < zpn_class_array_size() && zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE)
+	{
+		new Float:velocity[3]
+		get_entvar(id, var_velocity, velocity)
+		velocity[0] *= gFlameData[id][FLAME_SLOWDOWN]
+		velocity[1] *= gFlameData[id][FLAME_SLOWDOWN]
+		set_entvar(id, var_velocity, velocity)
+	}
+	set_entvar(ent, var_scale, random_float(0.5, 1.2))
+
+	new Float:health = get_entvar(id, var_health)
+	if(!gFlameData[id][FLAME_CAN_KILL])
+		damage = floatmin(damage, floatmax(0.0, health - 1.0))
+
+	// Revalidate after the addon forward; a reused attacker slot is world damage.
+	attacker = get_flame_attacker(id)
+	new attacker_userid = attacker ? get_user_userid(attacker) : 0
+	if(damage > 0.0)
+		ExecuteHamB(Ham_TakeDamage, id, ent, attacker, damage, DMG_BURN)
+
+	// A damage hook may remove the flame or kill the victim. Never touch ent here.
+	if(is_user_connected(id) && get_user_userid(id) == userid)
+	{
+		new Float:current_health = get_entvar(id, var_health)
+		new Float:dealt = floatmax(0.0, health - current_health)
+		if(attacker && (!is_user_connected(attacker) || get_user_userid(attacker) != attacker_userid))
+			attacker = 0
+		ExecuteForward(xForwards[FW_USER_FLAME_TICK_POST], forward_return, id, attacker, dealt)
+	}
 }
 
 public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)

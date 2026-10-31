@@ -6,6 +6,8 @@ ZPN_ITEM_MIN_ZOMBIES = ^3Este item exige pelo menos ^4%d ^3zumbis vivos.
 ZPN_ITEM_LIMIT_REACHED = ^3O limite de compras deste item foi atingido.
 ZPN_ITEM_NO_AMMO_PACKS = ^3Você não tem ^4Ammo Packs ^3suficientes.
 ZPN_ITEM_FROSTNADE = Granada congelante
+ZPN_ITEM_FIRENADE = Granada de fogo
+ZPN_ITEM_FIRENADE_HAS_HEGRENADE = \r[Você já possui uma granada HE]
 
 [en]
 ZPN_NO_ITEMS = ^3No items are available.
@@ -15,3 +17,5 @@ ZPN_ITEM_MIN_ZOMBIES = ^3This item requires at least ^4%d ^3living zombies.
 ZPN_ITEM_LIMIT_REACHED = ^3The purchase limit for this item has been reached.
 ZPN_ITEM_NO_AMMO_PACKS = ^3You do not have enough ^4Ammo Packs^3.
 ZPN_ITEM_FROSTNADE = Frost grenade
+ZPN_ITEM_FIRENADE = Fire grenade
+ZPN_ITEM_FIRENADE_HAS_HEGRENADE = \r[You already have an HE grenade]

@@ -74,6 +74,22 @@ enum eWeaponTypes
 	ZPN_WEAPON_SECONDARY,
 }
 
+enum eFlameRemoveReasons
+{
+	ZPN_FLAME_REMOVE_NONE = -1, // no removal needed; never sent to removal forwards
+	ZPN_FLAME_REMOVE_NATIVE, // cancellable removal requested by an addon
+	ZPN_FLAME_REMOVE_EXPIRED,
+	ZPN_FLAME_REMOVE_WATER,
+	ZPN_FLAME_REMOVE_PROTECTED,
+	ZPN_FLAME_REMOVE_DEATH,
+	ZPN_FLAME_REMOVE_SPAWN,
+	ZPN_FLAME_REMOVE_CLASS_CHANGE,
+	ZPN_FLAME_REMOVE_ROUND_END,
+	ZPN_FLAME_REMOVE_DISCONNECT,
+	ZPN_FLAME_REMOVE_ENTITY_LOST,
+	ZPN_FLAME_REMOVE_SHUTDOWN,
+}
+
 enum ePropItemRegisters
 {
 	PROP_ITEM_REGISTER_NAME = 0, // string: AMXX dictionary key
@@ -135,6 +151,7 @@ enum ePropClassRegisters
 	PROP_CLASS_REGISTER_SWING_SOUNDS, // Array: string list, zombie classes only; empty = shared missed-attack sounds
 	PROP_CLASS_REGISTER_WALL_SOUNDS, // Array: string list, zombie classes only; empty = shared wall-hit sounds
 	PROP_CLASS_REGISTER_INFECT_SOUNDS, // Array: string list, zombie classes only; empty = shared infection sounds
+	PROP_CLASS_REGISTER_FLAME_SPRITES, // Array: string list, all class types; empty = Default Sprite Flame
 }
 
 enum eGameModeDeathMatchTypes
@@ -235,4 +252,23 @@ stock precache_player_model(const modelname[])
 		precache_model(longname)
 
 	return index
+}
+
+// Shared validation for the main default and class-specific flame resources.
+stock precache_flame_sprites(Array:sprites, const section[])
+{
+	new sprite[MAX_RESOURCE_PATH_LENGTH]
+	for(new i = ArraySize(sprites) - 1; i >= 0; i--)
+	{
+		ArrayGetString(sprites, i, sprite, charsmax(sprite))
+		new len = strlen(sprite)
+		if(len < 13 || !equal(sprite, "sprites/", 8) || !equali(sprite[len - 4], ".spr") || !file_exists(sprite, true))
+		{
+			log_amx("[ZPN] Ignoring invalid flame sprite in %s: ^"%s^"", section, sprite)
+			ArrayDeleteItem(sprites, i)
+			continue
+		}
+
+		precache_model(sprite)
+	}
 }

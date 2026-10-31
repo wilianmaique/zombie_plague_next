@@ -101,7 +101,8 @@ enum _:ePropClasses
 	Float:CLASS_PROP_LEAP_HEIGHT,
 	Float:CLASS_PROP_LEAP_COOLDOWN,
 	Float:CLASS_PROP_LEAP_MIN_SPEED,
-	Array:CLASS_PROP_SOUNDS[eClassSounds]
+	Array:CLASS_PROP_SOUNDS[eClassSounds],
+	Array:CLASS_PROP_FLAME_SPRITES
 }
 
 new Array:aDataClass, Array:aIndexClassesZombies, Array:aIndexClassesHumans
@@ -118,7 +119,7 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RH_SV_StartSound, "SV_StartSound_Pre", false)
 
-	save_class_sound_defaults()
+	save_class_resource_defaults()
 	get_classes_index()
 
 	// LOG
@@ -176,6 +177,7 @@ public plugin_end()
 		ArrayGetArray(aDataClass, i, xDataGetClass)
 		for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
 			ArrayDestroy(xDataGetClass[CLASS_PROP_SOUNDS][sound_type])
+		ArrayDestroy(xDataGetClass[CLASS_PROP_FLAME_SPRITES])
 	}
 
 	for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
@@ -266,7 +268,7 @@ load_default_zombie_sounds()
 	}
 }
 
-save_class_sound_defaults()
+save_class_resource_defaults()
 {
 	// All classes have finished plugin_precache and supplied their defaults now.
 	new xDataGetClass[ePropClasses], class_section[128], sounds_section[128]
@@ -282,6 +284,8 @@ save_class_sound_defaults()
 			if(sounds != Invalid_Array)
 				json_setting_set_string_arr(PATH_SETTINGS_CLASSES, sounds_section, CLASS_SOUND_KEYS[sound_type], sounds)
 		}
+
+		json_setting_set_string_arr(PATH_SETTINGS_CLASSES, class_section, "flame_sprites", xDataGetClass[CLASS_PROP_FLAME_SPRITES])
 	}
 }
 
@@ -302,15 +306,15 @@ load_class_sound_setting(xDataGetClass[ePropClasses], const sound_type, const cl
 	precache_class_sounds(sounds, sounds_section, CLASS_SOUND_KEYS[sound_type])
 }
 
-copy_class_sounds(Array:source, Array:destination)
+copy_class_resources(Array:source, Array:destination)
 {
-	new sound[MAX_RESOURCE_PATH_LENGTH]
+	new resource[MAX_RESOURCE_PATH_LENGTH]
 	new count = ArraySize(source)
 	ArrayClear(destination)
 	for(new i = 0; i < count; i++)
 	{
-		ArrayGetString(source, i, sound, charsmax(sound))
-		ArrayPushString(destination, sound)
+		ArrayGetString(source, i, resource, charsmax(resource))
+		ArrayPushString(destination, resource)
 	}
 }
 
@@ -414,6 +418,7 @@ public _zpn_class_init(plugin_id, param_nums)
 	xDataGetClass[CLASS_PROP_LEAP_HEIGHT] = 300.0
 	xDataGetClass[CLASS_PROP_LEAP_COOLDOWN] = 5.0
 	xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = 80.0
+	xDataGetClass[CLASS_PROP_FLAME_SPRITES] = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
 
 	new class_section[128]
 	get_class_settings_section(xDataGetClass, class_section, charsmax(class_section))
@@ -488,7 +493,18 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 			if(sounds == Invalid_Array || output == Invalid_Array)
 				return false
 
-			copy_class_sounds(sounds, output)
+			copy_class_resources(sounds, output)
+		}
+		case PROP_CLASS_REGISTER_FLAME_SPRITES:
+		{
+			if(param_nums != 3)
+				return false
+
+			new Array:output = Array:get_param_byref(arg_value)
+			if(output == Invalid_Array)
+				return false
+
+			copy_class_resources(xDataGetClass[CLASS_PROP_FLAME_SPRITES], output)
 		}
 	}
 
@@ -565,7 +581,27 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 				return false
 			}
 
-			copy_class_sounds(input, sounds)
+			copy_class_resources(input, sounds)
+		}
+		case PROP_CLASS_REGISTER_FLAME_SPRITES:
+		{
+			if(param_nums != 3)
+				return false
+
+			if(!gClassPrecache)
+			{
+				log_error(AMX_ERR_NATIVE, "[ZPN] Class flame sprites must be set during plugin_precache")
+				return false
+			}
+
+			new Array:input = Array:get_param_byref(arg_value)
+			if(input == Invalid_Array)
+			{
+				log_error(AMX_ERR_NATIVE, "[ZPN] Class flame sprites require a valid string array")
+				return false
+			}
+
+			copy_class_resources(input, xDataGetClass[CLASS_PROP_FLAME_SPRITES])
 		}
 	}
 
@@ -751,6 +787,16 @@ load_class_setting(xDataGetClass[ePropClasses], ePropClassRegisters:prop, const 
 		{
 			new sound_type = _:prop - _:PROP_CLASS_REGISTER_PAIN_SOUNDS
 			load_class_sound_setting(xDataGetClass, sound_type, class_section_final, save_default)
+		}
+		case PROP_CLASS_REGISTER_FLAME_SPRITES:
+		{
+			new Array:sprites = xDataGetClass[CLASS_PROP_FLAME_SPRITES]
+			if(save_default)
+				json_setting_set_string_arr(PATH_SETTINGS_CLASSES, class_section_final, "flame_sprites", sprites)
+
+			ArrayClear(sprites)
+			json_setting_get_string_arr(PATH_SETTINGS_CLASSES, class_section_final, "flame_sprites", sprites)
+			precache_flame_sprites(sprites, class_section_final)
 		}
 	}
 }

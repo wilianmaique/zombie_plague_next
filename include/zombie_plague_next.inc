@@ -249,6 +249,93 @@ forward zpn_user_frozen_pre(const this);
 forward zpn_user_frozen_post(const this);
 
 /**
+ * Called before applying or refreshing a flame effect.
+ *
+ * @note time, damage and slowdown can be changed by reference. The core validates
+ *       them again after every plugin has run. Returning ZPN_RETURN_HANDLED or
+ *       higher cancels this application, leaving an existing effect unchanged.
+ * @note Recursive applications to the same client are rejected. An addon may
+ *       remove an existing effect here; that also cancels the pending refresh.
+ *       Use ZPN_RETURN_HANDLED to block the first application.
+ *
+ * @param id         Living client receiving the effect (any class/team)
+ * @param attacker   Connected attacker index, or 0 for world damage
+ * @param time       Duration in seconds, 0.1..3600.0
+ * @param damage     Damage requested every 0.2 seconds, 0.0..1000000.0
+ * @param slowdown   Horizontal velocity multiplier, 0.0..1.0; 1.0 disables it
+ * @param reset_time Whether an existing effect is being refreshed
+ * @param can_kill   Whether the requested damage may kill the victim
+ * @return           ZPN_RETURN_CONTINUE to apply, ZPN_RETURN_HANDLED to block
+ */
+forward zpn_user_flame_pre(const id, const attacker, &Float:time, &Float:damage, &Float:slowdown, const bool:reset_time, const bool:can_kill);
+
+/**
+ * Called after a flame application/refresh is committed, with the final values.
+ * An addon may call zpn_remove_user_flame() here. Recursive applications to the
+ * same client are rejected until the original application returns.
+ *
+ * @noreturn
+ */
+forward zpn_user_flame_post(const id, const attacker, const Float:time, const Float:damage, const Float:slowdown, const bool:reset_time, const bool:can_kill);
+
+/**
+ * Called before a flame tick's damage, slowdown and scale variation.
+ *
+ * @note Changing damage affects only this tick; the nonlethal cap is applied
+ *       afterwards. Return ZPN_RETURN_HANDLED or higher to skip this tick.
+ *       Call zpn_remove_user_flame(id) to extinguish the effect entirely.
+ * @note Removing/refreshing the effect or changing the victim's life/class in
+ *       this forward cancels the pending tick. The sprite continues animating
+ *       when a tick is skipped. Tick post is not emitted for a skipped tick.
+ *
+ * @param id         Living client on fire
+ * @param attacker   Original attacker if still in the same session, otherwise 0
+ * @param damage     Requested damage for this tick, writable, 0.0..1000000.0
+ * @return           ZPN_RETURN_CONTINUE to execute, ZPN_RETURN_HANDLED to skip
+ */
+forward zpn_user_flame_tick_pre(const id, const attacker, &Float:damage);
+
+/**
+ * Called after a permitted tick, including ticks whose game damage was blocked.
+ *
+ * @note Can run after death/removal forwards when this tick killed the victim.
+ *       Not called if the victim disconnected or its client slot was reused.
+ *
+ * @param id         Victim, possibly dead now
+ * @param attacker   Attacker used for the damage call (0 means world)
+ * @param damage     Observed health loss, excluding armor; 0.0 if none
+ * @noreturn
+ */
+forward zpn_user_flame_tick_post(const id, const attacker, const Float:damage);
+
+/**
+ * Called before removing an existing flame effect.
+ *
+ * @note Only ZPN_FLAME_REMOVE_NATIVE can be blocked with ZPN_RETURN_HANDLED or
+ *       higher. All automatic/lifecycle reasons force cleanup regardless of
+ *       the return value. Expired/invalid effects may already report false in
+ *       zpn_is_user_burning() while this notification runs.
+ * @note Applications and recursive manual removals for this client are rejected
+ *       during both removal forwards. A nested forced cleanup does not repeat
+ *       the pre-forward; its post-forward reports the final cleanup reason.
+ *
+ * @param id         Client index; may be dead/disconnecting
+ * @param reason     eFlameRemoveReasons value
+ * @return           ZPN_RETURN_CONTINUE to remove, ZPN_RETURN_HANDLED to block
+ */
+forward zpn_user_flame_remove_pre(const id, const eFlameRemoveReasons:reason);
+
+/**
+ * Called after the flame state is cleared and its sprite is hidden/removed.
+ * The entity removal itself is deferred by ReGameDLL to a safe engine frame.
+ *
+ * @param id         Client index; may be dead/disconnecting
+ * @param reason     Final eFlameRemoveReasons value
+ * @noreturn
+ */
+forward zpn_user_flame_remove_post(const id, const eFlameRemoveReasons:reason);
+
+/**
  * Called before an eligible leap attempt, from input or zpn_do_user_leap().
  *
  * @param id        Client index
@@ -530,7 +617,14 @@ native zpn_class_random_class_id(eClassTypes:type);
  * @note Loads supported properties from classes.json immediately, including
  *       keys without a corresponding zpn_class_set_prop() call. Missing keys
  *       keep the core defaults and are not saved at this stage. Missing sound
- *       arrays are saved after every class has finished plugin_precache().
+ *       and flame-sprite arrays are saved after all plugin_precache() calls.
+ * @note Every class has a "flame_sprites" string array, empty by default.
+ *       [] inherits "Main Config" / "Default Sprite Flame" in configs.json.
+ *       A nonempty array replaces the default pool. One sprite is selected
+ *       randomly on ignition and kept until removal, including time refreshes.
+ *       Use existing paths such as "sprites/zpn/flame.spr" (relative to cstrike/).
+ *       All sprites are validated/precached at map startup; restart the map
+ *       after editing these arrays. Invalid entries are logged and discarded.
  * @note Zombie and special-zombie sounds are configured in classes.json:
  *       "Default Sounds Zombies" owns shared "pain", "die", "attack", "swing",
  *       "wall" and "infect" string arrays. Each zombie class gets a "sounds"
@@ -567,14 +661,17 @@ native zpn_class_init(const name[], eClassTypes:type);
  *       created with cellsize MAX_RESOURCE_PATH_LENGTH. Its contents are
  *       replaced with a copy of the class override; an empty result means the
  *       shared sounds are inherited. The caller owns the destination handle.
+ * @note FLAME_SPRITES also takes only a destination Array: handle with cellsize
+ *       MAX_RESOURCE_PATH_LENGTH. It copies the class override (not the default
+ *       pool), works for every class type, and [] means inherit the main pool.
  *
  * @param class_id  Class index
  * @param prop      Property to retrieve, from ePropClassRegisters
- * @param ...       Output buffer and length, or a destination sound-array handle
+ * @param ...       Output buffer and length, or a destination resource-array handle
  *
  * @return          Property value for scalar properties, 1 for copied
  *                  string/array properties, or 0 if class storage is unavailable
- *                  or the sound-array arguments/class type are invalid
+ *                  or the resource-array arguments/class type are invalid
  * @error           If class_id is not a valid class index, an error can be
  *                  thrown by the underlying array access.
  */
@@ -598,6 +695,16 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
  *       The contents are copied; the caller can reuse/destroy the handle after
  *       this call. JSON arrays, including [], take priority. An empty class
  *       array inherits the shared sounds for that event.
+ * @note PROP_CLASS_REGISTER_FLAME_SPRITES accepts one Array: of sprite paths
+ *       (cellsize MAX_RESOURCE_PATH_LENGTH) for any class type, only during
+ *       plugin_precache(). The core copies the contents; the caller retains
+ *       ownership. JSON, including [], takes priority over supplied defaults.
+ *       Missing arrays default to [] and inherit the main flame-sprite pool.
+ *
+ *       new Array:sprites = ArrayCreate(MAX_RESOURCE_PATH_LENGTH)
+ *       ArrayPushString(sprites, "sprites/zpn/flame.spr")
+ *       zpn_class_set_prop(class_id, PROP_CLASS_REGISTER_FLAME_SPRITES, sprites)
+ *       ArrayDestroy(sprites)
  *
  *       new Array:sounds = ArrayCreate(MAX_RESOURCE_PATH_LENGTH)
  *       ArrayPushString(sounds, "zpn/zombie_pain1.wav")
@@ -628,11 +735,13 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
  * @param ...       New property value
  *
  * @return          1 on success, 0 if class storage is unavailable or the
- *                  sound-array argument count is invalid
+ *                  resource-array argument count is invalid
  * @error           If class_id is not a valid class index, an error can be
  *                  thrown by the underlying array access.
  *                  Sound properties also throw for an invalid handle, a human
  *                  class, or calls outside plugin_precache().
+ *                  Flame sprites also throw for an invalid handle or calls
+ *                  outside plugin_precache(), but support all class types.
  */
 native zpn_class_set_prop(const class_id, ePropClassRegisters:prop, any:...);
 
@@ -1300,6 +1409,67 @@ native bool:zpn_remove_user_frozen(const this);
  * @return          true if the client is frozen, false otherwise
  */
 native bool:zpn_is_user_freezed(const this);
+
+/**
+ * Sets a flame effect on a living client of any class/team.
+ *
+ * @note Does not ignite players automatically: a grenade/item/addon calls this
+ *       native. Available after the main core's plugin_init().
+ * @note configs.json / "Main Config" contains the default string array:
+ *       "Default Sprite Flame": ["sprites/zpn/flame.spr"]
+ *       The current class's "flame_sprites" array in classes.json overrides it.
+ *       Exactly one sprite is randomly selected and followed/animated at 20 fps.
+ *       An empty default pool disables ignition for classes without overrides.
+ * @note A burning client is left unchanged and returns false unless reset_time
+ *       is true. Refreshing updates time, damage, slowdown, attacker and can_kill
+ *       while retaining the sprite and pending tick. Duration becomes now + time.
+ * @note Damage goes through Ham_TakeDamage with DMG_BURN, preserving game rules,
+ *       armor, damage hooks and kill attribution. It never triggers ZPN's zombie
+ *       contact infection. Disconnected/reused attackers become world damage.
+ *       With can_kill false, damage sent to the game is capped at health - 1;
+ *       subsequent damage hooks can still modify that amount. Only grounded
+ *       normal zombies receive slowdown; vertical velocity is preserved.
+ * @note Water contact or godmode/DAMAGE_NO extinguishes the effect. Death, spawn,
+ *       successful class application, round end/restart, disconnect and plugin
+ *       shutdown force cleanup. Application while removing/cleaning up fails.
+ * @note Pre-forward can block/change the request. Returning true means it was
+ *       committed; a post-forward may already have removed it afterwards.
+ *
+ * @param id         Living client index
+ * @param time       Duration in seconds, 0.1..3600.0
+ * @param attacker   Connected client index, or 0 for world damage
+ * @param damage     Damage per 0.2-second tick, 0.0..1000000.0; 0.0 disables damage
+ * @param slowdown   Grounded normal-zombie X/Y velocity multiplier, 0.0..1.0
+ * @param reset_time Refresh an existing effect without selecting another sprite
+ * @param can_kill   Allow the requested damage to kill the victim
+ * @return           true if committed, false if blocked, invalid, protected,
+ *                   already burning without reset, or no valid sprite/entity
+ */
+native bool:zpn_set_user_flame(const id, const Float:time = 5.0, const attacker = 0, const Float:damage = 5.0, const Float:slowdown = 0.5, const bool:reset_time = false, const bool:can_kill = false);
+
+/**
+ * Extinguishes a client's existing flame effect.
+ *
+ * @note Uses ZPN_FLAME_REMOVE_NATIVE, which can be blocked by the removal pre.
+ *       The core owns the sprite entity; addons should use this native to
+ *       remove it. An externally deleted entity is reconciled on the next
+ *       application/removal or lifecycle cleanup.
+ * @param id         Connected client index (may be dead)
+ * @return           true if cleared, false if absent, invalid, blocked or recursive
+ */
+native bool:zpn_remove_user_flame(const id);
+
+/**
+ * @param id         Client index
+ * @return           true for a living client with an unexpired, owned flame sprite
+ */
+native bool:zpn_is_user_burning(const id);
+
+/**
+ * @param id         Client index
+ * @return           Remaining flame duration in game seconds, or 0.0 if inactive
+ */
+native Float:zpn_get_user_flame_time(const id);
 
 /**
  * Configures leap for one client. Requires the zpn_leap core plugin.
