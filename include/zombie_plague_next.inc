@@ -279,7 +279,7 @@ forward zpn_user_flame_pre(const id, const attacker, &Float:time, &Float:damage,
 forward zpn_user_flame_post(const id, const attacker, const Float:time, const Float:damage, const Float:slowdown, const bool:reset_time, const bool:can_kill);
 
 /**
- * Called before a flame tick's damage, slowdown and scale variation.
+ * Called before a flame tick's damage and slowdown.
  *
  * @note Changing damage affects only this tick; the nonlethal cap is applied
  *       afterwards. Return ZPN_RETURN_HANDLED or higher to skip this tick.
@@ -1381,6 +1381,9 @@ native zpn_send_weapon_deploy(const this);
  * @note This calls zpn_user_frozen_pre() before applying the frozen state and
  *       zpn_user_frozen_post() after the state is applied.
  * @note The time value is clamped internally between 0.1 and 60.0 seconds.
+ *       NaN/infinite durations are rejected. Death, spawn, round cleanup,
+ *       disconnect and plugin shutdown remove the effect and pending timeout.
+ *       Timeouts validate the original client's userid before removing a freeze.
  *
  * @param this       Client index
  * @param time       Freeze duration in seconds
@@ -1418,7 +1421,9 @@ native bool:zpn_is_user_freezed(const this);
  * @note configs.json / "Main Config" contains the default string array:
  *       "Default Sprite Flame": ["sprites/zpn/flame.spr"]
  *       The current class's "flame_sprites" array in classes.json overrides it.
- *       Exactly one sprite is randomly selected and followed/animated at 20 fps.
+ *       Exactly one sprite is randomly selected, attached to the player and
+ *       looped at 8 fps with a fixed scale of 0.75. Refreshing preserves the
+ *       entity and animation phase; damage ticks never restart/resize the sprite.
  *       An empty default pool disables ignition for classes without overrides.
  * @note A burning client is left unchanged and returns false unless reset_time
  *       is true. Refreshing updates time, damage, slowdown, attacker and can_kill

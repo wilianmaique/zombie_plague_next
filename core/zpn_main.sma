@@ -96,7 +96,8 @@ new bool:gTransformingUser
 
 #define FLAME_THINK_INTERVAL 0.05
 #define FLAME_TICK_INTERVAL 0.2
-#define FLAME_FRAMERATE 20.0
+#define FLAME_FRAMERATE 15.0
+#define FLAME_SCALE 0.75
 
 new const FLAME_CLASSNAME[] = "zpn_flame"
 
@@ -108,6 +109,7 @@ enum _:eFlameData
 	FLAME_ATTACKER,
 	FLAME_ATTACKER_USERID,
 	FLAME_FRAMES,
+	Float:FLAME_ANIMATION_START,
 	Float:FLAME_EXPIRES,
 	Float:FLAME_NEXT_TICK,
 	Float:FLAME_DAMAGE,
@@ -205,7 +207,10 @@ public HandleMenu_ChooseAppearance_Post(const this, const slot)
 public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
 	if(IsReapiHookOriginalWasCalled(RG_CBasePlayer_Killed) && !is_user_alive(this))
+	{
 		remove_user_flame(this, ZPN_FLAME_REMOVE_DEATH)
+		remove_user_frozen(this + TASK_FROZEN)
+	}
 
 	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
 
@@ -322,6 +327,7 @@ public CBasePlayer_ResetMaxSpeed_Post(const this)
 public client_putinserver(id)
 {
 	remove_user_flame(id, ZPN_FLAME_REMOVE_DISCONNECT)
+	remove_task(id + TASK_FROZEN)
 
 	if(!is_user_bot(id) && !is_user_hltv(id))
 		set_task_ex(0.1, "xHudPlayerInfo", id + TASK_HUD_PLAYER_INFO, .flags = SetTask_Repeat)
@@ -332,6 +338,7 @@ public client_putinserver(id)
 public client_disconnected(id)
 {
 	remove_user_flame(id, ZPN_FLAME_REMOVE_DISCONNECT)
+	remove_user_frozen(id + TASK_FROZEN)
 	remove_task(id + TASK_HUD_PLAYER_INFO)
 	remove_task(id + TASK_RESPAWN)
 	remove_task(id + TASK_FROZEN)
@@ -450,7 +457,10 @@ public CBasePlayer_Spawn_Pre(id)
 public CBasePlayer_Spawn_Post(id)
 {
 	if(IsReapiHookOriginalWasCalled(RG_CBasePlayer_Spawn) && zpn_is_valid_player_connected(id))
+	{
 		remove_user_flame(id, ZPN_FLAME_REMOVE_SPAWN)
+		remove_user_frozen(id + TASK_FROZEN)
+	}
 
 	if(!zpn_is_valid_player_alive(id))
 		return
@@ -840,7 +850,10 @@ public plugin_end()
 {
 	gFlameReady = false
 	for(new id = 1; id <= MaxClients; id++)
+	{
 		remove_user_flame(id, ZPN_FLAME_REMOVE_SHUTDOWN)
+		remove_user_frozen(id + TASK_FROZEN)
+	}
 
 	ArrayDestroy(gDefaultFlameSprites)
 	ArrayDestroy(gClassFlameSprites)
@@ -1001,7 +1014,7 @@ Array:get_weapon_array(const eWeaponTypes:type)
 
 public bool:_zpn_is_user_freezed(plugin_id, param_nums)
 {
-	if(param_nums != 1)
+	if(param_nums != 1 || !zpn_is_valid_player_connected(get_param(1)))
 		return false
 
 	return zpn_player_data_get_prop(get_param(1), PROP_PD_REGISTER_IS_FREEZED)
@@ -1009,7 +1022,7 @@ public bool:_zpn_is_user_freezed(plugin_id, param_nums)
 
 public bool:_zpn_remove_user_frozen(plugin_id, param_nums)
 {
-	if(param_nums != 1)
+	if(param_nums != 1 || !zpn_is_valid_player_connected(get_param(1)))
 		return false
 
 	remove_user_frozen(get_param(1) + TASK_FROZEN)
@@ -1674,6 +1687,7 @@ bool:set_user_flame(const id, Float:time, const attacker, Float:damage, Float:sl
 		gFlameData[id][FLAME_USERID] = userid
 		gFlameData[id][FLAME_TOKEN] = ++gFlameRevision[id]
 		gFlameData[id][FLAME_FRAMES] = max(1, engfunc(EngFunc_ModelFrames, get_entvar(ent, var_modelindex)))
+		gFlameData[id][FLAME_ANIMATION_START] = now
 		gFlameData[id][FLAME_NEXT_TICK] = now + FLAME_TICK_INTERVAL
 		set_entvar(ent, var_classname, FLAME_CLASSNAME)
 		set_entvar(ent, var_owner, id)
@@ -1684,9 +1698,10 @@ bool:set_user_flame(const id, Float:time, const attacker, Float:damage, Float:sl
 		set_entvar(ent, var_solid, SOLID_NOT)
 		set_entvar(ent, var_rendermode, kRenderTransAdd)
 		set_entvar(ent, var_renderamt, 255.0)
-		set_entvar(ent, var_scale, random_float(0.5, 1.2))
+		set_entvar(ent, var_scale, FLAME_SCALE)
 		set_entvar(ent, var_frame, 0.0)
-		set_entvar(ent, var_framerate, FLAME_FRAMERATE)
+		// Flame_Think owns frame advancement; do not start a second animation clock.
+		set_entvar(ent, var_framerate, 0.0)
 		set_entvar(ent, var_animtime, now)
 		SetThink(ent, "Flame_Think")
 		set_entvar(ent, var_nextthink, now + FLAME_THINK_INTERVAL)
@@ -1776,11 +1791,10 @@ public Flame_Think(const ent)
 
 	new Float:now = get_gametime()
 	new Float:frames = float(gFlameData[id][FLAME_FRAMES])
-	new Float:frame = get_entvar(ent, var_frame), Float:last_time = get_entvar(ent, var_animtime)
-	frame += FLAME_FRAMERATE * (now - last_time)
+	// Keep one continuous phase for this entity, including duration refreshes.
+	new Float:frame = FLAME_FRAMERATE * (now - gFlameData[id][FLAME_ANIMATION_START])
 	frame -= frames * float(floatround(frame / frames, floatround_floor))
 	set_entvar(ent, var_frame, frame)
-	set_entvar(ent, var_animtime, now)
 	set_entvar(ent, var_nextthink, now + FLAME_THINK_INTERVAL)
 
 	if(now < gFlameData[id][FLAME_NEXT_TICK])
@@ -1814,8 +1828,6 @@ public Flame_Think(const ent)
 		velocity[1] *= gFlameData[id][FLAME_SLOWDOWN]
 		set_entvar(id, var_velocity, velocity)
 	}
-	set_entvar(ent, var_scale, random_float(0.5, 1.2))
-
 	new Float:health = get_entvar(id, var_health)
 	if(!gFlameData[id][FLAME_CAN_KILL])
 		damage = floatmin(damage, floatmax(0.0, health - 1.0))
@@ -1839,27 +1851,20 @@ public Flame_Think(const ent)
 
 public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 {
-	// xFwIntParam[1] = -1
-	// xFwFloatParam[2] = -1.0
-	// xFwBoolParam[3] = false
-	// xFwBoolParam[4] = false
-
-	// if(xFwFloatParam[1] != -1.0) this = xFwFloatParam[1]
-	// if(xFwFloatParam[2] != -1.0) class_id = xFwFloatParam[2]
-
-	if(!zpn_is_valid_player_alive(this))
+	if(!zpn_is_valid_player_alive(this) || (_:time & 0x7F800000) == 0x7F800000)
 		return false
 
-	ExecuteForward(xForwards[FW_USER_FROZEN_PRE], xForwardReturn, this)
+	new userid = get_user_userid(this), forward_return
+	ExecuteForward(xForwards[FW_USER_FROZEN_PRE], forward_return, this)
 
-	if(xForwardReturn >= ZPN_RETURN_HANDLED)
+	if(forward_return >= ZPN_RETURN_HANDLED || !zpn_is_valid_player_alive(this) || get_user_userid(this) != userid)
 		return false
 
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_FREEZED, true)
 
-	set_entvar(this, var_velocity, 1.0)
+	new Float:velocity[3] = { 0.0, 0.0, 0.0 }
+	set_entvar(this, var_velocity, velocity)
 	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) | PLAYER_PREVENT_JUMP)
-	rg_reset_maxspeed(this)
 	set_user_rendering(this, kRenderFxGlowShell, 0, 150, 255, kRenderNormal, 10)
 
 	if(reset_time && task_exists(this + TASK_FROZEN))
@@ -1867,37 +1872,56 @@ public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 	
 	if(!task_exists(this + TASK_FROZEN))
 	{
-		if(play_sound)
+		new data[1]
+		data[0] = userid
+		set_task_ex(floatclamp(time, 0.1, 60.0), "frozen_timeout", this + TASK_FROZEN, data, sizeof data)
+
+		if(play_sound && !zpn_is_invalid_array(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS]))
 		{
 			new sound[64]; ArrayGetString(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS], random_num(0, ArraySize(xDataGetGameRule[GAME_RULE_FROZEN_HIT_SOUNDS]) - 1), sound, charsmax(sound))
 			rh_emit_sound2(this, 0, CHAN_STATIC, sound, VOL_NORM, 0.8)
 		}
-
-		set_task_ex(floatclamp(time, 0.1, 60.0), "remove_user_frozen", this + TASK_FROZEN)
 	}
 
-	ExecuteForward(xForwards[FW_USER_FROZEN_POST], xForwardReturn, this)
+	if(!zpn_is_valid_player_alive(this) || get_user_userid(this) != userid
+	|| !zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
+		return false
+
+	rg_reset_maxspeed(this)
+	if(!zpn_is_valid_player_alive(this) || get_user_userid(this) != userid
+	|| !zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
+		return false
+
+	ExecuteForward(xForwards[FW_USER_FROZEN_POST], forward_return, this)
 
 	return true
+}
+
+public frozen_timeout(const data[], const taskid)
+{
+	new id = taskid - TASK_FROZEN
+	if(zpn_is_valid_player_connected(id) && get_user_userid(id) == data[0])
+		remove_user_frozen(taskid)
 }
 
 public remove_user_frozen(this)
 {
 	this -= TASK_FROZEN
 
-	if(!is_user_connected(this)) { remove_task(this + TASK_FROZEN); return; }
+	if(!(1 <= this <= MaxClients))
+		return
 
-	if(!zpn_is_valid_player_alive(this))
+	remove_task(this + TASK_FROZEN)
+	if(!is_user_connected(this) || !zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
 		return
 
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_FREEZED, false)
 
 	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) & ~PLAYER_PREVENT_JUMP)
-	rg_reset_maxspeed(this)
 	set_user_rendering(this, kRenderFxNone, 0, 0, 0, kRenderNormal, 0)
 
-	if(task_exists(this + TASK_FROZEN))
-		remove_task(this + TASK_FROZEN)
+	if(is_user_alive(this))
+		rg_reset_maxspeed(this)
 }
 
 get_user_speed(const this)
