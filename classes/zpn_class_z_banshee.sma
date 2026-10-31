@@ -12,6 +12,7 @@ enum _:eCvars
 	CVAR_BAT_SPEED,
 	Float:CVAR_BAT_CATCH_TIME,
 	Float:CVAR_BAT_CATCH_SPEED,
+	CVAR_BAT_PASS_ZOMBIES,
 }
 
 new const bat_banshee[] = "models/zpn/bat_banshee.mdl"
@@ -30,12 +31,14 @@ public plugin_init()
 
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false)
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
+	register_forward(FM_ShouldCollide, "ShouldCollide_Pre", false)
 
 	bind_pcvar_float(create_cvar("zpn_class_banshee_timeout", "15", .has_min = true, .min_val = 5.0, .has_max = true, .max_val = 1000.0), cvars[CVAR_SKILL_TIMEOUT])
 	bind_pcvar_float(create_cvar("zpn_class_banshee_bat_time", "3", .has_min = true, .min_val = 1.0, .has_max = true, .max_val = 50.0), cvars[CVAR_BAT_TIME])
 	bind_pcvar_num(create_cvar("zpn_class_banshee_bat_speed", "700", .has_min = true, .min_val = 100.0, .has_max = true, .max_val = 2000.0), cvars[CVAR_BAT_SPEED])
 	bind_pcvar_float(create_cvar("zpn_class_banshee_bat_catch_time", "3", .has_min = true, .min_val = 1.0, .has_max = true, .max_val = 50.0), cvars[CVAR_BAT_CATCH_TIME])
 	bind_pcvar_float(create_cvar("zpn_class_banshee_bat_catch_speed", "110", .has_min = true, .min_val = 20.0, .has_max = true, .max_val = 1000.0), cvars[CVAR_BAT_CATCH_SPEED])
+	bind_pcvar_num(create_cvar("zpn_class_banshee_bat_pass_zombies", "1", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), cvars[CVAR_BAT_PASS_ZOMBIES])
 }
 
 register_class()
@@ -199,6 +202,29 @@ create_bat(id)
 	}
 }
 
+public ShouldCollide_Pre(const touched, const other)
+{
+	if(!cvars[CVAR_BAT_PASS_ZOMBIES])
+		return FMRES_IGNORED
+
+	new id = touched, ent = other
+
+	if(other > 0 && other <= MaxClients)
+	{
+		id = other
+		ent = touched
+	}
+
+	if(id <= 0 || id > MaxClients || !is_user_alive(id) || !FClassnameIs(ent, "bat"))
+		return FMRES_IGNORED
+
+	if(get_entvar(ent, var_movetype) != MOVETYPE_FLY || !zpn_is_user_zombie(id))
+		return FMRES_IGNORED
+
+	forward_return(FMV_CELL, 0)
+	return FMRES_SUPERCEDE
+}
+
 public bat_touch(const ent, const other)
 {
 	if(is_nullent(ent))
@@ -210,9 +236,11 @@ public bat_touch(const ent, const other)
 		return
 	}
 
-	if(zpn_is_user_zombie(other) && is_user_alive(other) && is_user_connected(other))
+	if(other > 0 && other <= MaxClients && is_user_alive(other) && zpn_is_user_zombie(other))
 	{
-		del_bat(ent)
+		if(!cvars[CVAR_BAT_PASS_ZOMBIES])
+			del_bat(ent)
+
 		return
 	}
 

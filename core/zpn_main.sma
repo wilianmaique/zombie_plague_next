@@ -585,8 +585,10 @@ start_round(const gamemode_id, const start_player = 0)
 		new gm_hud_notice[64]; zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_NOTICE, gm_hud_notice, charsmax(gm_hud_notice))
 
 		set_hudmessage(gm_hud_color_converted[0], gm_hud_color_converted[1], gm_hud_color_converted[2], -1.0, 0.20, 2, 0.3, 3.0, 0.06, 0.06, -1, 0, { 100, 100, 200, 100 })
+
 		if(gm_hud_notice[0] != EOS)
 			ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%L", LANG_PLAYER, gm_hud_notice)
+
 		ExecuteForward(xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_POST], xForwardReturn, gamemode_id)
 	}
 
@@ -606,6 +608,7 @@ public plugin_precache()
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 	bind_pcvar_num(create_cvar("zpn_weapon_weight_discount_speed", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
 	//bind_pcvar_num(create_cvar("zpn_respawn_in_last_human", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_RESPAWN_IN_LAST_H])
+	
 	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", xSettingsVars[CONFIG_DEBUG_ON]))
 	{
 		xSettingsVars[CONFIG_DEBUG_ON] = 0

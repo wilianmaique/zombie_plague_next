@@ -12,10 +12,11 @@ enum _:eClassSounds
 	CLASS_SOUND_DIE,
 	CLASS_SOUND_ATTACK,
 	CLASS_SOUND_SWING,
-	CLASS_SOUND_WALL
+	CLASS_SOUND_WALL,
+	CLASS_SOUND_INFECT
 }
 
-new const CLASS_SOUND_KEYS[eClassSounds][] = { "pain", "die", "attack", "swing", "wall" }
+new const CLASS_SOUND_KEYS[eClassSounds][] = { "pain", "die", "attack", "swing", "wall", "infect" }
 
 new const DEFAULT_ZOMBIE_PAIN_SOUNDS[][] =
 {
@@ -54,6 +55,19 @@ new const DEFAULT_ZOMBIE_WALL_SOUNDS[][] =
 	"zpn/zombi_wall_1.wav",
 	"zpn/zombi_wall_2.wav",
 	"zpn/zombi_wall_3.wav"
+}
+
+new const DEFAULT_ZOMBIE_INFECT_SOUNDS[][] =
+{
+	"zpn/zombi_infect_1.wav",
+	"zpn/zombi_infect_2.wav",
+	"zpn/zombi_infect_3.wav",
+	"zpn/zombi_infect_4.wav",
+	"zpn/zombi_infect_5.wav",
+	"zpn/zombi_infect_6.wav",
+	"zpn/zombi_infect_7.wav",
+	"zpn/zombi_infect_8.wav",
+	"zpn/zombi_infect_9.wav"
 }
 
 enum _:ePropClasses
@@ -172,6 +186,14 @@ public plugin_end()
 	ArrayDestroy(aIndexClassesHumans)
 }
 
+public zpn_user_infected_post(const this, const infector, const class_id)
+{
+	if(!zpn_is_valid_player_alive(this))
+		return
+
+	emit_zombie_class_sound(this, CLASS_SOUND_INFECT)
+}
+
 public CBasePlayer_Pain_Pre(const this, HitBoxGroup:lastHitGroup, bool:hasArmour)
 {
 	return emit_zombie_class_sound(this, CLASS_SOUND_PAIN) ? HC_SUPERCEDE : HC_CONTINUE
@@ -230,6 +252,9 @@ load_default_zombie_sounds()
 
 	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_WALL_SOUNDS); i++)
 		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_WALL], DEFAULT_ZOMBIE_WALL_SOUNDS[i])
+
+	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_INFECT_SOUNDS); i++)
+		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_INFECT], DEFAULT_ZOMBIE_INFECT_SOUNDS[i])
 
 	for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
 	{
@@ -450,7 +475,8 @@ public any:_zpn_class_get_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_LEAP_COOLDOWN: return xDataGetClass[CLASS_PROP_LEAP_COOLDOWN]
 		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED: return xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED]
 		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS,
-		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS:
+		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS,
+		PROP_CLASS_REGISTER_INFECT_SOUNDS:
 		{
 			if(param_nums != 3)
 				return false
@@ -510,7 +536,8 @@ public any:_zpn_class_set_prop(plugin_id, param_nums)
 		case PROP_CLASS_REGISTER_LEAP_COOLDOWN: xDataGetClass[CLASS_PROP_LEAP_COOLDOWN] = floatmax(0.0, get_float_byref(arg_value))
 		case PROP_CLASS_REGISTER_LEAP_MIN_SPEED: xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = floatmax(0.0, get_float_byref(arg_value))
 		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS,
-		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS:
+		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS,
+		PROP_CLASS_REGISTER_INFECT_SOUNDS:
 		{
 			if(param_nums != 3)
 				return false
@@ -719,7 +746,8 @@ load_class_setting(xDataGetClass[ePropClasses], ePropClassRegisters:prop, const 
 			xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED] = floatmax(0.0, xDataGetClass[CLASS_PROP_LEAP_MIN_SPEED])
 		}
 		case PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS,
-		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS:
+		PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS, PROP_CLASS_REGISTER_WALL_SOUNDS,
+		PROP_CLASS_REGISTER_INFECT_SOUNDS:
 		{
 			new sound_type = _:prop - _:PROP_CLASS_REGISTER_PAIN_SOUNDS
 			load_class_sound_setting(xDataGetClass, sound_type, class_section_final, save_default)

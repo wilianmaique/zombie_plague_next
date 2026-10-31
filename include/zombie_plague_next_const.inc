@@ -134,6 +134,7 @@ enum ePropClassRegisters
 	PROP_CLASS_REGISTER_ATTACK_SOUNDS, // Array: string list, zombie classes only; empty = shared body-hit sounds
 	PROP_CLASS_REGISTER_SWING_SOUNDS, // Array: string list, zombie classes only; empty = shared missed-attack sounds
 	PROP_CLASS_REGISTER_WALL_SOUNDS, // Array: string list, zombie classes only; empty = shared wall-hit sounds
+	PROP_CLASS_REGISTER_INFECT_SOUNDS, // Array: string list, zombie classes only; empty = shared infection sounds
 }
 
 enum eGameModeDeathMatchTypes

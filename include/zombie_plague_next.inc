@@ -532,10 +532,12 @@ native zpn_class_random_class_id(eClassTypes:type);
  *       keep the core defaults and are not saved at this stage. Missing sound
  *       arrays are saved after every class has finished plugin_precache().
  * @note Zombie and special-zombie sounds are configured in classes.json:
- *       "Default Sounds Zombies" owns shared "pain", "die", "attack", "swing"
- *       and "wall" string arrays. Each zombie class gets a "sounds" object
- *       with the same arrays. Attack replaces knife body hits (including stab),
+ *       "Default Sounds Zombies" owns shared "pain", "die", "attack", "swing",
+ *       "wall" and "infect" string arrays. Each zombie class gets a "sounds"
+ *       object with the same arrays. Attack replaces knife body hits (including stab),
  *       swing replaces misses, and wall replaces hits against walls/objects.
+ *       Infect plays one random sound from the infected player after the zombie
+ *       class is applied, including special-zombie transformations.
  *       zpn_class_set_prop() can supply these defaults from the class plugin.
  *       An empty class array inherits the shared array for that event; a
  *       nonempty array replaces it. An empty shared array silences the event.
@@ -560,8 +562,8 @@ native zpn_class_init(const name[], eClassTypes:type);
  *       after the property id.
  * @note For fixed array properties, pass an output array and its maximum length
  *       after the property id.
- * @note For PAIN_SOUNDS, DIE_SOUNDS, ATTACK_SOUNDS, SWING_SOUNDS and WALL_SOUNDS,
- *       pass only a destination Array: handle
+ * @note For PAIN_SOUNDS, DIE_SOUNDS, ATTACK_SOUNDS, SWING_SOUNDS, WALL_SOUNDS and
+ *       INFECT_SOUNDS, pass only a destination Array: handle
  *       created with cellsize MAX_RESOURCE_PATH_LENGTH. Its contents are
  *       replaced with a copy of the class override; an empty result means the
  *       shared sounds are inherited. The caller owns the destination handle.
@@ -588,8 +590,9 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
  * @note The supplied value is a default: a valid value in classes.json takes
  *       priority. Missing settings are saved using the supplied default.
  * @note PROP_CLASS_REGISTER_PAIN_SOUNDS, PROP_CLASS_REGISTER_DIE_SOUNDS,
- *       PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS and
- *       PROP_CLASS_REGISTER_WALL_SOUNDS accept one Array: handle of strings
+ *       PROP_CLASS_REGISTER_ATTACK_SOUNDS, PROP_CLASS_REGISTER_SWING_SOUNDS,
+ *       PROP_CLASS_REGISTER_WALL_SOUNDS and PROP_CLASS_REGISTER_INFECT_SOUNDS
+ *       accept one Array: handle of strings
  *       (cellsize MAX_RESOURCE_PATH_LENGTH).
  *       Use these only for zombie/special-zombie classes in plugin_precache().
  *       The contents are copied; the caller can reuse/destroy the handle after
@@ -611,6 +614,9 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
  *       ArrayClear(sounds)
  *       ArrayPushString(sounds, "zpn/zombi_wall_1.wav")
  *       zpn_class_set_prop(class_id, PROP_CLASS_REGISTER_WALL_SOUNDS, sounds)
+ *       ArrayClear(sounds)
+ *       ArrayPushString(sounds, "zpn/zombi_infect_1.wav")
+ *       zpn_class_set_prop(class_id, PROP_CLASS_REGISTER_INFECT_SOUNDS, sounds)
  *       ArrayDestroy(sounds)
  *
  * @note Leap properties are applied when the client receives the class, before
