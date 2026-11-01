@@ -1549,7 +1549,7 @@ bool:is_flame_entity(const ent, const id)
 
 	new classname[32]
 	get_entvar(ent, var_classname, classname, charsmax(classname))
-	return equal(classname, FLAME_CLASSNAME)
+	return equal(classname, FLAME_CLASSNAME) != 0
 }
 
 bool:is_user_burning(const id)

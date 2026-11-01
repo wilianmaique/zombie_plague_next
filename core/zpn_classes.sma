@@ -241,22 +241,22 @@ load_default_zombie_sounds()
 		aDefaultZombieSounds[sound_type] = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
 
 	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_PAIN_SOUNDS); i++)
-		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_PAIN], DEFAULT_ZOMBIE_PAIN_SOUNDS[i])
+		ArrayPushString(Array:aDefaultZombieSounds[CLASS_SOUND_PAIN], DEFAULT_ZOMBIE_PAIN_SOUNDS[i])
 
 	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_DIE_SOUNDS); i++)
-		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_DIE], DEFAULT_ZOMBIE_DIE_SOUNDS[i])
+		ArrayPushString(Array:aDefaultZombieSounds[CLASS_SOUND_DIE], DEFAULT_ZOMBIE_DIE_SOUNDS[i])
 
 	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_ATTACK_SOUNDS); i++)
-		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_ATTACK], DEFAULT_ZOMBIE_ATTACK_SOUNDS[i])
+		ArrayPushString(Array:aDefaultZombieSounds[CLASS_SOUND_ATTACK], DEFAULT_ZOMBIE_ATTACK_SOUNDS[i])
 
 	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_SWING_SOUNDS); i++)
-		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_SWING], DEFAULT_ZOMBIE_SWING_SOUNDS[i])
+		ArrayPushString(Array:aDefaultZombieSounds[CLASS_SOUND_SWING], DEFAULT_ZOMBIE_SWING_SOUNDS[i])
 
 	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_WALL_SOUNDS); i++)
-		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_WALL], DEFAULT_ZOMBIE_WALL_SOUNDS[i])
+		ArrayPushString(Array:aDefaultZombieSounds[CLASS_SOUND_WALL], DEFAULT_ZOMBIE_WALL_SOUNDS[i])
 
 	for(new i = 0; i < sizeof(DEFAULT_ZOMBIE_INFECT_SOUNDS); i++)
-		ArrayPushString(aDefaultZombieSounds[CLASS_SOUND_INFECT], DEFAULT_ZOMBIE_INFECT_SOUNDS[i])
+		ArrayPushString(Array:aDefaultZombieSounds[CLASS_SOUND_INFECT], DEFAULT_ZOMBIE_INFECT_SOUNDS[i])
 
 	for(new sound_type = 0; sound_type < eClassSounds; sound_type++)
 	{
