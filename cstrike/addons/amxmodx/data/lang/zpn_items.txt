@@ -10,7 +10,9 @@ ZPN_ITEM_FROSTNADE_HAS_FLASHBANG = \r[Você já possui outro tipo de flashbang]
 ZPN_ITEM_FROSTNADE_AMMO_FULL = \r[Limite de granadas congelantes atingido]
 ZPN_ITEM_FROSTNADE_WEAPON_BUSY = \r[Aguarde o fim do lançamento]
 ZPN_ITEM_FIRENADE = Granada de fogo
-ZPN_ITEM_FIRENADE_HAS_HEGRENADE = \r[Você já possui uma granada HE]
+ZPN_ITEM_FIRENADE_HAS_HEGRENADE = \r[Você já possui outro tipo de granada HE]
+ZPN_ITEM_FIRENADE_AMMO_FULL = \r[Limite de granadas de fogo atingido]
+ZPN_ITEM_FIRENADE_WEAPON_BUSY = \r[Aguarde o fim do lançamento]
 
 [en]
 ZPN_NO_ITEMS = ^3No items are available.
@@ -24,4 +26,6 @@ ZPN_ITEM_FROSTNADE_HAS_FLASHBANG = \r[You already have another type of flashbang
 ZPN_ITEM_FROSTNADE_AMMO_FULL = \r[Frost grenade ammo is full]
 ZPN_ITEM_FROSTNADE_WEAPON_BUSY = \r[Wait for the throw to finish]
 ZPN_ITEM_FIRENADE = Fire grenade
-ZPN_ITEM_FIRENADE_HAS_HEGRENADE = \r[You already have an HE grenade]
+ZPN_ITEM_FIRENADE_HAS_HEGRENADE = \r[You already have another type of HE grenade]
+ZPN_ITEM_FIRENADE_AMMO_FULL = \r[Fire grenade ammo is full]
+ZPN_ITEM_FIRENADE_WEAPON_BUSY = \r[Wait for the throw to finish]

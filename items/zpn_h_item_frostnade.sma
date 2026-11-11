@@ -5,6 +5,7 @@
 
 #define ITEM_UID 29092025
 #define IS_CUSTOM_ITEM(%0) (get_entvar(%0, var_impulse) == ITEM_UID)
+#define MAX_GRENADE_AMMO 255 // AmmoX transmits the backpack count as one byte.
 
 new const SPRITE_TRAIL[] = "sprites/laserbeam.spr"
 new const SPRITE_RING[] = "sprites/shockwave.spr"
@@ -86,14 +87,21 @@ public zpn_item_buy_post(const id, const item_id)
 		return
 
 	new userid = get_user_userid(id), ammo = rg_get_user_bpammo(id, WEAPON_FLASHBANG)
-	rg_give_custom_item(id, "weapon_flashbang", GT_APPEND, ITEM_UID)
+	new weapon = rg_find_weapon_bpack_by_name(id, "weapon_flashbang")
+	if(is_nullent(weapon))
+		rg_give_custom_item(id, "weapon_flashbang", GT_APPEND, ITEM_UID)
+	else
+	{
+		// Keep the custom weapon/UID and bypass CS's default pickup cap.
+		// The items core already enforces the configured purchase limits.
+		rg_set_user_bpammo(id, WEAPON_FLASHBANG, ammo + 1)
+	}
+
 	if(!zpn_is_valid_player_connected(id) || get_user_userid(id) != userid)
 		return
 
-	// A second frost grenade adds ammo to the existing weapon entity. Verify
-	// the inventory result rather than retaining the temporary duplicate entity.
-	new weapon = rg_find_weapon_bpack_by_name(id, "weapon_flashbang")
-	if(is_nullent(weapon) || !IS_CUSTOM_ITEM(weapon) || rg_get_user_bpammo(id, WEAPON_FLASHBANG) <= ammo)
+	weapon = rg_find_weapon_bpack_by_name(id, "weapon_flashbang")
+	if(is_nullent(weapon) || !IS_CUSTOM_ITEM(weapon) || rg_get_user_bpammo(id, WEAPON_FLASHBANG) != ammo + 1)
 		log_amx("[ZPN] Failed to give a frost grenade to client %d", id)
 }
 
@@ -119,7 +127,7 @@ eFrostBuyBlock:get_frost_buy_block(const id)
 	if(!is_nullent(weapon) && ammo <= 0)
 		return FROST_BUY_WEAPON_BUSY
 
-	if(ammo >= rg_get_weapon_info(WEAPON_FLASHBANG, WI_MAX_ROUNDS))
+	if(ammo >= MAX_GRENADE_AMMO)
 		return FROST_BUY_AMMO_FULL
 
 	return FROST_BUY_ALLOWED

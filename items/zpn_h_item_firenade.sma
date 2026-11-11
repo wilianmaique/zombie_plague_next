@@ -5,6 +5,7 @@
 
 #define ITEM_UID 31102026
 #define IS_CUSTOM_ITEM(%0) (get_entvar(%0, var_impulse) == ITEM_UID)
+#define MAX_GRENADE_AMMO 255 // AmmoX transmits the backpack count as one byte.
 
 new const SPRITE_TRAIL[] = "sprites/laserbeam.spr"
 new const SPRITE_EXPLOSION[] = "sprites/zerogxplode.spr"
@@ -17,6 +18,14 @@ enum _:eCvars
 	Float:CVAR_DAMAGE,
 	Float:CVAR_SLOWDOWN,
 	CVAR_CAN_KILL,
+}
+
+enum eFireBuyBlock
+{
+	FIRE_BUY_ALLOWED = 0,
+	FIRE_BUY_OTHER_HEGRENADE,
+	FIRE_BUY_AMMO_FULL,
+	FIRE_BUY_WEAPON_BUSY,
 }
 
 new item, xCvars[eCvars], xTrailSprite, xExplosionSprite, xRoundSerial
@@ -58,16 +67,22 @@ public zpn_item_buy_pre(const id, const item_id, const bool:preview, extra_text[
 	if(!can_receive_fire_grenade(id))
 		return ZPN_RETURN_HANDLED
 
-	// CS shares one HE weapon entity/ammo pool. Do not merge away the custom UID
-	// or charge for a second grenade when the player's HE slot is occupied.
-	if(has_he_grenade(id))
-	{
-		if(preview)
-			add(extra_text, maxlen, fmt("%L", id, "ZPN_ITEM_FIRENADE_HAS_HEGRENADE"))
-		return ZPN_RETURN_HANDLED
-	}
+	new eFireBuyBlock:reason = get_fire_buy_block(id)
+	if(reason == FIRE_BUY_ALLOWED)
+		return ZPN_RETURN_CONTINUE
 
-	return ZPN_RETURN_CONTINUE
+	if(preview)
+	{
+		new key[64]
+		switch(reason)
+		{
+			case FIRE_BUY_OTHER_HEGRENADE: copy(key, charsmax(key), "ZPN_ITEM_FIRENADE_HAS_HEGRENADE")
+			case FIRE_BUY_AMMO_FULL: copy(key, charsmax(key), "ZPN_ITEM_FIRENADE_AMMO_FULL")
+			case FIRE_BUY_WEAPON_BUSY: copy(key, charsmax(key), "ZPN_ITEM_FIRENADE_WEAPON_BUSY")
+		}
+		add(extra_text, maxlen, fmt("%L", id, key))
+	}
+	return ZPN_RETURN_HANDLED
 }
 
 public zpn_item_buy_post(const id, const item_id)
@@ -76,11 +91,25 @@ public zpn_item_buy_post(const id, const item_id)
 		return
 
 	// Recheck after purchase forwards, which can change the player/inventory.
-	if(!can_receive_fire_grenade(id) || has_he_grenade(id))
+	if(!can_receive_fire_grenade(id) || get_fire_buy_block(id) != FIRE_BUY_ALLOWED)
 		return
 
-	new weapon = rg_give_custom_item(id, "weapon_hegrenade", GT_APPEND, ITEM_UID)
+	new userid = get_user_userid(id), ammo = rg_get_user_bpammo(id, WEAPON_HEGRENADE)
+	new weapon = rg_find_weapon_bpack_by_name(id, "weapon_hegrenade")
 	if(is_nullent(weapon))
+		rg_give_custom_item(id, "weapon_hegrenade", GT_APPEND, ITEM_UID)
+	else
+	{
+		// Keep the custom weapon/UID and bypass CS's default pickup cap.
+		// The items core already enforces the configured purchase limits.
+		rg_set_user_bpammo(id, WEAPON_HEGRENADE, ammo + 1)
+	}
+
+	if(!zpn_is_valid_player_connected(id) || get_user_userid(id) != userid)
+		return
+
+	weapon = rg_find_weapon_bpack_by_name(id, "weapon_hegrenade")
+	if(is_nullent(weapon) || !IS_CUSTOM_ITEM(weapon) || rg_get_user_bpammo(id, WEAPON_HEGRENADE) != ammo + 1)
 		log_amx("[ZPN] Failed to give a fire grenade to client %d", id)
 }
 
@@ -94,9 +123,21 @@ bool:can_receive_fire_grenade(const id)
 		&& zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_HUMAN
 }
 
-bool:has_he_grenade(const id)
+eFireBuyBlock:get_fire_buy_block(const id)
 {
-	return rg_has_item_by_name(id, "weapon_hegrenade") || rg_get_user_bpammo(id, WEAPON_HEGRENADE) > 0
+	new weapon = rg_find_weapon_bpack_by_name(id, "weapon_hegrenade")
+	new ammo = rg_get_user_bpammo(id, WEAPON_HEGRENADE)
+	// HE ammo shares one weapon/UID; do not turn another grenade into a fire nade.
+	if((!is_nullent(weapon) && !IS_CUSTOM_ITEM(weapon)) || (is_nullent(weapon) && ammo > 0))
+		return FIRE_BUY_OTHER_HEGRENADE
+	// An empty grenade weapon may already be scheduled for destruction.
+	if(!is_nullent(weapon) && ammo <= 0)
+		return FIRE_BUY_WEAPON_BUSY
+
+	if(ammo >= MAX_GRENADE_AMMO)
+		return FIRE_BUY_AMMO_FULL
+
+	return FIRE_BUY_ALLOWED
 }
 
 public CSGameRules_RestartRound_Pre()
