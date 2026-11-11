@@ -49,6 +49,7 @@ enum _:eForwards
 	FW_INFECT_ATTEMPT,
 	FW_USER_FROZEN_PRE,
 	FW_USER_FROZEN_POST,
+	FW_USER_UNFROZEN_POST,
 	FW_USER_FLAME_PRE,
 	FW_USER_FLAME_POST,
 	FW_USER_FLAME_TICK_PRE,
@@ -164,6 +165,7 @@ public plugin_init()
 	xForwards[FW_HUMANIZED_POST] = CreateMultiForward("zpn_user_humanized_post", ET_IGNORE, FP_CELL, FP_CELL)
 	xForwards[FW_USER_FROZEN_PRE] = CreateMultiForward("zpn_user_frozen_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_USER_FROZEN_POST] = CreateMultiForward("zpn_user_frozen_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_USER_UNFROZEN_POST] = CreateMultiForward("zpn_user_unfrozen_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_USER_FLAME_PRE] = CreateMultiForward("zpn_user_flame_pre", ET_CONTINUE, FP_CELL, FP_CELL, FP_VAL_BYREF, FP_VAL_BYREF, FP_VAL_BYREF, FP_CELL, FP_CELL)
 	xForwards[FW_USER_FLAME_POST] = CreateMultiForward("zpn_user_flame_post", ET_IGNORE, FP_CELL, FP_CELL, FP_FLOAT, FP_FLOAT, FP_FLOAT, FP_CELL, FP_CELL)
 	xForwards[FW_USER_FLAME_TICK_PRE] = CreateMultiForward("zpn_user_flame_tick_pre", ET_CONTINUE, FP_CELL, FP_CELL, FP_VAL_BYREF)
@@ -1915,6 +1917,7 @@ public remove_user_frozen(this)
 	if(!is_user_connected(this) || !zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
 		return
 
+	new userid = get_user_userid(this), forward_return
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_FREEZED, false)
 
 	set_entvar(this, var_iuser3, get_entvar(this, var_iuser3) & ~PLAYER_PREVENT_JUMP)
@@ -1922,6 +1925,12 @@ public remove_user_frozen(this)
 
 	if(is_user_alive(this))
 		rg_reset_maxspeed(this)
+
+	if(!is_user_connected(this) || get_user_userid(this) != userid
+	|| zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
+		return
+
+	ExecuteForward(xForwards[FW_USER_UNFROZEN_POST], forward_return, this)
 }
 
 get_user_speed(const this)

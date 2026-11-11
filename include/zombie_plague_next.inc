@@ -249,6 +249,20 @@ forward zpn_user_frozen_pre(const this);
 forward zpn_user_frozen_post(const this);
 
 /**
+ * Called after an existing freeze has been removed from a client.
+ *
+ * @note Runs after clearing the frozen state, jump restriction and rendering,
+ *       and resetting maxspeed for living clients. Not called if the client
+ *       disconnected or was frozen again during the speed reset.
+ * @note Also runs when an existing freeze is removed by lifecycle cleanup.
+ *
+ * @param this      Client index; may be dead/disconnecting
+ *
+ * @noreturn
+ */
+forward zpn_user_unfrozen_post(const this);
+
+/**
  * Called before applying or refreshing a flame effect.
  *
  * @note time, damage and slowdown can be changed by reference. The core validates
@@ -1397,6 +1411,8 @@ native bool:zpn_set_user_frozen(const this, const Float:time = 3.0, const bool:r
 
 /**
  * Removes the frozen state from a client.
+ *
+ * @note Calls zpn_user_unfrozen_post() after an existing freeze is removed.
  *
  * @param this      Client index
  *
