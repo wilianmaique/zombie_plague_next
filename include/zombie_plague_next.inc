@@ -276,7 +276,8 @@ forward zpn_user_unfrozen_post(const this);
  * @param attacker   Connected attacker index, or 0 for world damage
  * @param time       Duration in seconds, 0.1..3600.0
  * @param damage     Damage requested every 0.2 seconds, 0.0..1000000.0
- * @param slowdown   Horizontal velocity multiplier, 0.0..1.0; 1.0 disables it
+ * @param slowdown   Grounded normal-zombie maxspeed multiplier, 0.0..1.0
+ *                   1.0 disables slowdown; 0.0 keeps a minimum cap of 1 unit/s
  * @param reset_time Whether an existing effect is being refreshed
  * @param can_kill   Whether the requested damage may kill the victim
  * @return           ZPN_RETURN_CONTINUE to apply, ZPN_RETURN_HANDLED to block
@@ -287,17 +288,21 @@ forward zpn_user_flame_pre(const id, const attacker, &Float:time, &Float:damage,
  * Called after a flame application/refresh is committed, with the final values.
  * An addon may call zpn_remove_user_flame() here. Recursive applications to the
  * same client are rejected until the original application returns.
+ * @note Maxspeed is recalculated first when needed. This notification is skipped
+ *       if a speed hook has already removed/changed the effect or invalidated
+ *       the victim.
  *
  * @noreturn
  */
 forward zpn_user_flame_post(const id, const attacker, const Float:time, const Float:damage, const Float:slowdown, const bool:reset_time, const bool:can_kill);
 
 /**
- * Called before a flame tick's damage and slowdown.
+ * Called before a flame tick's damage.
  *
  * @note Changing damage affects only this tick; the nonlethal cap is applied
  *       afterwards. Return ZPN_RETURN_HANDLED or higher to skip this tick.
  *       Call zpn_remove_user_flame(id) to extinguish the effect entirely.
+ *       Slowdown is continuous and is not interrupted by a skipped damage tick.
  * @note Removing/refreshing the effect or changing the victim's life/class in
  *       this forward cancels the pending tick. The sprite continues animating
  *       when a tick is skipped. Tick post is not emitted for a skipped tick.
@@ -342,6 +347,7 @@ forward zpn_user_flame_remove_pre(const id, const eFlameRemoveReasons:reason);
 /**
  * Called after the flame state is cleared and its sprite is hidden/removed.
  * The entity removal itself is deferred by ReGameDLL to a safe engine frame.
+ * Maxspeed is recalculated for a living client when removing slowdown.
  *
  * @param id         Client index; may be dead/disconnecting
  * @param reason     Final eFlameRemoveReasons value
@@ -1449,18 +1455,22 @@ native bool:zpn_is_user_freezed(const this);
  *       contact infection. Disconnected/reused attackers become world damage.
  *       With can_kill false, damage sent to the game is capped at health - 1;
  *       subsequent damage hooks can still modify that amount. Only grounded
- *       normal zombies receive slowdown; vertical velocity is preserved.
+ *       normal zombies receive a continuous maxspeed multiplier, independent
+ *       of damage ticks. Flame damage does not add the game's knockback/pain
+ *       shock; existing penalties from other damage remain in effect. Velocity
+ *       is never multiplied by flame ticks, including its vertical component.
  * @note Water contact or godmode/DAMAGE_NO extinguishes the effect. Death, spawn,
  *       successful class application, round end/restart, disconnect and plugin
  *       shutdown force cleanup. Application while removing/cleaning up fails.
  * @note Pre-forward can block/change the request. Returning true means it was
- *       committed; a post-forward may already have removed it afterwards.
+ *       committed; a speed hook or post-forward may already have removed it.
  *
  * @param id         Living client index
  * @param time       Duration in seconds, 0.1..3600.0
  * @param attacker   Connected client index, or 0 for world damage
  * @param damage     Damage per 0.2-second tick, 0.0..1000000.0; 0.0 disables damage
- * @param slowdown   Grounded normal-zombie X/Y velocity multiplier, 0.0..1.0
+ * @param slowdown   Grounded normal-zombie maxspeed multiplier, 0.0..1.0
+ *                   1.0 disables slowdown; 0.0 keeps a minimum cap of 1 unit/s
  * @param reset_time Refresh an existing effect without selecting another sprite
  * @param can_kill   Allow the requested damage to kill the victim
  * @return           true if committed, false if blocked, invalid, protected,

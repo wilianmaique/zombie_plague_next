@@ -115,6 +115,8 @@ enum _:eFlameData
 	Float:FLAME_NEXT_TICK,
 	Float:FLAME_DAMAGE,
 	Float:FLAME_SLOWDOWN,
+	bool:FLAME_SLOWDOWN_ENABLED,
+	bool:FLAME_GROUNDED,
 	bool:FLAME_CAN_KILL,
 }
 
@@ -122,6 +124,7 @@ new gFlameData[MAX_PLAYERS + 1][eFlameData], gFlameRevision[MAX_PLAYERS + 1]
 new bool:gFlameApplying[MAX_PLAYERS + 1], bool:gFlameRemoving[MAX_PLAYERS + 1]
 new bool:gFlameReady, bool:gFlameRoundCleanup
 new Array:gDefaultFlameSprites, Array:gClassFlameSprites
+new gTakeDamageDepth, gFlameDamageDepth, gFlameDamageVictim, gFlameDamageInflictor
 
 public plugin_init()
 {
@@ -140,6 +143,9 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_TraceAttack, "CBasePlayer_TraceAttack_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "CBasePlayer_TakeDamage_Pre", false)
+	RegisterHookChain(RG_CBasePlayer_TakeDamage, "CBasePlayer_TakeDamage_Post", true)
+	RegisterHookChain(RG_CBasePlayer_TakeDamageImpulse, "CBasePlayer_TakeDamageImpulse_Pre", false)
+	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Post", true)
 	RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "RCBasePlayer_HasRestrictItem_Pre", false)
@@ -241,6 +247,10 @@ public respawn_user(this)
 
 public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:flDamage, bitsDamageType)
 {
+	++gTakeDamageDepth
+	if(victim == gFlameDamageVictim && pevInflictor == gFlameDamageInflictor && (bitsDamageType & DMG_BURN))
+		gFlameDamageDepth = gTakeDamageDepth
+
 	if(victim == attacker || !zpn_is_valid_player_alive(attacker) || !zpn_is_valid_player_alive(victim) || !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED])
 		return HC_CONTINUE
 
@@ -293,6 +303,39 @@ public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:fl
 	return HC_CONTINUE
 }
 
+public CBasePlayer_TakeDamage_Post(const victim, pevInflictor, attacker, Float:flDamage, bitsDamageType)
+{
+	if(gTakeDamageDepth == gFlameDamageDepth)
+		gFlameDamageDepth = 0
+	--gTakeDamageDepth
+}
+
+public CBasePlayer_TakeDamageImpulse_Pre(const this, attacker, Float:flKnockbackForce, Float:flVelModifier)
+{
+	if(gFlameDamageDepth > 0 && this == gFlameDamageVictim && gTakeDamageDepth == gFlameDamageDepth)
+	{
+		// Burning has its own continuous slowdown. Keep any earlier bullet pain
+		// shock intact, and allow unrelated damage nested inside a flame hook.
+		SetHookChainArg(3, ATYPE_FLOAT, 0.0)
+		SetHookChainArg(4, ATYPE_FLOAT, 0.0)
+	}
+	return HC_CONTINUE
+}
+
+public CBasePlayer_PreThink_Pre(const this)
+{
+	if(!gFlameData[this][FLAME_SLOWDOWN_ENABLED] || !is_user_alive(this))
+		return HC_CONTINUE
+
+	new bool:grounded = (get_entvar(this, var_flags) & FL_ONGROUND) != 0
+	if(grounded != gFlameData[this][FLAME_GROUNDED])
+	{
+		gFlameData[this][FLAME_GROUNDED] = grounded
+		rg_reset_maxspeed(this)
+	}
+	return HC_CONTINUE
+}
+
 public CBasePlayer_TraceAttack_Pre(const this, pevAttacker, Float:flDamage, Float:vecDir[3], tracehandle, bitsDamageType)
 {
 	if(this == pevAttacker)
@@ -322,8 +365,22 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 
 public CBasePlayer_ResetMaxSpeed_Post(const this)
 {
-	if(zpn_is_valid_player_alive(this) && zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
+	if(!zpn_is_valid_player_alive(this))
+		return
+
+	if(zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
+	{
 		set_entvar(this, var_maxspeed, 1.0)
+		return
+	}
+
+	if(!gFlameData[this][FLAME_SLOWDOWN_ENABLED] || !(get_entvar(this, var_flags) & FL_ONGROUND))
+		return
+
+	// Let normal movement/friction handle the transition instead of cutting
+	// velocity every damage tick. Zero maxspeed would remove the engine cap.
+	new Float:speed = get_entvar(this, var_maxspeed)
+	set_entvar(this, var_maxspeed, floatmax(1.0, speed * gFlameData[this][FLAME_SLOWDOWN]))
 }
 
 public client_putinserver(id)
@@ -1714,13 +1771,24 @@ bool:set_user_flame(const id, Float:time, const attacker, Float:damage, Float:sl
 		++gFlameRevision[id]
 	}
 
+	new bool:reset_speed = gFlameData[id][FLAME_SLOWDOWN_ENABLED]
+	new class_id = get_user_current_class_index(id)
+	// A successful class change always removes the flame, so eligibility stays
+	// valid until removal/refresh without querying class properties every frame.
+	gFlameData[id][FLAME_SLOWDOWN_ENABLED] = slowdown < 1.0 && 0 <= class_id < zpn_class_array_size()
+		&& zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE
 	gFlameData[id][FLAME_ATTACKER] = attacker
 	gFlameData[id][FLAME_ATTACKER_USERID] = attacker_userid
 	gFlameData[id][FLAME_EXPIRES] = now + time
 	gFlameData[id][FLAME_DAMAGE] = damage
 	gFlameData[id][FLAME_SLOWDOWN] = slowdown
+	gFlameData[id][FLAME_GROUNDED] = (get_entvar(id, var_flags) & FL_ONGROUND) != 0
 	gFlameData[id][FLAME_CAN_KILL] = can_kill
-	ExecuteForward(xForwards[FW_USER_FLAME_POST], forward_return, id, attacker, time, damage, slowdown, reset_time, can_kill)
+	new committed_revision = gFlameRevision[id]
+	if(reset_speed || gFlameData[id][FLAME_SLOWDOWN_ENABLED])
+		rg_reset_maxspeed(id)
+	if(gFlameRevision[id] == committed_revision && zpn_is_valid_player_alive(id) && get_user_userid(id) == userid)
+		ExecuteForward(xForwards[FW_USER_FLAME_POST], forward_return, id, attacker, time, damage, slowdown, reset_time, can_kill)
 	gFlameApplying[id] = false
 	return true
 }
@@ -1752,6 +1820,8 @@ bool:remove_user_flame(const id, const eFlameRemoveReasons:reason)
 	}
 
 	new bool:owned = is_flame_entity(ent, id)
+	new userid = gFlameData[id][FLAME_USERID]
+	new bool:reset_speed = gFlameData[id][FLAME_SLOWDOWN_ENABLED]
 	arrayset(gFlameData[id], 0, eFlameData)
 	++gFlameRevision[id]
 	if(owned)
@@ -1764,7 +1834,11 @@ bool:remove_user_flame(const id, const eFlameRemoveReasons:reason)
 		rg_remove_entity(ent)
 	}
 
-	ExecuteForward(xForwards[FW_USER_FLAME_REMOVE_POST], forward_return, id, reason)
+	if(reset_speed && reason != ZPN_FLAME_REMOVE_DISCONNECT && zpn_is_valid_player_alive(id) && get_user_userid(id) == userid)
+		rg_reset_maxspeed(id)
+
+	if(!is_user_connected(id) || get_user_userid(id) == userid)
+		ExecuteForward(xForwards[FW_USER_FLAME_REMOVE_POST], forward_return, id, reason)
 	gFlameRemoving[id] = was_removing
 	return true
 }
@@ -1819,17 +1893,6 @@ public Flame_Think(const ent)
 	if(forward_return >= ZPN_RETURN_HANDLED || !valid_flame_damage(damage))
 		return
 
-	// Match the original effect: only grounded, normal zombies are slowed down.
-	new class_id = get_user_current_class_index(id)
-	if(gFlameData[id][FLAME_SLOWDOWN] < 1.0 && (get_entvar(id, var_flags) & FL_ONGROUND)
-	&& 0 <= class_id < zpn_class_array_size() && zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE)
-	{
-		new Float:velocity[3]
-		get_entvar(id, var_velocity, velocity)
-		velocity[0] *= gFlameData[id][FLAME_SLOWDOWN]
-		velocity[1] *= gFlameData[id][FLAME_SLOWDOWN]
-		set_entvar(id, var_velocity, velocity)
-	}
 	new Float:health = get_entvar(id, var_health)
 	if(!gFlameData[id][FLAME_CAN_KILL])
 		damage = floatmin(damage, floatmax(0.0, health - 1.0))
@@ -1838,7 +1901,19 @@ public Flame_Think(const ent)
 	attacker = get_flame_attacker(id)
 	new attacker_userid = attacker ? get_user_userid(attacker) : 0
 	if(damage > 0.0)
+	{
+		// Scope impulse suppression to this damage call, including recursive
+		// flame calls, without suppressing other damage raised by an addon.
+		new previous_victim = gFlameDamageVictim, previous_inflictor = gFlameDamageInflictor
+		new previous_depth = gFlameDamageDepth
+		gFlameDamageVictim = id
+		gFlameDamageInflictor = ent
+		gFlameDamageDepth = 0
 		ExecuteHamB(Ham_TakeDamage, id, ent, attacker, damage, DMG_BURN)
+		gFlameDamageVictim = previous_victim
+		gFlameDamageInflictor = previous_inflictor
+		gFlameDamageDepth = previous_depth
+	}
 
 	// A damage hook may remove the flame or kill the victim. Never touch ent here.
 	if(is_user_connected(id) && get_user_userid(id) == userid)

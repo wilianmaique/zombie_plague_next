@@ -42,7 +42,7 @@ public plugin_init()
 	bind_pcvar_float(create_cvar("zpn_firenade_radius", "350.0", .description = "Fire grenade ignition radius in game units.", .has_min = true, .min_val = 1.0, .has_max = true, .max_val = 2048.0), xCvars[CVAR_RADIUS])
 	bind_pcvar_float(create_cvar("zpn_firenade_duration", "5.0", .description = "Flame duration in seconds; another fire grenade refreshes it.", .has_min = true, .min_val = 0.1, .has_max = true, .max_val = 3600.0), xCvars[CVAR_DURATION])
 	bind_pcvar_float(create_cvar("zpn_firenade_damage", "5.0", .description = "Flame damage per 0.2-second tick; 0 disables damage.", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1000000.0), xCvars[CVAR_DAMAGE])
-	bind_pcvar_float(create_cvar("zpn_firenade_slowdown", "0.5", .description = "Grounded normal-zombie horizontal velocity multiplier; 1 disables slowdown.", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_SLOWDOWN])
+	bind_pcvar_float(create_cvar("zpn_firenade_slowdown", "0.5", .description = "Continuous grounded normal-zombie maxspeed multiplier; 0 uses 1 unit/s, 1 disables slowdown.", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_SLOWDOWN])
 	bind_pcvar_num(create_cvar("zpn_firenade_can_kill", "0", .description = "Allow flame damage to kill the victim.", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_CAN_KILL])
 	AutoExecConfig(true, "zpn_h_item_firenade", FOLDER_CVARS_CONFIG)
 }
