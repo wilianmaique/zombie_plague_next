@@ -20,13 +20,38 @@ enum
 	TASK_RESPAWN = 1700,
 	TASK_FROZEN = 1900,
 	TASK_SCORE_ATTRIB = 2000,
+	TASK_CLIENT_MOVEMENT = 2100,
 }
+
+#define CLIENT_MOVE_FORWARD 0
+#define CLIENT_MOVE_BACK 1
+#define CLIENT_MOVE_SIDE 2
+#define CLIENT_MOVE_UP 3
+#define CLIENT_MOVE_COUNT 4
+
+new const CLIENT_MOVEMENT_CVARS[CLIENT_MOVE_COUNT][] =
+{
+	"cl_forwardspeed",
+	"cl_backspeed",
+	"cl_sidespeed",
+	"cl_upspeed",
+}
+
+#define CLIENT_MOVEMENT_QUERY_MASK ((1 << CLIENT_MOVE_COUNT) - 1)
+#define CLIENT_MOVEMENT_REFRESH_INTERVAL 10.0
+#define CLIENT_MOVEMENT_ROUNDING 1.732051
+
+new Float:gClientMovementCvars[MAX_PLAYERS + 1][CLIENT_MOVE_COUNT]
+new Float:gClientMovementQuery[MAX_PLAYERS + 1][CLIENT_MOVE_COUNT]
+new gClientMovementPending[MAX_PLAYERS + 1]
+new bool:gClientMovementReady[MAX_PLAYERS + 1], bool:gClientMovementQueryValid[MAX_PLAYERS + 1]
 
 enum _:eCvars
 {
 	CVAR_START_DELAY,
 	CVAR_LAST_HUMAN_INFECT,
 	CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED,
+	CVAR_CLASS_SPEED_NORMALIZE,
 	CVAR_CLASS_SELECT_INSTANT,
 	Float:CVAR_CLASS_SELECT_INSTANT_TIMEOUT,
 	CVAR_RESPAWN_IN_LAST_H,
@@ -148,9 +173,12 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Post", true)
+	RegisterHookChain(RG_PM_Move, "PM_Move_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "RCBasePlayer_HasRestrictItem_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RG_HandleMenu_ChooseAppearance, "HandleMenu_ChooseAppearance_Post", true)
+
+	set_task_ex(CLIENT_MOVEMENT_REFRESH_INTERVAL, "refresh_client_movement_cvars", TASK_CLIENT_MOVEMENT, .flags = SetTask_Repeat)
 
 	for(new i = 0; i < eSyncHuds; i++)
 		xMsgSync[i] = CreateHudSyncObj()
@@ -383,8 +411,143 @@ public CBasePlayer_ResetMaxSpeed_Post(const this)
 	set_entvar(this, var_maxspeed, floatmax(1.0, speed * gFlameData[this][FLAME_SLOWDOWN]))
 }
 
+public PM_Move_Pre(const this)
+{
+	if(!xCvars[CVAR_CLASS_SPEED_NORMALIZE] || !zpn_is_valid_player_alive(this) || get_pmove(pm_spectator) || get_pmove(pm_movetype) != MOVETYPE_WALK
+	|| (get_pmove(pm_flags) & (FL_FROZEN | FL_ONTRAIN)) || get_member_game(m_bFreezePeriod)
+	|| zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
+		return HC_CONTINUE
+
+	// Use the final speed, including weapon weight, flame slowdown and addon hooks.
+	// The engine initializes pm_maxspeed from sv_maxspeed before every command.
+	new Float:maxspeed = get_pmove(pm_clientmaxspeed)
+	if(maxspeed <= 1.0 || (_:maxspeed & 0x7F800000) == 0x7F800000)
+		return HC_CONTINUE
+
+	new class_id = get_user_current_class_index(this)
+	if(class_id < 0 || class_id >= zpn_class_array_size())
+		return HC_CONTINUE
+
+	set_pmove(pm_maxspeed, maxspeed)
+
+	// Bots already generate movement from their own maxspeed and walk settings.
+	if(!gClientMovementReady[this] || is_user_bot(this))
+		return HC_CONTINUE
+
+	new cmd = get_pmove(pm_cmd)
+	new Float:move[3], Float:input[3], Float:axis_speed[3]
+	move[0] = get_ucmd(cmd, ucmd_forwardmove)
+	move[1] = get_ucmd(cmd, ucmd_sidemove)
+	move[2] = get_ucmd(cmd, ucmd_upmove)
+	axis_speed[0] = gClientMovementCvars[this][move[0] < 0.0 ? CLIENT_MOVE_BACK : CLIENT_MOVE_FORWARD]
+	axis_speed[1] = gClientMovementCvars[this][CLIENT_MOVE_SIDE]
+	axis_speed[2] = gClientMovementCvars[this][CLIENT_MOVE_UP]
+
+	new Float:fraction, bool:full_input
+	for(new axis = 0; axis < sizeof move; axis++)
+	{
+		if(move[axis] == 0.0)
+			continue
+		if(axis_speed[axis] <= 0.0 || (_:move[axis] & 0x7F800000) == 0x7F800000)
+			return HC_CONTINUE
+
+		input[axis] = move[axis] / axis_speed[axis]
+		if((_:input[axis] & 0x7F800000) == 0x7F800000)
+			return HC_CONTINUE
+		input[axis] = floatclamp(input[axis], -1.0, 1.0)
+		fraction = floatmax(fraction, floatabs(input[axis]))
+		if(floatabs(move[axis]) > axis_speed[axis] - 1.0)
+			full_input = true
+	}
+
+	if(fraction == 0.0)
+		return HC_CONTINUE
+
+	// Keep the direction numerically stable even with very large client cvars.
+	for(new axis = 0; axis < sizeof input; axis++)
+		input[axis] /= fraction
+
+	// CS clips the command to client maxspeed BEFORE applying cl_movespeedkey.
+	// Undo that clip in the input fraction too, so +speed is preserved on both
+	// straight and diagonal movement without relying on the unused IN_RUN bit.
+	new Float:move_length = vector_length(move)
+	fraction = floatmin(1.0, floatmax(fraction, move_length / maxspeed))
+	// Allow for usercmd movement quantization at the running speed cap.
+	if(full_input || move_length >= maxspeed - CLIENT_MOVEMENT_ROUNDING)
+		fraction = 1.0
+
+	new Float:scale = maxspeed * fraction / vector_length(input)
+	set_ucmd(cmd, ucmd_forwardmove, input[0] * scale)
+	set_ucmd(cmd, ucmd_sidemove, input[1] * scale)
+	set_ucmd(cmd, ucmd_upmove, input[2] * scale)
+
+	// PM_CheckParameters/PM_Duck still handle freezing, crouching and physics.
+	// Do not replace velocity: preserve knockback, leap, gravity and friction.
+	return HC_CONTINUE
+}
+
+public refresh_client_movement_cvars()
+{
+	if(!xCvars[CVAR_CLASS_SPEED_NORMALIZE])
+		return
+
+	for(new id = 1; id <= MaxClients; id++)
+	{
+		if(is_user_connected(id))
+			query_user_movement_cvars(id)
+	}
+}
+
+query_user_movement_cvars(const id)
+{
+	// Do not stack requests if a client never answers the current batch.
+	if(!xCvars[CVAR_CLASS_SPEED_NORMALIZE] || gClientMovementPending[id] || is_user_bot(id) || is_user_hltv(id))
+		return
+
+	gClientMovementPending[id] = CLIENT_MOVEMENT_QUERY_MASK
+	gClientMovementQueryValid[id] = true
+	new data[2]
+	data[0] = get_user_userid(id)
+	for(new i = 0; i < CLIENT_MOVE_COUNT; i++)
+	{
+		data[1] = i
+		query_client_cvar(id, CLIENT_MOVEMENT_CVARS[i], "client_movement_cvar_result", sizeof data, data)
+	}
+}
+
+public client_movement_cvar_result(id, const cvar[], const value[], const data[])
+{
+	if(!zpn_is_valid_player_connected(id) || get_user_userid(id) != data[0])
+		return
+
+	new index = data[1]
+	if(!(0 <= index < CLIENT_MOVE_COUNT) || !(gClientMovementPending[id] & (1 << index))
+	|| !equal(cvar, CLIENT_MOVEMENT_CVARS[index]))
+		return
+
+	new end
+	new Float:speed = strtof(value, end)
+	if(!end || value[end] != EOS || speed < 0.0 || (_:speed & 0x7F800000) == 0x7F800000)
+		gClientMovementQueryValid[id] = false
+	else
+		gClientMovementQuery[id][index] = speed
+
+	gClientMovementPending[id] &= ~(1 << index)
+	if(gClientMovementPending[id] || !gClientMovementQueryValid[id])
+		return
+
+	// Publish the four values together, never a partially refreshed batch.
+	for(new i = 0; i < CLIENT_MOVE_COUNT; i++)
+		gClientMovementCvars[id][i] = gClientMovementQuery[id][i]
+	gClientMovementReady[id] = true
+}
+
 public client_putinserver(id)
 {
+	gClientMovementReady[id] = false
+	gClientMovementPending[id] = 0
+	query_user_movement_cvars(id)
+
 	remove_user_flame(id, ZPN_FLAME_REMOVE_DISCONNECT)
 	remove_task(id + TASK_FROZEN)
 
@@ -396,6 +559,9 @@ public client_putinserver(id)
 
 public client_disconnected(id)
 {
+	gClientMovementReady[id] = false
+	gClientMovementPending[id] = 0
+
 	remove_user_flame(id, ZPN_FLAME_REMOVE_DISCONNECT)
 	remove_user_frozen(id + TASK_FROZEN)
 	remove_task(id + TASK_HUD_PLAYER_INFO)
@@ -760,6 +926,8 @@ public plugin_precache()
 	bind_pcvar_float(create_cvar("zpn_class_select_instant_timeout", "30", .has_min = true, .min_val = 10.0, .has_max = true, .max_val = 500.0), xCvars[CVAR_CLASS_SELECT_INSTANT_TIMEOUT])
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 	bind_pcvar_num(create_cvar("zpn_weapon_weight_discount_speed", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
+
+	bind_pcvar_num(create_cvar("zpn_class_speed_normalize", "1", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_CLASS_SPEED_NORMALIZE])
 	//bind_pcvar_num(create_cvar("zpn_respawn_in_last_human", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_RESPAWN_IN_LAST_H])
 	
 	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", xSettingsVars[CONFIG_DEBUG_ON]))

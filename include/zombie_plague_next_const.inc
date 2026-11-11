@@ -125,7 +125,7 @@ enum ePropClassRegisters
 	PROP_CLASS_REGISTER_BODY, // int
 	PROP_CLASS_REGISTER_HEALTH, // float
 	PROP_CLASS_REGISTER_ARMOR, // float
-	PROP_CLASS_REGISTER_SPEED, // float
+	PROP_CLASS_REGISTER_SPEED, // float, running speed in units/s; zpn_class_speed_normalize enables client movement normalization while preserving +speed
 	PROP_CLASS_REGISTER_GRAVITY, // float
 	PROP_CLASS_REGISTER_KNOCKBACK, // float
 	PROP_CLASS_REGISTER_CLAW_WEAPONLIST, // string
