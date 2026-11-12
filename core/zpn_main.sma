@@ -1587,6 +1587,7 @@ bool:set_user_zombie(this, infector, bool:set_first, const forced_class = -1)
 
 	new flame_userid = get_user_userid(this)
 	remove_user_flame(this, ZPN_FLAME_REMOVE_CLASS_CHANGE)
+
 	if(!zpn_is_valid_player_alive(this) || get_user_userid(this) != flame_userid)
 		return false
 
@@ -1614,6 +1615,7 @@ bool:set_user_zombie(this, infector, bool:set_first, const forced_class = -1)
 	rg_remove_item(this, "weapon_shield")
 	rg_drop_items_by_slot(this, PRIMARY_WEAPON_SLOT)
 	rg_drop_items_by_slot(this, PISTOL_SLOT)
+	rg_drop_items_by_slot(this, GRENADE_SLOT)
 	rg_give_item(this, "weapon_knife")
 
 	if(class_blood_color != -1) set_member(this, m_bloodColor, clamp(class_blood_color, 0, 255))
@@ -1675,6 +1677,7 @@ bool:set_user_human(this, const forced_class = -1)
 
 	new flame_userid = get_user_userid(this)
 	remove_user_flame(this, ZPN_FLAME_REMOVE_CLASS_CHANGE)
+	
 	if(!zpn_is_valid_player_alive(this) || get_user_userid(this) != flame_userid)
 		return false
 
@@ -1728,6 +1731,7 @@ bool:set_user_human(this, const forced_class = -1)
 	{
 		if(!rg_find_weapon_bpack_by_name(this, "weapon_knife"))
 			rg_give_item(this, "weapon_knife")
+
 		get_selected_weapon(this, xDataGetGameRule[GAME_RULE_PRIMARY_WEAPONS], zpn_player_data_get_prop(this, PROP_PD_REGISTER_PRIMARY_WEAPON), PRIMARY_WEAPON_SLOT)
 		get_selected_weapon(this, xDataGetGameRule[GAME_RULE_SECONDARY_WEAPONS], zpn_player_data_get_prop(this, PROP_PD_REGISTER_SECONDARY_WEAPON), PISTOL_SLOT)
 		deploy_weapon(this)
