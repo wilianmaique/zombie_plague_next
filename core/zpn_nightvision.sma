@@ -4,11 +4,9 @@
 #include <zombie_plague_next>
 #include <zombie_plague_next_const>
 
-const FFADE_IN = 0x0000
-const FFADE_OUT = 0x0001
-const FFADE_STAYOUT = 0x0004
 const SCREENFADE_SCALE = 1 << 12
 const SCREENFADE_MIN_TIME = 4 // 0.001 seconds in the ScreenFade protocol
+const SCREENFADE_MAX_TIME = 0xFFFF
 const Float:DLIGHT_INTERVAL = 0.05
 
 enum
@@ -32,6 +30,7 @@ new xMsgScreenFade, bool:xSendingFade
 new xMapLighting[64] = "m", xLightingRevision, xPlayerLightingRevision[33]
 new xAppliedMethod[33], bool:xClient[33], bool:xOverlayVisible[33]
 new Float:xNextDlight[33], Float:xFadeUntil[33]
+new xFadeOwner[33] // calling plugin id + 1; 0 = external fade or no API owner
 
 public plugin_precache()
 {
@@ -45,6 +44,7 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", true)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
+	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
 
 	register_clcmd("nightvision", "clcmd_nightvision")
 
@@ -64,6 +64,14 @@ public plugin_init()
 	AutoExecConfig(true, "zpn_nightvision", FOLDER_CVARS_CONFIG)
 }
 
+public plugin_natives()
+{
+	register_library("zombie_plague_next_nightvision")
+
+	register_native("zpn_set_user_fade", "_zpn_set_user_fade")
+	register_native("zpn_remove_user_fade", "_zpn_remove_user_fade")
+}
+
 public OnConfigsExecuted()
 {
 	cache_settings()
@@ -75,7 +83,10 @@ public plugin_end()
 	for(new id = 1; id <= MaxClients; id++)
 	{
 		if(xClient[id] && is_user_connected(id))
+		{
+			clear_user_fade(id)
 			clear_user_nightvision(id)
+		}
 	}
 }
 
@@ -115,13 +126,29 @@ public CBasePlayer_PreThink_Pre(const this)
 
 public CBasePlayer_Spawn_Post(const this)
 {
+	if(!IsReapiHookOriginalWasCalled(RG_CBasePlayer_Spawn))
+		return
+
+	clear_user_fade(this)
 	update_user_nightvision(this, true)
 }
 
 public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
-	if(xClient[this])
+	if(xClient[this] && IsReapiHookOriginalWasCalled(RG_CBasePlayer_Killed) && !is_user_alive(this))
+	{
+		clear_user_fade(this)
 		clear_user_nightvision(this)
+	}
+}
+
+public CSGameRules_RestartRound_Pre()
+{
+	for(new id = 1; id <= MaxClients; id++)
+	{
+		if(xClient[id] && is_user_connected(id) && clear_user_fade(id))
+			update_user_nightvision(id, true)
+	}
 }
 
 public zpn_user_infected_post(const this, const infector, const class_id)
@@ -166,7 +193,7 @@ public ScreenFade_Post(const msg_id, const msg_dest, const msg_entity)
 	new Float:until = get_gametime()
 	if(GetMessageData(MsgArg, 7))
 	{
-		if(flags & FFADE_STAYOUT)
+		if(flags & ZPN_FADE_STAYOUT)
 			until = -1.0
 		else
 			until += float((GetMessageData(MsgArg, 1) & 0xFFFF) + (GetMessageData(MsgArg, 2) & 0xFFFF)) / float(SCREENFADE_SCALE)
@@ -190,6 +217,59 @@ public ScreenFade_Post(const msg_id, const msg_dest, const msg_entity)
 	}
 
 	return HC_CONTINUE
+}
+
+public bool:_zpn_set_user_fade(plugin_id, param_nums)
+{
+	if(param_nums != 7 || !xMsgScreenFade)
+		return false
+
+	new id = get_param(1)
+	if(!zpn_is_valid_player_connected(id) || !xClient[id])
+		return false
+
+	new Float:time = get_param_f(3), Float:hold_time = get_param_f(4)
+	new alpha = get_param(5), flags = get_param(6)
+	if((_:time & 0x7F800000) == 0x7F800000 || (_:hold_time & 0x7F800000) == 0x7F800000
+	|| !(0.0 <= time <= 16.0) || !(0.0 <= hold_time <= 16.0) || !(1 <= alpha <= 255)
+	|| (flags & ~(ZPN_FADE_OUT | ZPN_FADE_MODULATE | ZPN_FADE_STAYOUT)))
+		return false
+
+	new rgb[3]
+	get_array(2, rgb, sizeof rgb)
+	for(new i = 0; i < sizeof rgb; i++)
+	{
+		if(!(0 <= rgb[i] <= 255))
+			return false
+	}
+
+	new Float:now = get_gametime()
+	if(!get_param(7) && xFadeOwner[id] != plugin_id + 1
+	&& (xFadeUntil[id] < 0.0 || now < xFadeUntil[id]))
+		return false
+
+	new duration = clamp(floatround(time * SCREENFADE_SCALE, floatround_floor), SCREENFADE_MIN_TIME, SCREENFADE_MAX_TIME)
+	new hold = clamp(floatround(hold_time * SCREENFADE_SCALE, floatround_floor), 0, SCREENFADE_MAX_TIME)
+	track_screenfade(id, (flags & ZPN_FADE_STAYOUT) ? -1.0 : now + float(duration + hold) / float(SCREENFADE_SCALE))
+	xFadeOwner[id] = plugin_id + 1
+	send_user_screenfade(id, rgb, alpha, duration, hold, flags)
+	return true
+}
+
+public bool:_zpn_remove_user_fade(plugin_id, param_nums)
+{
+	if(param_nums != 1)
+		return false
+
+	new id = get_param(1)
+	if(!zpn_is_valid_player_connected(id) || !xClient[id] || xFadeOwner[id] != plugin_id + 1)
+		return false
+
+	if(!clear_user_fade(id))
+		return false
+
+	update_user_nightvision(id, true)
+	return true
 }
 
 cache_settings()
@@ -230,6 +310,7 @@ reset_user_nightvision(id)
 	xOverlayVisible[id] = false
 	xNextDlight[id] = 0.0
 	xFadeUntil[id] = 0.0
+	xFadeOwner[id] = 0
 	xPlayerLightingRevision[id] = 0
 	zpn_player_data_set_prop(id, PROP_PD_REGISTER_NV_ON, false)
 }
@@ -238,6 +319,10 @@ update_user_nightvision(id, bool:refresh = false)
 {
 	if(!xClient[id] || !is_user_connected(id))
 		return
+
+	new Float:time = get_gametime()
+	if(xFadeOwner[id] && xFadeUntil[id] >= 0.0 && time >= xFadeUntil[id])
+		xFadeOwner[id] = 0
 
 	new method = NIGHTVISION_NONE
 	if(is_user_alive(id) && zpn_player_data_get_prop(id, PROP_PD_REGISTER_NV_ON))
@@ -253,7 +338,6 @@ update_user_nightvision(id, bool:refresh = false)
 	if(method == NIGHTVISION_NONE)
 		return
 
-	new Float:time = get_gametime()
 	if(method == NIGHTVISION_DLIGHT)
 	{
 		if(refresh || time >= xNextDlight[id])
@@ -275,7 +359,7 @@ update_user_nightvision(id, bool:refresh = false)
 	{
 		new rgb[3]
 		get_user_nv_color(id, rgb)
-		send_user_screenfade(id, rgb, true)
+		send_user_screenfade(id, rgb, xAlpha, 0, SCREENFADE_MIN_TIME, ZPN_FADE_OUT | ZPN_FADE_STAYOUT)
 		xOverlayVisible[id] = true
 	}
 }
@@ -288,7 +372,7 @@ clear_user_nightvision(id)
 		if(xOverlayVisible[id])
 		{
 			new rgb[3]
-			send_user_screenfade(id, rgb, false)
+			send_user_screenfade(id, rgb, 0, SCREENFADE_MIN_TIME, 0, ZPN_FADE_IN)
 		}
 	}
 
@@ -302,6 +386,22 @@ track_screenfade(id, Float:until)
 	// Never send a nested message from the message hook. PreThink restores it.
 	xOverlayVisible[id] = false
 	xFadeUntil[id] = until
+	xFadeOwner[id] = 0
+}
+
+bool:clear_user_fade(id)
+{
+	if(!xFadeOwner[id])
+		return false
+
+	xFadeOwner[id] = 0
+	if(xFadeUntil[id] >= 0.0 && get_gametime() >= xFadeUntil[id])
+		return false
+
+	new rgb[3]
+	track_screenfade(id, 0.0)
+	send_user_screenfade(id, rgb, 0, SCREENFADE_MIN_TIME, 0, ZPN_FADE_IN)
+	return true
 }
 
 get_user_nv_color(id, rgb[3])
@@ -352,17 +452,17 @@ send_user_lightstyle(id, const lighting[])
 	message_end()
 }
 
-send_user_screenfade(id, const rgb[3], bool:enabled)
+send_user_screenfade(id, const rgb[3], alpha, duration, hold, flags)
 {
 	xSendingFade = true
 	message_begin(MSG_ONE, xMsgScreenFade, .player = id)
-	write_short(enabled ? 0 : SCREENFADE_MIN_TIME)
-	write_short(enabled ? SCREENFADE_MIN_TIME : 0)
-	write_short(enabled ? (FFADE_OUT | FFADE_STAYOUT) : FFADE_IN)
+	write_short(duration)
+	write_short(hold)
+	write_short(flags)
 	write_byte(rgb[0])
 	write_byte(rgb[1])
 	write_byte(rgb[2])
-	write_byte(enabled ? xAlpha : 0)
+	write_byte(alpha)
 	message_end()
 	xSendingFade = false
 }

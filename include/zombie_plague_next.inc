@@ -1395,6 +1395,50 @@ native bool:zpn_is_escape_round_active();
  */
 native zpn_send_weapon_deploy(const this);
 
+enum
+{
+	ZPN_FADE_IN = 0x0000,
+	ZPN_FADE_OUT = 0x0001,
+	ZPN_FADE_MODULATE = 0x0002,
+	ZPN_FADE_STAYOUT = 0x0004,
+}
+
+/**
+ * Sends a screen fade through the zpn_nightvision core.
+ *
+ * @note Temporarily replaces the nightvision tint, restoring it after the fade
+ *       expires or is removed. Works with either nightvision method, even when
+ *       nightvision is off. Available after zpn_nightvision's plugin_init().
+ * @note The client has one fade layer. By default, an active flash/fade from
+ *       another source blocks this request. The same plugin can refresh its
+ *       own fade; replace = true explicitly replaces any current fade.
+ * @note ZPN_FADE_STAYOUT lasts until replaced or removed. Other fades expire
+ *       after time + hold_time. Death, spawn, round restart and shutdown clear
+ *       fades created with this API. Disconnect discards the client's state.
+ * @note Times must be finite, 0.0..16.0 seconds each. They are encoded with
+ *       1/4096-second precision, capped at 65535 units; duration is at least
+ *       4 units (about 1 ms). Invalid parameters leave the current fade unchanged.
+ *
+ * @param id         Connected human client index (bots/HLTV are ignored)
+ * @param rgb        Red, green and blue components, each 0..255
+ * @param time       Fade transition duration in seconds
+ * @param hold_time  Hold duration in seconds
+ * @param alpha      Maximum opacity, 1..255; use zpn_remove_user_fade() to clear
+ * @param flags      ZPN_FADE_IN/OUT, optionally MODULATE and/or STAYOUT
+ * @param replace    Allow replacing an active fade owned by another source
+ * @return           true if sent, false if invalid, unavailable or occupied
+ */
+native bool:zpn_set_user_fade(const id, const rgb[3], const Float:time = 0.5, const Float:hold_time = 0.0, const alpha = 100, const flags = ZPN_FADE_IN, const bool:replace = false);
+
+/**
+ * Removes the calling plugin's active screen fade and restores nightvision.
+ *
+ * @note Does not clear another plugin's fade or a flash that replaced this one.
+ * @param id         Connected client index
+ * @return           true if removed, false if invalid, expired or no longer owned
+ */
+native bool:zpn_remove_user_fade(const id);
+
 /**
  * Freezes a client for a limited time.
  *
