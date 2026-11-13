@@ -743,7 +743,7 @@ public xHudPlayerInfo(id)
 	new level = zpn_level_get_user_level(id), rankName[32]
 	zpn_level_get_user_rank_name(id, rankName, charsmax(rankName))
 
-	set_hudmessage(0, 255, 255, 0.025, 0.06, 0, 0.0, 0.0, 0.1, 0.1)
+	set_hudmessage(0, 255, 255, 0.025, 0.06, 0, 0.0, 0.0, 0.14, 0.14)
 
 	add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_MODE", get_gamemode_name(id)))
 	add(txt, charsmax(txt), fmt("%L^n", id, "ZPN_HUD_CLASS", get_class_name(id)))
