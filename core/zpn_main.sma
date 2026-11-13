@@ -26,25 +26,25 @@ enum
 #define CLIENT_MOVE_FORWARD 0
 #define CLIENT_MOVE_BACK 1
 #define CLIENT_MOVE_SIDE 2
-#define CLIENT_MOVE_UP 3
-#define CLIENT_MOVE_COUNT 4
+#define CLIENT_MOVE_COUNT 3
 
 new const CLIENT_MOVEMENT_CVARS[CLIENT_MOVE_COUNT][] =
 {
 	"cl_forwardspeed",
 	"cl_backspeed",
 	"cl_sidespeed",
-	"cl_upspeed",
 }
 
 #define CLIENT_MOVEMENT_QUERY_MASK ((1 << CLIENT_MOVE_COUNT) - 1)
 #define CLIENT_MOVEMENT_REFRESH_INTERVAL 10.0
-#define CLIENT_MOVEMENT_ROUNDING 1.732051
+#define CLIENT_MOVEMENT_ROUNDING 1.414214
 
 new Float:gClientMovementCvars[MAX_PLAYERS + 1][CLIENT_MOVE_COUNT]
 new Float:gClientMovementQuery[MAX_PLAYERS + 1][CLIENT_MOVE_COUNT]
 new gClientMovementPending[MAX_PLAYERS + 1]
 new bool:gClientMovementReady[MAX_PLAYERS + 1], bool:gClientMovementQueryValid[MAX_PLAYERS + 1]
+new Float:gClassMovementScale[MAX_PLAYERS + 1], Float:gClassMovementBoost[MAX_PLAYERS + 1][3]
+new bool:gClassMovementBoostActive[MAX_PLAYERS + 1], bool:gClassMovementInMove[MAX_PLAYERS + 1]
 
 enum _:eCvars
 {
@@ -174,9 +174,14 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Post", true)
 	RegisterHookChain(RG_PM_Move, "PM_Move_Pre", false)
+	RegisterHookChain(RG_PM_Move, "PM_Move_Post", true)
+	RegisterHookChain(RG_PM_Duck, "PM_Duck_Post", true)
+	RegisterHookChain(RG_PM_LadderMove, "PM_LadderMove_Pre", false)
+	RegisterHookChain(RG_PM_Jump, "PM_Jump_Post", true)
 	RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "RCBasePlayer_HasRestrictItem_Pre", false)
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
 	RegisterHookChain(RG_HandleMenu_ChooseAppearance, "HandleMenu_ChooseAppearance_Post", true)
+	register_forward(FM_CmdStart, "CmdStart_Pre", false)
 
 	set_task_ex(CLIENT_MOVEMENT_REFRESH_INTERVAL, "refresh_client_movement_cvars", TASK_CLIENT_MOVEMENT, .flags = SetTask_Repeat)
 
@@ -244,6 +249,7 @@ public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
 	if(IsReapiHookOriginalWasCalled(RG_CBasePlayer_Killed) && !is_user_alive(this))
 	{
+		remove_user_movement_boost(this)
 		remove_user_flame(this, ZPN_FLAME_REMOVE_DEATH)
 		remove_user_frozen(this + TASK_FROZEN)
 	}
@@ -413,49 +419,50 @@ public CBasePlayer_ResetMaxSpeed_Post(const this)
 
 public PM_Move_Pre(const this)
 {
+	gClassMovementInMove[this] = true
+	gClassMovementScale[this] = 0.0
+
 	if(!xCvars[CVAR_CLASS_SPEED_NORMALIZE] || !zpn_is_valid_player_alive(this) || get_pmove(pm_spectator) || get_pmove(pm_movetype) != MOVETYPE_WALK
 	|| (get_pmove(pm_flags) & (FL_FROZEN | FL_ONTRAIN)) || get_member_game(m_bFreezePeriod)
 	|| zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_FREEZED))
 		return HC_CONTINUE
 
-	// Use the final speed, including weapon weight, flame slowdown and addon hooks.
-	// The engine initializes pm_maxspeed from sv_maxspeed before every command.
+	// Use the final class speed, including weapon weight, flame and addon hooks.
+	// Keep the engine's sv_maxspeed cap instead of changing movement parameters.
 	new Float:maxspeed = get_pmove(pm_clientmaxspeed)
 	if(maxspeed <= 1.0 || (_:maxspeed & 0x7F800000) == 0x7F800000)
+		return HC_CONTINUE
+	maxspeed = floatmin(maxspeed, Float:get_pmove(pm_maxspeed))
+	if(maxspeed <= 1.0)
 		return HC_CONTINUE
 
 	new class_id = get_user_current_class_index(this)
 	if(class_id < 0 || class_id >= zpn_class_array_size())
 		return HC_CONTINUE
 
-	set_pmove(pm_maxspeed, maxspeed)
-
 	// Bots already generate movement from their own maxspeed and walk settings.
 	if(!gClientMovementReady[this] || is_user_bot(this))
 		return HC_CONTINUE
 
 	new cmd = get_pmove(pm_cmd)
-	new Float:move[3], Float:input[3], Float:axis_speed[3]
+	new Float:move[3], Float:axis_speed[2]
 	move[0] = get_ucmd(cmd, ucmd_forwardmove)
 	move[1] = get_ucmd(cmd, ucmd_sidemove)
-	move[2] = get_ucmd(cmd, ucmd_upmove)
 	axis_speed[0] = gClientMovementCvars[this][move[0] < 0.0 ? CLIENT_MOVE_BACK : CLIENT_MOVE_FORWARD]
 	axis_speed[1] = gClientMovementCvars[this][CLIENT_MOVE_SIDE]
-	axis_speed[2] = gClientMovementCvars[this][CLIENT_MOVE_UP]
 
 	new Float:fraction, bool:full_input
-	for(new axis = 0; axis < sizeof move; axis++)
+	for(new axis = 0; axis < sizeof axis_speed; axis++)
 	{
 		if(move[axis] == 0.0)
 			continue
 		if(axis_speed[axis] <= 0.0 || (_:move[axis] & 0x7F800000) == 0x7F800000)
 			return HC_CONTINUE
 
-		input[axis] = move[axis] / axis_speed[axis]
-		if((_:input[axis] & 0x7F800000) == 0x7F800000)
+		new Float:input = move[axis] / axis_speed[axis]
+		if((_:input & 0x7F800000) == 0x7F800000)
 			return HC_CONTINUE
-		input[axis] = floatclamp(input[axis], -1.0, 1.0)
-		fraction = floatmax(fraction, floatabs(input[axis]))
+		fraction = floatmax(fraction, floatmin(1.0, floatabs(input)))
 		if(floatabs(move[axis]) > axis_speed[axis] - 1.0)
 			full_input = true
 	}
@@ -463,27 +470,168 @@ public PM_Move_Pre(const this)
 	if(fraction == 0.0)
 		return HC_CONTINUE
 
-	// Keep the direction numerically stable even with very large client cvars.
-	for(new axis = 0; axis < sizeof input; axis++)
-		input[axis] /= fraction
-
-	// CS clips the command to client maxspeed BEFORE applying cl_movespeedkey.
-	// Undo that clip in the input fraction too, so +speed is preserved on both
-	// straight and diagonal movement without relying on the unused IN_RUN bit.
+	// Recover the intended running/walking fraction without rewriting usercmd.
 	new Float:move_length = vector_length(move)
 	fraction = floatmin(1.0, floatmax(fraction, move_length / maxspeed))
 	// Allow for usercmd movement quantization at the running speed cap.
 	if(full_input || move_length >= maxspeed - CLIENT_MOVEMENT_ROUNDING)
 		fraction = 1.0
 
-	new Float:scale = maxspeed * fraction / vector_length(input)
-	set_ucmd(cmd, ucmd_forwardmove, input[0] * scale)
-	set_ucmd(cmd, ucmd_sidemove, input[1] * scale)
-	set_ucmd(cmd, ucmd_upmove, input[2] * scale)
+	new Float:targetspeed = maxspeed * fraction
+	if(targetspeed > move_length + CLIENT_MOVEMENT_ROUNDING)
+		gClassMovementScale[this] = targetspeed / move_length - 1.0
 
-	// PM_CheckParameters/PM_Duck still handle freezing, crouching and physics.
-	// Do not replace velocity: preserve knockback, leap, gravity and friction.
 	return HC_CONTINUE
+}
+
+public PM_Duck_Post(const this)
+{
+	if(!gClassMovementInMove[this] || gClassMovementScale[this] <= 0.0 || !xCvars[CVAR_CLASS_SPEED_NORMALIZE]
+	|| !IsReapiHookOriginalWasCalled(RG_PM_Duck) || !zpn_is_valid_player_alive(this)
+	|| get_pmove(pm_movetype) != MOVETYPE_WALK || get_pmove(pm_onground) == -1 || get_pmove(pm_waterlevel) >= 2
+	|| Float:get_pmove(pm_waterjumptime) > 0.0 || (get_pmove(pm_flags) & (FL_FROZEN | FL_ONTRAIN | FL_BASEVELOCITY)))
+		return HC_CONTINUE
+
+	// PM_CheckParameters and PM_Duck have already applied the native limits and
+	// crouch multiplier. Use their actual input and horizontal movement basis.
+	new cmd = get_pmove(pm_cmd)
+	new Float:fmove = get_ucmd(cmd, ucmd_forwardmove), Float:smove = get_ucmd(cmd, ucmd_sidemove)
+	new Float:forward_vec[3], Float:right[3], Float:wish[3], Float:velocity[3]
+	get_pmove(pm_forward, forward_vec)
+	get_pmove(pm_right, right)
+	forward_vec[2] = right[2] = 0.0
+	new Float:forward_length = vector_length(forward_vec), Float:right_length = vector_length(right)
+	if(forward_length <= 0.0 || right_length <= 0.0)
+		return HC_CONTINUE
+
+	for(new axis = 0; axis < 2; axis++)
+		wish[axis] = forward_vec[axis] / forward_length * fmove + right[axis] / right_length * smove
+
+	new Float:wishspeed = vector_length(wish)
+	if(wishspeed <= 0.0)
+		return HC_CONTINUE
+
+	// CmdStart restored the previous complement to velocity. Calculate the new
+	// contribution from that physical movement, including existing impulses.
+	get_pmove(pm_velocity, velocity)
+	new Float:progress = floatclamp((velocity[0] * wish[0] + velocity[1] * wish[1]) / (wishspeed * wishspeed), 0.0, 1.0)
+	if(progress <= 0.0)
+		return HC_CONTINUE
+
+	new Float:basevelocity[3], Float:client_basevelocity[3]
+	get_pmove(pm_basevelocity, basevelocity)
+	get_entvar(this, var_clbasevelocity, client_basevelocity)
+	for(new axis = 0; axis < 2; axis++)
+	{
+		gClassMovementBoost[this][axis] = wish[axis] * gClassMovementScale[this] * progress
+		velocity[axis] -= gClassMovementBoost[this][axis]
+		basevelocity[axis] += gClassMovementBoost[this][axis]
+		client_basevelocity[axis] += gClassMovementBoost[this][axis]
+	}
+	// Redistribute the same movement between relative velocity and basevelocity.
+	// Changing or removing the complement must not introduce a velocity step.
+	set_pmove(pm_velocity, velocity)
+	set_pmove(pm_basevelocity, basevelocity)
+	set_entvar(this, var_clbasevelocity, client_basevelocity)
+	gClassMovementBoostActive[this] = true
+
+	return HC_CONTINUE
+}
+
+public PM_LadderMove_Pre(const ladder, const this)
+{
+	remove_user_movement_boost(this, true)
+	return HC_CONTINUE
+}
+
+public PM_Jump_Post(const this)
+{
+	if(get_pmove(pm_onground) == -1)
+		remove_user_movement_boost(this, true)
+	return HC_CONTINUE
+}
+
+public PM_Move_Post(const this)
+{
+	gClassMovementInMove[this] = false
+	return HC_CONTINUE
+}
+
+public CmdStart_Pre(const this, const cmd, const random_seed)
+{
+	// Restore the previous physical velocity before selecting a new complement.
+	// This also removes our basevelocity before SV_CheckMovingGround consumes it.
+	gClassMovementInMove[this] = false
+	remove_user_movement_boost(this, true)
+	return FMRES_IGNORED
+}
+
+remove_user_movement_boost(const this, const bool:preserve_velocity = false)
+{
+	gClassMovementScale[this] = 0.0
+	if(!gClassMovementBoostActive[this])
+		return
+
+	new bool:connected = is_user_connected(this) != 0
+	new Float:basevelocity[3]
+	if(gClassMovementInMove[this])
+	{
+		get_pmove(pm_basevelocity, basevelocity)
+		for(new axis = 0; axis < 2; axis++)
+			basevelocity[axis] -= gClassMovementBoost[this][axis]
+		set_pmove(pm_basevelocity, basevelocity)
+	}
+	else if(connected && !(get_entvar(this, var_flags) & FL_BASEVELOCITY))
+	{
+		// A new trigger_push touch replaces the old basevelocity and sets this
+		// flag after PM_Move; preserve that pending external push unchanged.
+		get_entvar(this, var_basevelocity, basevelocity)
+		for(new axis = 0; axis < 2; axis++)
+			basevelocity[axis] -= gClassMovementBoost[this][axis]
+		set_entvar(this, var_basevelocity, basevelocity)
+	}
+
+	if(preserve_velocity && (gClassMovementInMove[this] || connected))
+	{
+		new Float:velocity[3]
+		if(gClassMovementInMove[this])
+			get_pmove(pm_velocity, velocity)
+		else
+			get_entvar(this, var_velocity, velocity)
+
+		// Transfer only our horizontal contribution; keep other impulses and Z.
+		for(new axis = 0; axis < 2; axis++)
+			velocity[axis] += gClassMovementBoost[this][axis]
+
+		if(gClassMovementInMove[this])
+			set_pmove(pm_velocity, velocity)
+		else
+			set_entvar(this, var_velocity, velocity)
+	}
+
+	if(connected)
+	{
+		get_entvar(this, var_clbasevelocity, basevelocity)
+		for(new axis = 0; axis < 2; axis++)
+			basevelocity[axis] -= gClassMovementBoost[this][axis]
+		set_entvar(this, var_clbasevelocity, basevelocity)
+	}
+
+	gClassMovementBoostActive[this] = false
+	for(new axis = 0; axis < sizeof gClassMovementBoost[]; axis++)
+		gClassMovementBoost[this][axis] = 0.0
+}
+
+public class_speed_normalize_changed(const pcvar, const old_value[], const new_value[])
+{
+	if(str_to_num(new_value))
+	{
+		refresh_client_movement_cvars()
+		return
+	}
+
+	for(new id = 1; id <= MaxClients; id++)
+		remove_user_movement_boost(id, true)
 }
 
 public refresh_client_movement_cvars()
@@ -536,7 +684,7 @@ public client_movement_cvar_result(id, const cvar[], const value[], const data[]
 	if(gClientMovementPending[id] || !gClientMovementQueryValid[id])
 		return
 
-	// Publish the four values together, never a partially refreshed batch.
+	// Publish the values together, never a partially refreshed batch.
 	for(new i = 0; i < CLIENT_MOVE_COUNT; i++)
 		gClientMovementCvars[id][i] = gClientMovementQuery[id][i]
 	gClientMovementReady[id] = true
@@ -544,6 +692,11 @@ public client_movement_cvar_result(id, const cvar[], const value[], const data[]
 
 public client_putinserver(id)
 {
+	gClassMovementInMove[id] = false
+	gClassMovementBoostActive[id] = false
+	gClassMovementScale[id] = 0.0
+	for(new axis = 0; axis < sizeof gClassMovementBoost[]; axis++)
+		gClassMovementBoost[id][axis] = 0.0
 	gClientMovementReady[id] = false
 	gClientMovementPending[id] = 0
 	query_user_movement_cvars(id)
@@ -559,6 +712,8 @@ public client_putinserver(id)
 
 public client_disconnected(id)
 {
+	remove_user_movement_boost(id)
+	gClassMovementInMove[id] = false
 	gClientMovementReady[id] = false
 	gClientMovementPending[id] = 0
 
@@ -668,6 +823,7 @@ public CBasePlayer_Spawn_Pre(id)
 {
 	if(!zpn_is_valid_player_connected(id))
 		return
+	remove_user_movement_boost(id)
 
 	new TeamName:team = get_member(id, m_iTeam)
 
@@ -927,7 +1083,9 @@ public plugin_precache()
 	bind_pcvar_num(create_cvar("zpn_last_human_infect", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_LAST_HUMAN_INFECT])
 	bind_pcvar_num(create_cvar("zpn_weapon_weight_discount_speed", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_WEAPON_WEIGHT_DISCOUNT_SPEED])
 
-	bind_pcvar_num(create_cvar("zpn_class_speed_normalize", "1", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_CLASS_SPEED_NORMALIZE])
+	new speed_normalize = create_cvar("zpn_class_speed_normalize", "1", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0)
+	bind_pcvar_num(speed_normalize, xCvars[CVAR_CLASS_SPEED_NORMALIZE])
+	hook_cvar_change(speed_normalize, "class_speed_normalize_changed")
 	//bind_pcvar_num(create_cvar("zpn_respawn_in_last_human", "0", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), xCvars[CVAR_RESPAWN_IN_LAST_H])
 	
 	if(!json_setting_get_int(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Enable Debug", xSettingsVars[CONFIG_DEBUG_ON]))
@@ -1073,11 +1231,18 @@ public Spawn_Pre(this)
 	return FMRES_IGNORED
 }
 
+public plugin_pause()
+{
+	for(new id = 1; id <= MaxClients; id++)
+		remove_user_movement_boost(id, true)
+}
+
 public plugin_end()
 {
 	gFlameReady = false
 	for(new id = 1; id <= MaxClients; id++)
 	{
+		remove_user_movement_boost(id, true)
 		remove_user_flame(id, ZPN_FLAME_REMOVE_SHUTDOWN)
 		remove_user_frozen(id + TASK_FROZEN)
 	}
@@ -2110,6 +2275,7 @@ public bool:set_user_frozen(this, Float:time, bool:reset_time, bool:play_sound)
 		return false
 
 	zpn_player_data_set_prop(this, PROP_PD_REGISTER_IS_FREEZED, true)
+	remove_user_movement_boost(this)
 
 	new Float:velocity[3] = { 0.0, 0.0, 0.0 }
 	set_entvar(this, var_velocity, velocity)
@@ -2183,6 +2349,12 @@ public remove_user_frozen(this)
 get_user_speed(const this)
 {
 	static Float:velocity[3]; get_entvar(this, var_velocity, velocity)
+	// The engine subtracts this contribution from var_velocity after movement.
+	if(gClassMovementBoostActive[this])
+	{
+		for(new axis = 0; axis < sizeof velocity; axis++)
+			velocity[axis] += gClassMovementBoost[this][axis]
+	}
 	return floatround(vector_length(velocity))
 }
 
