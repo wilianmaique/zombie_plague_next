@@ -5,10 +5,12 @@
 #include <zombie_plague_next>
 #include <zombie_plague_next_const>
 
+#define ITEM_FIND_NAME_SIZE 32
+
 enum _:ePropItems
 {
 	ITEM_PROP_NAME[64],
-	ITEM_PROP_FIND_NAME[32],
+	ITEM_PROP_FIND_NAME[ITEM_FIND_NAME_SIZE],
 	ITEM_PROP_CMD_BUY[32],
 	ITEM_PROP_COST,
 	eClassTypes:ITEM_PROP_TEAM,
@@ -29,7 +31,8 @@ enum _:eItemPurchaseCounts
 
 new Array:aDataItem
 new Array:aPurchaseCounts
-new xItemBuyPreForward, xItemBuyPostForward
+new xItemBuyPreForward, xItemBuyPostForward = -1
+new bool:xForcingItem[33]
 
 public plugin_init()
 {
@@ -113,6 +116,7 @@ public plugin_natives()
 	register_native("zpn_item_get_limit_state", "_zpn_item_get_limit_state")
 	register_native("zpn_item_preview_buy", "_zpn_item_preview_buy")
 	register_native("zpn_item_buy", "_zpn_item_buy")
+	register_native("zpn_item_force_buy", "_zpn_item_force_buy")
 }
 
 public _zpn_item_init(plugin_id, param_nums)
@@ -209,27 +213,11 @@ public _zpn_item_find(plugin_id, param_nums)
 	if(param_nums != 1)
 		return -1
 
-	static findName[32]; findName[0] = EOS;
+	// Read one extra character so an oversized name cannot match by truncation.
+	new findName[ITEM_FIND_NAME_SIZE + 1]
 	get_string(1, findName, charsmax(findName))
 
-	new find = -1
-	new xDataGetItem[ePropItems]
-
-	for(new i = 0; i < ArraySize(aDataItem); i++)
-	{
-		ArrayGetArray(aDataItem, i, xDataGetItem)
-		
-		if(zpn_is_null_string(xDataGetItem[ITEM_PROP_FIND_NAME]))
-			continue
-
-		if(equal(xDataGetItem[ITEM_PROP_FIND_NAME], findName))
-			find = i
-
-		if(find != -1)
-			break
-	}
-
-	return find
+	return find_item(findName)
 }
 
 public _zpn_item_array_size(plugin_id, param_nums)
@@ -350,6 +338,31 @@ public eItemBuyResults:_zpn_item_buy(plugin_id, param_nums)
 	return ITEM_BUY_SUCCESS
 }
 
+public bool:_zpn_item_force_buy(plugin_id, param_nums)
+{
+	if(param_nums != 2 || xItemBuyPostForward == -1)
+		return false
+
+	new id = get_param(1)
+	if(!zpn_is_valid_player_alive(id) || xForcingItem[id])
+		return false
+
+	new findName[ITEM_FIND_NAME_SIZE + 1]
+	get_string(2, findName, charsmax(findName))
+
+	new item_id = find_item(findName)
+	if(item_id == -1)
+		return false
+
+	// Forced grants bypass the shop and do not consume Ammo Packs or limits.
+	xForcingItem[id] = true
+	new forward_return
+	new bool:success = bool:ExecuteForward(xItemBuyPostForward, forward_return, id, item_id)
+	xForcingItem[id] = false
+
+	return success
+}
+
 bool:item_buy_pre(const id, const item_id, const bool:preview, extra_text[], const maxlen)
 {
 	new forward_return
@@ -384,6 +397,22 @@ count_alive_zombies()
 bool:is_valid_item(const item_id)
 {
 	return !zpn_is_invalid_array(aDataItem) && 0 <= item_id < ArraySize(aDataItem)
+}
+
+find_item(const findName[])
+{
+	if(!findName[0] || zpn_is_invalid_array(aDataItem))
+		return -1
+
+	new xDataGetItem[ePropItems]
+	for(new i = 0; i < ArraySize(aDataItem); i++)
+	{
+		ArrayGetArray(aDataItem, i, xDataGetItem)
+		if(equal(xDataGetItem[ITEM_PROP_FIND_NAME], findName))
+			return i
+	}
+
+	return -1
 }
 
 bool:has_free_limit(const id, const item[ePropItems], const counts[eItemPurchaseCounts])

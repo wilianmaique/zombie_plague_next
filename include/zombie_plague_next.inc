@@ -437,6 +437,7 @@ forward zpn_user_infect_attempt(const this, const infector, const class_id);
  * @note Return ZPN_RETURN_HANDLED or higher to disable the item in the shop
  *       and block the purchase. The purchase call repeats this check, including
  *       for menus that were already open. Text written during purchase is ignored.
+ * @note zpn_item_force_buy() bypasses this forward entirely.
  *
  * @param id          Client index
  * @param item_id     Extra item index
@@ -450,7 +451,13 @@ forward zpn_user_infect_attempt(const this, const infector, const class_id);
 forward zpn_item_buy_pre(const id, const item_id, const bool:preview, extra_text[], const maxlen);
 
 /**
- * Called after an extra item is paid for and its purchase counts are updated.
+ * Called to deliver an extra item after a purchase or a forced grant.
+ *
+ * @note Normal purchases charge Ammo Packs and update purchase counts first.
+ *       zpn_item_force_buy() calls this without running zpn_item_buy_pre(),
+ *       charging Ammo Packs or changing purchase counts.
+ * @note Item plugins own delivery and may still reject an unsafe or unsupported
+ *       player/inventory state. This forward does not confirm delivery to the core.
  *
  * @param id       Client index
  * @param item_id  Extra item index
@@ -1046,7 +1053,9 @@ native zpn_item_set_prop(const item_id, ePropItemRegisters:prop, any:...);
 /**
  * Finds an extra item by its configured find name.
  *
- * @note The name is matched against PROP_ITEM_REGISTER_FIND_NAME.
+ * @note The name is matched exactly, including case, against
+ *       PROP_ITEM_REGISTER_FIND_NAME. Empty names and names longer than 31
+ *       characters do not match.
  *
  * @param item_find_name  Find name to search for
  *
@@ -1109,6 +1118,27 @@ native eItemBuyResults:zpn_item_preview_buy(const id, const item_id, extra_text[
  * @return          Purchase result from eItemBuyResults
  */
 native eItemBuyResults:zpn_item_buy(const id, const item_id);
+
+/**
+ * Forces an extra item's delivery by its configured find name, free of charge.
+ *
+ * @note Available after the items core's plugin_init(). Requires a living client.
+ * @note Matches PROP_ITEM_REGISTER_FIND_NAME exactly, including case, as with
+ *       zpn_item_find(). Example: zpn_item_force_buy(id, "item_h_frostnade").
+ * @note Calls zpn_item_buy_post() directly, bypassing zpn_item_buy_pre() and all
+ *       shop restrictions (team, flags, gamemode, minimum zombies and limits).
+ *       Does not charge Ammo Packs or change any purchase counts.
+ * @note Item delivery callbacks retain their own safety checks. A true return
+ *       confirms the forward ran, not that the item plugin delivered the item.
+ * @note Recursive forced grants to the same client are rejected during delivery.
+ *
+ * @param id              Living client index
+ * @param item_find_name  Value registered in PROP_ITEM_REGISTER_FIND_NAME
+ *
+ * @return          true if the delivery forward ran; false for an invalid/dead
+ *                  client, unknown item, unavailable core or recursive grant
+ */
+native bool:zpn_item_force_buy(const id, const item_find_name[]);
 
 /**
  * Returns a client's current ammo pack balance.
