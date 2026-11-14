@@ -348,7 +348,7 @@ move_to_spot(const id, const spot)
 	set_entvar(id, var_velocity, zero)
 }
 
-public zpn_round_started_post(const gamemode_id, const start_player)
+public zpn_round_started_post(const gamemode_id, const start_player, const bool:transform_all)
 {
 	if(!gReady || gamemode_id != gGameMode)
 		return
@@ -390,7 +390,7 @@ public zpn_round_started_post(const gamemode_id, const start_player)
 			move_to_spot(start_player, spot)
 	}
 
-	for(new i = 0; i < count && chosen < wanted; i++)
+	for(new i = 0; !transform_all && i < count && chosen < wanted; i++)
 	{
 		if(players[i] == start_player || zpn_is_user_zombie(players[i]))
 			continue
@@ -403,7 +403,7 @@ public zpn_round_started_post(const gamemode_id, const start_player)
 		chosen++
 	}
 
-	if(!chosen)
+	if(!chosen && !transform_all)
 	{
 		gActive = false
 		rg_round_end(gRoundRestartDelay, WINSTATUS_DRAW, ROUND_END_DRAW, .trigger = true)
@@ -417,6 +417,8 @@ public zpn_round_started_post(const gamemode_id, const start_player)
 	write_short(floatround(duration, floatround_ceil))
 	message_end()
 	set_task_ex(duration, "EscapeTimeout", TASK_ESCAPE_TIMEOUT)
+	if(transform_all)
+		schedule_team_check()
 }
 
 public EscapeTimeout()

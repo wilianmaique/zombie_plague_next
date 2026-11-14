@@ -29,14 +29,18 @@ public plugin_precache()
 	zpn_gamemode_set_prop(gamemode, PROP_GAMEMODE_REGISTER_MAP_TYPES, GAMEMODE_MAP_NORMAL)
 }
 
-public zpn_round_started_post(const game_id, const start_player)
+public zpn_round_started_post(const game_id, const start_player, const bool:transform_all)
 {
 	if(gamemode != game_id)
 		return
 
 	new id = start_player
 	if(!id || !zpn_is_user_zombie(id))
+	{
+		if(transform_all)
+			return
 		id = infect_first_zombie(start_player)
+	}
 
 	if(!id)
 	{

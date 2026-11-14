@@ -47,14 +47,18 @@ public zpn_user_infected_pre(const this, const infector, const class_id)
 		zpn_set_fw_param_int(3, class_nemesis)
 }
 
-public zpn_round_started_post(const game_id, const start_player)
+public zpn_round_started_post(const game_id, const start_player, const bool:transform_all)
 {
 	if(gamemode != game_id)
 		return
 
 	new id = start_player
 	if(!id || !zpn_is_user_zombie(id))
+	{
+		if(transform_all)
+			return
 		id = infect_first_zombie(start_player)
+	}
 
 	if(!id)
 	{

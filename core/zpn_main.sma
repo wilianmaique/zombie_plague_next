@@ -119,6 +119,7 @@ new xCvars[eCvars], xSettingsVars[eSettingsConfigs], xMsgSync[eSyncHuds]
 new xDataGetGameRule[eGameRules]
 new bool:gEscapeMap
 new bool:gTransformingUser
+new bool:gTransformingAll
 
 #define FLAME_THINK_INTERVAL 0.05
 #define FLAME_TICK_INTERVAL 0.2
@@ -189,7 +190,7 @@ public plugin_init()
 		xMsgSync[i] = CreateHudSyncObj()
 
 	// FWS
-	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL, FP_CELL)
+	xForwards[FW_ROUND_STARTED_POST] = CreateMultiForward("zpn_round_started_post", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
 	xForwards[FW_USER_SPAWN_POST] = CreateMultiForward("zpn_user_spawn_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_SHOW_HUD_PLAYER_INFO_PRE] = CreateMultiForward("zpn_show_hud_player_info_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_SHOW_HUD_PLAYER_INFO_POST] = CreateMultiForward("zpn_show_hud_player_info_post", ET_IGNORE, FP_CELL)
@@ -1035,7 +1036,7 @@ public xInitRound()
 	start_round(gamemode_id)
 }
 
-start_round(const gamemode_id, const start_player = 0)
+start_round(const gamemode_id, const start_player = 0, const bool:transform_all = false)
 {
 	remove_task(TASK_COUNTDOWN)
 	xDataGetGameRule[GAME_RULE_COUNTDOWN] = 0
@@ -1059,7 +1060,7 @@ start_round(const gamemode_id, const start_player = 0)
 		ExecuteForward(xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_POST], xForwardReturn, gamemode_id)
 	}
 
-	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gamemode_id, start_player)
+	ExecuteForward(xForwards[FW_ROUND_STARTED_POST], xForwardReturn, gamemode_id, start_player, transform_all)
 }
 
 public plugin_precache()
@@ -1264,6 +1265,7 @@ public plugin_natives()
 	register_native("zpn_get_current_gamemode", "_zpn_get_current_gamemode")
 	register_native("zpn_set_user_zombie", "_zpn_set_user_zombie")
 	register_native("zpn_transform_user", "_zpn_transform_user")
+	register_native("zpn_transform_all", "_zpn_transform_all")
 	register_native("zpn_is_user_zombie", "_zpn_is_user_zombie")
 	register_native("zpn_is_user_zombie_special", "_zpn_is_user_zombie_special")
 	register_native("zpn_print_color", "_zpn_print_color")
@@ -1608,6 +1610,69 @@ public bool:_zpn_transform_user(plugin_id, param_nums)
 	return transform_user(get_param(1), eClassTypes:get_param(2), get_param(3))
 }
 
+public _zpn_transform_all(plugin_id, param_nums)
+{
+	if(param_nums != 3)
+		return 0
+
+	set_param_byref(3, 0)
+	new exclude_player = get_param(1), class_id = get_param(2)
+	if(gTransformingUser || gTransformingAll || !zpn_is_valid_player_connected(exclude_player)
+	|| (!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && !task_exists(TASK_COUNTDOWN))
+	|| get_member_game(m_bRoundTerminating) || get_member_game(m_bFreezePeriod))
+		return 0
+
+	new eClassTypes:type
+	if(class_id != -1)
+	{
+		if(!(0 <= class_id < zpn_class_array_size()))
+			return 0
+		type = eClassTypes:zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE)
+		if(type != CLASS_TEAM_TYPE_ZOMBIE_SPECIAL && type != CLASS_TEAM_TYPE_HUMAN_SPECIAL)
+			return 0
+	}
+
+	new userids[MAX_PLAYERS + 1], bool:zombies[MAX_PLAYERS + 1], total
+	new exclude_userid = get_user_userid(exclude_player)
+	for(new target = 1; target <= MaxClients; target++)
+	{
+		if(target == exclude_player || !is_user_alive(target) || is_user_hltv(target))
+			continue
+
+		userids[target] = get_user_userid(target)
+		zombies[target] = bool:zpn_player_data_get_prop(target, PROP_PD_REGISTER_IS_ZOMBIE)
+		total++
+	}
+	set_param_byref(3, total)
+
+	gTransformingAll = true
+	new transformed
+	for(new target = 1; target <= MaxClients; target++)
+	{
+		if(!is_user_connected(exclude_player) || get_user_userid(exclude_player) != exclude_userid)
+			break
+		if(!userids[target] || !is_user_alive(target) || get_user_userid(target) != userids[target])
+			continue
+
+		if(class_id == -1)
+		{
+			if(bool:zpn_player_data_get_prop(target, PROP_PD_REGISTER_IS_ZOMBIE) != zombies[target])
+				continue
+			type = zombies[target] ? CLASS_TEAM_TYPE_HUMAN : CLASS_TEAM_TYPE_ZOMBIE
+		}
+		if(transform_user(target, type, class_id))
+			transformed++
+	}
+
+	// Keep the re-entry guard while the final round check executes its forwards.
+	gTransformingUser = true
+	if(transformed)
+		update_transformation_round()
+	gTransformingUser = false
+	gTransformingAll = false
+	return transformed
+}
+
 bool:transform_user(const id, const eClassTypes:type, class_id)
 {
 	if(gTransformingUser || !zpn_is_valid_player_alive(id)
@@ -1642,10 +1707,11 @@ bool:transform_user(const id, const eClassTypes:type, class_id)
 		new map_type = gEscapeMap ? GAMEMODE_MAP_ESCAPE : GAMEMODE_MAP_NORMAL
 		if(gamemode_id == -1 || !(zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_MAP_TYPES) & map_type)
 		|| get_num_playing_alive() < zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_MIN_PLAYERS)
-		|| (!zombie && get_num_playing_alive() < 2))
+		|| (!gTransformingAll && !zombie && get_num_playing_alive() < 2))
 			return false
 
-		if(!zombie)
+		// A bulk start supplies its own teams and must never infect the excluded admin.
+		if(!zombie && !gTransformingAll)
 		{
 			new bool:has_zombie_candidate
 			for(new player = 1; player <= MaxClients; player++)
@@ -1690,9 +1756,18 @@ bool:transform_user(const id, const eClassTypes:type, class_id)
 	if(starting)
 	{
 		update_users_next_class()
-		start_round(gamemode_id, id)
+		start_round(gamemode_id, id, gTransformingAll)
 	}
 
+	if(!gTransformingAll)
+		update_transformation_round()
+
+	gTransformingUser = false
+	return true
+}
+
+update_transformation_round()
+{
 	new humans = get_num_alive()
 	for(new player = 1; player <= MaxClients; player++)
 	{
@@ -1708,9 +1783,6 @@ bool:transform_user(const id, const eClassTypes:type, class_id)
 		else if(!get_num_alive(true))
 			rg_round_end(2.0, WINSTATUS_CTS, ROUND_CTS_WIN, .trigger = true)
 	}
-
-	gTransformingUser = false
-	return true
 }
 
 bool:set_user_zombie(this, infector, bool:set_first, const forced_class = -1)

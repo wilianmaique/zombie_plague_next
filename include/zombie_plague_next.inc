@@ -494,13 +494,17 @@ forward zpn_user_humanized_post(const this, const class_id);
  *
  * @param gamemode_id  Current game mode index
  * @param start_player Manually transformed client, or 0 for an automatic start.
- *                     Modes must preserve this client's class. If human, choose
- *                     the first zombie from other living players; if zombie,
- *                     use this client instead of randomly infecting another.
+ *                     Modes must preserve this client's class. For a single
+ *                     manual start, choose another living player as the first
+ *                     zombie if this client is human; otherwise use this zombie.
+ * @param transform_all True when a bulk transformation started the round.
+ *                     The remaining targets are still being transformed. Modes
+ *                     must not infect other players automatically; the batch
+ *                     supplies its own teams and checks victory when finished.
  *
  * @noreturn
  */
-forward zpn_round_started_post(const gamemode_id, const start_player);
+forward zpn_round_started_post(const gamemode_id, const start_player, const bool:transform_all);
 
 /**
  * Called after a Zombie Escape round ends.
@@ -1320,7 +1324,7 @@ native bool:zpn_set_user_zombie(const this, const attacker, bool:set_first = fal
  *       the target, class, capacity and round state. Special classes ignore
  *       the normal selection menu's visibility and level requirements.
  * @note A manual start uses Infection on normal maps or Escape on escape maps,
- *       cancels the countdown and calls zpn_round_started_post(mode, id) once.
+ *       cancels the countdown and calls zpn_round_started_post(mode, id, false) once.
  *       Starting as human requires another living player for the first zombie.
  * @note Explicit target/class overrides in infected/humanized pre-forwards are
  *       ignored; zpn_user_infect_attempt() can still block an infection.
@@ -1335,6 +1339,32 @@ native bool:zpn_set_user_zombie(const this, const attacker, bool:set_first = fal
  * @return           true if transformed, false if blocked or unavailable
  */
 native bool:zpn_transform_user(const id, const eClassTypes:class_type, const class_id = -1);
+
+/**
+ * Transforms all living players except one, starting the round during countdown.
+ *
+ * @note Callers must enforce their own admin permissions. With class_id -1,
+ *       each target switches to the opposite normal team from its initial state.
+ *       Otherwise, the exact special class is applied. Bots are included.
+ * @note Class capacity and transformation forwards are checked for every target.
+ *       Unavailable, already assigned or blocked targets are skipped. The core's
+ *       last-human flags and victory check are updated once after the batch.
+ * @note The first successful transformation cancels the countdown and starts
+ *       Infection or Escape, calling zpn_round_started_post(mode, id, true) once.
+ *       Modes do not infect a random first zombie during this start, preserving
+ *       the excluded player and the requested teams. An eliminated side resolves
+ *       the round after the batch through the current map's victory rules.
+ * @note Freeze time, round end and nested transformations are rejected.
+ *       The batch stops if the excluded player disconnects. New sessions and
+ *       normal-team targets whose initial state changed are not transformed.
+ *
+ * @param exclude_player Connected client to exclude from the transformation
+ * @param class_id       Special class index, or -1 to switch normal teams
+ * @param total          Receives the initial living target count, excluding HLTV
+ *                       and exclude_player; 0 when the request is rejected
+ * @return               Number of successfully transformed players
+ */
+native zpn_transform_all(const exclude_player, const class_id, &total);
 
 /**
  * Sends a prefixed colored chat message.

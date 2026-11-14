@@ -19,9 +19,9 @@ public client_disconnected(id)
 	helper_ckeck[id] = false
 }
 
-public zpn_round_started_post(const gamemode_id, const start_player)
+public zpn_round_started_post(const gamemode_id, const start_player, const bool:transform_all)
 {
-	if(start_player || gamemode_id != gamemode_infection)
+	if(transform_all || start_player || gamemode_id != gamemode_infection)
 		return
 
 	static id, i

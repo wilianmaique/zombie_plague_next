@@ -313,6 +313,7 @@ bool:admin_players(const id, const class_id = -1, const page = 0)
 	}
 
 	new menu = menu_create(fmt("%s \y%L", xMenuPrefix, id, "ZPN_MENU_TRANSFORM", class_id != -1 && zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL ? "\r" : "\y", name), "_admin_players")
+	menu_additem(menu, fmt("%L", id, "ZPN_MENU_TRANSFORM_ALL"), fmt("0 %d 0", class_id), .callback = xAdminPlayerCallback)
 	new count
 	for(new target = 1; target <= MaxClients; target++)
 	{
@@ -346,14 +347,36 @@ public _admin_player_callback(id, menu, item)
 		return ITEM_DISABLED
 
 	parse(info, userid_text, charsmax(userid_text), class_text, charsmax(class_text), state_text, charsmax(state_text))
-	new target = find_player_ex(FindPlayer_MatchUserId, str_to_num(userid_text))
+	new userid = str_to_num(userid_text), class_id = str_to_num(class_text)
+	if(userid == 0)
+	{
+		new bool:enabled
+		if(!get_member_game(m_bRoundTerminating) && !get_member_game(m_bFreezePeriod)
+		&& (class_id == -1 || is_admin_special_class(class_id)))
+		{
+			for(new target = 1; target <= MaxClients; target++)
+			{
+				if(target == id || !is_user_alive(target) || is_user_hltv(target))
+					continue
+				if(class_id != -1 && (zpn_is_user_class(target, class_id) || !zpn_class_has_free_slot(class_id, target)))
+					continue
+
+				enabled = true
+				break
+			}
+		}
+		menu_item_setname(menu, item, fmt("%s%L", enabled ? "\y" : "\d", id, "ZPN_MENU_TRANSFORM_ALL"))
+		return enabled ? ITEM_ENABLED : ITEM_DISABLED
+	}
+
+	new target = find_player_ex(FindPlayer_MatchUserId, userid)
 	if(!target || !is_user_alive(target))
 	{
 		menu_item_setname(menu, item, fmt("%L", id, "ZPN_MENU_PLAYER_UNAVAILABLE"))
 		return ITEM_DISABLED
 	}
 
-	new class_id = str_to_num(class_text), name[32], state_label[96], state_color[3] = "\d", text[192]
+	new name[32], state_label[96], state_color[3] = "\d", text[192]
 	new bool:zombie = zpn_is_user_zombie(target)
 	get_user_name(target, name, charsmax(name))
 	if(get_member_game(m_bRoundTerminating))
@@ -396,6 +419,29 @@ public _admin_players(id, menu, item)
 
 	parse(info, userid_text, charsmax(userid_text), class_text, charsmax(class_text), state_text, charsmax(state_text))
 	new userid = str_to_num(userid_text), class_id = str_to_num(class_text)
+	if(userid == 0)
+	{
+		if(class_id != -1 && !is_admin_special_class(class_id))
+			return PLUGIN_HANDLED
+
+		if(get_member_game(m_bRoundTerminating) || get_member_game(m_bFreezePeriod))
+			zpn_print_color(id, print_team_red, "%l", "ZPN_WAIT_ACTIVE_ROUND")
+		else
+		{
+			new admin_name[32], admin_userid = get_user_userid(id), total
+			get_user_name(id, admin_name, charsmax(admin_name))
+			new transformed = zpn_transform_all(id, class_id, total)
+			log_amx("Admin %s (#%d) transformou %d/%d jogadores em lote (classe #%d)", admin_name, admin_userid, transformed, total, class_id)
+			if(!is_menu_client(id) || get_user_userid(id) != admin_userid)
+				return PLUGIN_HANDLED
+
+			zpn_print_color(id, print_team_default, "%l", "ZPN_ALL_TRANSFORMED", transformed, total - transformed)
+		}
+
+		admin_players(id, class_id)
+		return PLUGIN_HANDLED
+	}
+
 	new target = find_player_ex(FindPlayer_MatchUserId, userid)
 	if(!target || !is_user_alive(target))
 		zpn_print_color(id, print_team_red, "%l", "ZPN_PLAYER_UNAVAILABLE")
