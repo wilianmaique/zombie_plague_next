@@ -3,7 +3,7 @@
 #include <json>
 
 #define PLUGIN  "AMX JSON Settings API"
-#define VERSION "1.3"
+#define VERSION "1.4"
 #define AUTHOR  "Wilian M."
 
 new dir[128], file_path[256], path_file_name[128], section[128], key[128], sec_key[128]
@@ -12,11 +12,6 @@ public plugin_init()
 {
 	register_plugin(PLUGIN, VERSION, AUTHOR)
 	register_cvar("api_json_settings", VERSION, FCVAR_SPONLY|FCVAR_PROTECTED)
-}
-
-public plugin_precache()
-{
-	get_configsdir(dir, charsmax(dir))
 }
 
 public plugin_natives()
@@ -42,6 +37,9 @@ public plugin_natives()
 
 JSON:_load_settings_object(const file_name_path[], file_path_output[], len, bool:create_if_missing = false)
 {
+	if(!dir[0])
+		get_configsdir(dir, charsmax(dir))
+
 	formatex(file_path_output, len, "%s/%s", dir, file_name_path)
 
 	if(!file_exists(file_path_output))
