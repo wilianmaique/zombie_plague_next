@@ -1,4 +1,5 @@
 #include <amxmodx>
+#include <amxmisc>
 #include <reapi>
 #include <api_json_settings>
 #include <zombie_plague_next>
@@ -314,17 +315,19 @@ bool:admin_players(const id, const class_id = -1, const page = 0)
 
 	new menu = menu_create(fmt("%s \y%L", xMenuPrefix, id, "ZPN_MENU_TRANSFORM", class_id != -1 && zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL ? "\r" : "\y", name), "_admin_players")
 	menu_additem(menu, fmt("%L", id, "ZPN_MENU_TRANSFORM_ALL"), fmt("0 %d 0", class_id), .callback = xAdminPlayerCallback)
-	new count
-	for(new target = 1; target <= MaxClients; target++)
+	static const GetPlayersFlags:group_filters[] = { GetPlayers_ExcludeBots, GetPlayers_ExcludeHuman }
+	new players[MAX_PLAYERS], count
+	for(new group = 0; group < sizeof group_filters; group++)
 	{
-		if(!is_user_alive(target) || is_user_hltv(target))
-			continue
-
-		menu_additem(menu, " ", fmt("%d %d %d", get_user_userid(target), class_id, _:zpn_is_user_zombie(target)), .callback = xAdminPlayerCallback)
-		count++
+		get_players_ex(players, count, GetPlayers_ExcludeDead | GetPlayers_ExcludeHLTV | group_filters[group])
+		for(new i = 0; i < count; i++)
+		{
+			new target = players[i]
+			menu_additem(menu, " ", fmt("%d %d %d", get_user_userid(target), class_id, _:zpn_is_user_zombie(target)), .callback = xAdminPlayerCallback)
+		}
 	}
 
-	if(!count)
+	if(menu_items(menu) == 1)
 	{
 		zpn_print_color(id, print_team_red, "%l", "ZPN_NO_ALIVE_PLAYERS")
 		menu_destroy(menu)
