@@ -1009,7 +1009,7 @@ public xStartCountDown()
 		ExecuteForward(xForwards[FW_SHOW_HUD_COUNTDOWN_POST], xForwardReturn, countdown)
 	}
 
-	if(countdown <= 10)
+	if(countdown <= 10 && xForwardReturn < ZPN_RETURN_HANDLED)
 	{
 		static nword[20]
 		num_to_word(countdown, nword, charsmax(nword))
