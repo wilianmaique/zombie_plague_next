@@ -65,6 +65,7 @@ enum _:eForwards
 	FW_SHOW_HUD_PLAYER_INFO_POST,
 	FW_SHOW_HUD_COUNTDOWN_PRE,
 	FW_SHOW_HUD_COUNTDOWN_POST,
+	FW_COUNTDOWN_END,
 	FW_SHOW_HUD_GAMEMODE_NOTICE_PRE,
 	FW_SHOW_HUD_GAMEMODE_NOTICE_POST,
 	FW_HUMANIZED_PRE,
@@ -117,6 +118,7 @@ new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
 new xMsgScoreAttrib, xFwSpawn_Pre, defaultIndexPlayer
 new xCvars[eCvars], xSettingsVars[eSettingsConfigs], xMsgSync[eSyncHuds]
 new xDataGetGameRule[eGameRules]
+new bool:gCountdownActive
 new bool:gEscapeMap
 new bool:gTransformingUser
 new bool:gTransformingAll
@@ -196,6 +198,7 @@ public plugin_init()
 	xForwards[FW_SHOW_HUD_PLAYER_INFO_POST] = CreateMultiForward("zpn_show_hud_player_info_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_SHOW_HUD_COUNTDOWN_PRE] = CreateMultiForward("zpn_show_hud_countdown_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_SHOW_HUD_COUNTDOWN_POST] = CreateMultiForward("zpn_show_hud_countdown_post", ET_IGNORE, FP_CELL)
+	xForwards[FW_COUNTDOWN_END] = CreateMultiForward("zpn_countdown_end", ET_IGNORE)
 	xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_PRE] = CreateMultiForward("zpn_show_hud_gamemode_notice_pre", ET_CONTINUE, FP_CELL)
 	xForwards[FW_SHOW_HUD_GAMEMODE_NOTICE_POST] = CreateMultiForward("zpn_show_hud_gamemode_notice_post", ET_IGNORE, FP_CELL)
 	xForwards[FW_INFECTED_PRE] = CreateMultiForward("zpn_user_infected_pre", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL)
@@ -773,7 +776,7 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 {
 	new bool:was_cleaning_flames = gFlameRoundCleanup
 	gFlameRoundCleanup = true
-	remove_task(TASK_COUNTDOWN)
+	stop_countdown()
 
 	for(new i = 1; i <= MaxClients; i++)
 	{
@@ -940,7 +943,7 @@ public CSGameRules_RestartRound_Pre()
 {
 	new bool:was_cleaning_flames = gFlameRoundCleanup
 	gFlameRoundCleanup = true
-	remove_task(TASK_COUNTDOWN)
+	stop_countdown()
 	
 	xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] = false
 
@@ -981,24 +984,38 @@ public CSGameRules_OnRoundFreezeEnd_Pre()
 		return
 	}
 
+	stop_countdown()
 	xDataGetGameRule[GAME_RULE_COUNTDOWN] = xCvars[CVAR_START_DELAY]
-	remove_task(TASK_COUNTDOWN)
 	set_task_ex(0.0, "xStartCountDown", TASK_COUNTDOWN)
+}
+
+stop_countdown()
+{
+	remove_task(TASK_COUNTDOWN)
+	if(gCountdownActive)
+	{
+		gCountdownActive = false
+		ExecuteForward(xForwards[FW_COUNTDOWN_END], _)
+	}
 }
 
 public xStartCountDown()
 {
 	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] || get_member_game(m_bRoundTerminating))
+	{
+		stop_countdown()
 		return
+	}
 
 	if(xDataGetGameRule[GAME_RULE_COUNTDOWN] <= 0)
 	{
-		remove_task(TASK_COUNTDOWN)
+		stop_countdown()
 		xInitRound()
 		return
 	}
 
 	new countdown = xDataGetGameRule[GAME_RULE_COUNTDOWN]
+	gCountdownActive = true
 
 	ExecuteForward(xForwards[FW_SHOW_HUD_COUNTDOWN_PRE], xForwardReturn, countdown)
 
@@ -1006,14 +1023,14 @@ public xStartCountDown()
 	{
 		set_hudmessage(255, 0, 0, -1.0, 0.30, 2, 0.3, 1.0, 0.05, 0.05, -1, 0, { 100, 200, 50, 100 })
 		ShowSyncHudMsg(0, xMsgSync[SYNC_HUD_MAIN], "%L", LANG_PLAYER, "ZPN_ROUND_COUNTDOWN", countdown)
-		ExecuteForward(xForwards[FW_SHOW_HUD_COUNTDOWN_POST], xForwardReturn, countdown)
-	}
+		ExecuteForward(xForwards[FW_SHOW_HUD_COUNTDOWN_POST], _, countdown)
 
-	if(countdown <= 10 && xForwardReturn < ZPN_RETURN_HANDLED)
-	{
-		static nword[20]
-		num_to_word(countdown, nword, charsmax(nword))
-		client_cmd(0, "spk sound/vox/%s.wav", nword)
+		if(countdown <= 10)
+		{
+			static nword[20]
+			num_to_word(countdown, nword, charsmax(nword))
+			client_cmd(0, "spk sound/vox/%s.wav", nword)
+		}
 	}
 
 	xDataGetGameRule[GAME_RULE_COUNTDOWN] --
@@ -1038,7 +1055,7 @@ public xInitRound()
 
 start_round(const gamemode_id, const start_player = 0, const bool:transform_all = false)
 {
-	remove_task(TASK_COUNTDOWN)
+	stop_countdown()
 	xDataGetGameRule[GAME_RULE_COUNTDOWN] = 0
 	ClearSyncHud(0, xMsgSync[SYNC_HUD_MAIN])
 	xDataGetGameRule[GAME_RULE_LAST_GAMEMODE] = gamemode_id
@@ -1240,6 +1257,7 @@ public plugin_pause()
 
 public plugin_end()
 {
+	stop_countdown()
 	gFlameReady = false
 	for(new id = 1; id <= MaxClients; id++)
 	{

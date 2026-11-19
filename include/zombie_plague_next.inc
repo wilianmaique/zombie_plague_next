@@ -186,13 +186,13 @@ forward zpn_show_hud_player_info_post(const id);
 /**
  * Called before each default round countdown HUD message.
  *
- * @note Suppression affects only the visual message. The countdown and
- *       its audio continue normally.
+ * @note Suppression skips the default HUD and spoken number for this tick.
+ *       The countdown still advances.
  * @note The default message is broadcast; suppression applies to all clients.
  *
  * @param seconds   Seconds shown in this countdown step
  * @return          ZPN_RETURN_CONTINUE to draw the default HUD
- *                  ZPN_RETURN_HANDLED or higher to suppress this draw
+ *                  ZPN_RETURN_HANDLED or higher to suppress both outputs
  */
 forward zpn_show_hud_countdown_pre(const seconds);
 
@@ -205,6 +205,14 @@ forward zpn_show_hud_countdown_pre(const seconds);
  * @noreturn
  */
 forward zpn_show_hud_countdown_post(const seconds);
+
+/**
+ * Called once when a countdown that emitted at least one tick finishes or
+ * is cancelled. A later countdown starts a new sequence.
+ *
+ * @noreturn
+ */
+forward zpn_countdown_end();
 
 /**
  * Called before the default game mode notice HUD is drawn.
