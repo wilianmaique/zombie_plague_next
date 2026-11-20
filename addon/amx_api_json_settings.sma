@@ -3,7 +3,7 @@
 #include <json>
 
 #define PLUGIN  "AMX JSON Settings API"
-#define VERSION "1.4"
+#define VERSION "1.5"
 #define AUTHOR  "Wilian M."
 
 new dir[128], file_path[256], path_file_name[128], section[128], key[128], sec_key[128]
@@ -62,9 +62,9 @@ JSON:_load_settings_object(const file_name_path[], file_path_output[], len, bool
 	return object
 }
 
-bool:_should_update_setting(JSON:object, const setting_key[], JSONType:json_type, bool:replace)
+bool:_should_update_setting(JSON:object, const setting_key[], JSONType:json_type, bool:replace, bool:dot_not = true)
 {
-	new bool:exists = json_object_has_value(object, setting_key, json_type, true)
+	new bool:exists = json_object_has_value(object, setting_key, json_type, dot_not)
 
 	return (!exists || replace)
 }
@@ -465,17 +465,23 @@ public bool:_setting_get_string_arr(plugin_id, param_nums)
 
 	get_string(arg_section, section, charsmax(section))
 	get_string(arg_key, key, charsmax(key))
-	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
+
+	new bool:in_section = (section[0] != EOS)
+	
+	if(in_section)
+		formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
+	else
+		copy(sec_key, charsmax(sec_key), key)
 
 	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
 
-	if(!json_object_has_value(object, sec_key, json_type, true))
+	if(!json_object_has_value(object, sec_key, json_type, in_section))
 	{
 		json_free(object)
 		return false
 	}
 
-	new JSON:objArray = json_object_get_value(object, sec_key, true)
+	new JSON:objArray = json_object_get_value(object, sec_key, in_section)
 	new countObjArray = json_array_get_count(objArray)
 
 	if(countObjArray <= 0)
@@ -517,10 +523,15 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 	get_string(arg_section, section, charsmax(section))
 	get_string(arg_key, key, charsmax(key))
 	new bool:replace = bool:get_param(arg_replace)
-	formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
+	new bool:in_section = (section[0] != EOS)
+
+	if(in_section)
+		formatex(sec_key, charsmax(sec_key), "%s.%s", section, key)
+	else
+		copy(sec_key, charsmax(sec_key), key)
 
 	new JSONType:json_type = bool:get_param(arg_check_type) ? JSONArray : JSONError
-	new bool:updated = _should_update_setting(object, sec_key, json_type, replace)
+	new bool:updated = _should_update_setting(object, sec_key, json_type, replace, in_section)
 
 	if(!updated)
 	{
@@ -544,7 +555,7 @@ public bool:_setting_set_string_arr(plugin_id, param_nums)
 		json_array_append_string(newArray, str_value)
 	}
 
-	json_object_set_value(object, sec_key, newArray, true)
+	json_object_set_value(object, sec_key, newArray, in_section)
 	json_serial_to_file(object, file_path, true)
 
 	json_free(newArray)
