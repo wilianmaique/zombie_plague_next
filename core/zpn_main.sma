@@ -122,6 +122,13 @@ new bool:gCountdownActive
 new bool:gEscapeMap
 new bool:gTransformingUser
 new bool:gTransformingAll
+new TeamName:gDeathmatchSpawnTeam[MAX_PLAYERS + 1]
+
+enum _:eRespawnTask
+{
+	RESPAWN_USERID,
+	RESPAWN_GAMEMODE
+}
 
 #define FLAME_THINK_INTERVAL 0.05
 #define FLAME_TICK_INTERVAL 0.2
@@ -251,36 +258,82 @@ public HandleMenu_ChooseAppearance_Post(const this, const slot)
 
 public CBasePlayer_Killed_Post(const this, pevAttacker, iGib)
 {
-	if(IsReapiHookOriginalWasCalled(RG_CBasePlayer_Killed) && !is_user_alive(this))
-	{
-		remove_user_movement_boost(this)
-		remove_user_flame(this, ZPN_FLAME_REMOVE_DEATH)
-		remove_user_frozen(this + TASK_FROZEN)
-	}
-
-	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
-
-	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && 0 <= gamemode_id < zpn_gamemode_array_size()
-	&& zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE)
-	&& zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_DEATHMATCH) == GAMEMODE_DEATHMATCH_ONLY_TR)
-	{
-		remove_task(this + TASK_RESPAWN)
-		new Float:delay = zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_RESPAWN_TIME)
-		if(delay > 0.0)
-			set_task_ex(delay, "respawn_user", this + TASK_RESPAWN)
-	}
-}
-
-public respawn_user(this)
-{
-	this -= TASK_RESPAWN
-
-	if(!is_user_connected(this) || !xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
-	|| !zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE))
+	if(!IsReapiHookOriginalWasCalled(RG_CBasePlayer_Killed) || is_user_alive(this))
 		return
 
-	if(!is_user_alive(this))
-		rg_round_respawn(this)
+	remove_user_movement_boost(this)
+	remove_user_flame(this, ZPN_FLAME_REMOVE_DEATH)
+	remove_user_frozen(this + TASK_FROZEN)
+
+	new gamemode_id = xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE]
+	new Float:delay
+	if(get_round_deathmatch(gamemode_id, delay) == GAMEMODE_DEATHMATCH_DISABLED)
+		return
+
+	new data[eRespawnTask]
+	data[RESPAWN_USERID] = get_user_userid(this)
+	data[RESPAWN_GAMEMODE] = gamemode_id
+	remove_task(this + TASK_RESPAWN)
+	set_task_ex(delay, "respawn_user", this + TASK_RESPAWN, data, sizeof(data))
+}
+
+eGameModeDeathMatchTypes:get_round_deathmatch(const gamemode_id, &Float:delay = 0.0)
+{
+	if(!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] || get_member_game(m_bRoundTerminating)
+	|| gamemode_id != xDataGetGameRule[GAME_RULE_CURRENT_GAMEMODE] || !(0 <= gamemode_id < zpn_gamemode_array_size()))
+		return GAMEMODE_DEATHMATCH_DISABLED
+
+	delay = zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_RESPAWN_TIME)
+	if(delay <= 0.0)
+		return GAMEMODE_DEATHMATCH_DISABLED
+
+	return zpn_gamemode_get_prop(gamemode_id, PROP_GAMEMODE_REGISTER_DEATHMATCH)
+}
+
+TeamName:get_deathmatch_spawn_team(const eGameModeDeathMatchTypes:deathmatch)
+{
+	switch(deathmatch)
+	{
+		case GAMEMODE_DEATHMATCH_ONLY_TR: return TEAM_TERRORIST
+		case GAMEMODE_DEATHMATCH_ONLY_CT: return TEAM_CT
+		case GAMEMODE_DEATHMATCH_RANDOM: return random_num(0, 1) ? TEAM_TERRORIST : TEAM_CT
+		case GAMEMODE_DEATHMATCH_BALANCE:
+		{
+			new zombies = get_num_alive(true), humans = get_num_alive()
+			if(zombies == humans)
+				return random_num(0, 1) ? TEAM_TERRORIST : TEAM_CT
+			return zombies < humans ? TEAM_TERRORIST : TEAM_CT
+		}
+	}
+	return TEAM_UNASSIGNED
+}
+
+public respawn_user(const data[eRespawnTask], task_id)
+{
+	new id = task_id - TASK_RESPAWN
+	if(!is_user_connected(id) || get_user_userid(id) != data[RESPAWN_USERID] || is_user_alive(id)
+	|| get_member(id, m_iJoiningState) != JOINED)
+		return
+
+	new TeamName:previous_team = get_member(id, m_iTeam)
+	if(previous_team != TEAM_TERRORIST && previous_team != TEAM_CT)
+		return
+
+	new TeamName:target = get_deathmatch_spawn_team(get_round_deathmatch(data[RESPAWN_GAMEMODE]))
+	if(target == TEAM_UNASSIGNED)
+		return
+
+	gDeathmatchSpawnTeam[id] = target
+	rg_round_respawn(id)
+
+	// A successful Spawn consumes the target. Undo a pre-spawn team switch if Spawn was blocked.
+	if(gDeathmatchSpawnTeam[id] != TEAM_UNASSIGNED)
+	{
+		gDeathmatchSpawnTeam[id] = TEAM_UNASSIGNED
+		if(previous_team != target && is_user_connected(id) && get_user_userid(id) == data[RESPAWN_USERID]
+		&& get_member(id, m_iTeam) == target)
+			rg_set_user_team(id, previous_team)
+	}
 }
 
 public CBasePlayer_TakeDamage_Pre(const victim, pevInflictor, attacker, Float:flDamage, bitsDamageType)
@@ -834,19 +887,21 @@ public CBasePlayer_Spawn_Pre(id)
 	if(team != TEAM_TERRORIST && team != TEAM_CT)
 		return
 
-	if(team != TEAM_CT && (!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
+	new TeamName:spawn_team = gDeathmatchSpawnTeam[id]
+	if(spawn_team == TEAM_UNASSIGNED && (!xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED]
 	|| (gEscapeMap && !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))))
-		rg_set_user_team(id, TEAM_CT)
+		spawn_team = TEAM_CT
+	if(spawn_team != TEAM_UNASSIGNED && team != spawn_team)
+		rg_set_user_team(id, spawn_team)
 }
 
 public CBasePlayer_Spawn_Post(id)
 {
-	if(IsReapiHookOriginalWasCalled(RG_CBasePlayer_Spawn) && zpn_is_valid_player_connected(id))
-	{
-		remove_user_flame(id, ZPN_FLAME_REMOVE_SPAWN)
-		remove_user_frozen(id + TASK_FROZEN)
-	}
+	if(!IsReapiHookOriginalWasCalled(RG_CBasePlayer_Spawn) || !zpn_is_valid_player_connected(id))
+		return
 
+	remove_user_flame(id, ZPN_FLAME_REMOVE_SPAWN)
+	remove_user_frozen(id + TASK_FROZEN)
 	if(!zpn_is_valid_player_alive(id))
 		return
 
@@ -855,12 +910,19 @@ public CBasePlayer_Spawn_Post(id)
 	if(team != TEAM_TERRORIST && team != TEAM_CT)
 		return
 
+	new TeamName:respawn_team = gDeathmatchSpawnTeam[id]
+	gDeathmatchSpawnTeam[id] = TEAM_UNASSIGNED
+	remove_task(id + TASK_RESPAWN)
+
 	// A new life no longer occupies either temporary class from the previous one.
 	zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS, -1)
 	zpn_player_data_set_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS, -1)
 
 	new bool:applied
-	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+	new bool:zombie = respawn_team == TEAM_TERRORIST
+	if(respawn_team == TEAM_UNASSIGNED)
+		zombie = zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE)
+	if(xDataGetGameRule[GAME_RULE_IS_ROUND_STARTED] && zombie)
 		applied = set_user_zombie(id, 0, false)
 	else
 		applied = set_user_human(id)
@@ -873,6 +935,9 @@ public CBasePlayer_Spawn_Post(id)
 		client_print_color(id, print_team_red, "%s %L", xSettingsVars[CONFIG_PREFIX_CHAT], id, "ZPN_NO_CLASS_SLOT")
 		return
 	}
+
+	if(respawn_team != TEAM_UNASSIGNED)
+		update_last_human_flags()
 
 	// A pending weapon selection must not leave the player empty-handed.
 	new knife = rg_find_weapon_bpack_by_name(id, "weapon_knife")
@@ -1784,7 +1849,7 @@ bool:transform_user(const id, const eClassTypes:type, class_id)
 	return true
 }
 
-update_transformation_round()
+update_last_human_flags()
 {
 	new humans = get_num_alive()
 	for(new player = 1; player <= MaxClients; player++)
@@ -1792,7 +1857,12 @@ update_transformation_round()
 		if(is_user_connected(player))
 			zpn_player_data_set_prop(player, PROP_PD_REGISTER_IS_LAST_HUMAN, humans == 1 && is_user_alive(player) && !zpn_player_data_get_prop(player, PROP_PD_REGISTER_IS_ZOMBIE))
 	}
+	return humans
+}
 
+update_transformation_round()
+{
+	new humans = update_last_human_flags()
 	// Escape resolves its own teams, respawns and victory conditions.
 	if(!gEscapeMap && !get_member_game(m_bRoundTerminating))
 	{
