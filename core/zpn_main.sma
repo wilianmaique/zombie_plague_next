@@ -111,6 +111,7 @@ enum _:eSyncHuds
 }
 
 new const CS_SOUNDS[][] = { "items/flashlight1.wav", "items/9mmclip1.wav", "player/bhit_helmet-1.wav" };
+new const PRINT_NOTIFY_SOUND[] = "zpn/print_notify.wav";
 
 new xFirstClass[2]
 new xForwards[eForwards], xForwardReturn, xFwIntParam[12]
@@ -1157,6 +1158,7 @@ public plugin_precache()
 
 	new i, mapName[32]
 	for(i = 0; i < sizeof(CS_SOUNDS); i++) precache_sound(CS_SOUNDS[i])
+	precache_sound(PRINT_NOTIFY_SOUND)
 
 	defaultIndexPlayer = precache_model("models/player.mdl")
 
@@ -1576,11 +1578,18 @@ public _zpn_print_color(plugin_id, param_nums)
 
 		// vdformat uses the caller's arguments; %l must be resolved for each receiver.
 		SetGlobalTransTarget(recipient)
+
 		if(param_nums == 3) get_string(3, msg, charsmax(msg))
 		else vdformat(msg, charsmax(msg), 3, 4)
+
 		written = client_print_color(recipient, sender, "%s %s", xSettingsVars[CONFIG_PREFIX_CHAT], msg)
+
+		if(written)
+			rh_emit_sound2(recipient, recipient, CHAN_AUTO, PRINT_NOTIFY_SOUND, .attn = ATTN_NONE, .emitFlags = SND_EMIT2_NOPAS)
 	}
+
 	SetGlobalTransTarget(LANG_SERVER)
+	
 	return written
 }
 

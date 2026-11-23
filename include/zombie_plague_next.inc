@@ -1405,7 +1405,7 @@ native bool:zpn_transform_user(const id, const eClassTypes:class_type, const cla
 native zpn_transform_all(const exclude_player, const class_id, &total);
 
 /**
- * Sends a prefixed colored chat message.
+ * Sends a prefixed colored chat message and plays a notification sound for each recipient.
  *
  * @note This wraps client_print_color() and prepends the configured chat prefix.
  * @note Use 0 as id to send to all connected clients.
