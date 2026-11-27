@@ -9,6 +9,7 @@
 #include <hamsandwich>
 #include <reapi>
 #include <regex>
+#include <xs>
 #include <api_json_settings>
 #include <zombie_plague_next>
 #include <zombie_plague_next_const>
@@ -131,6 +132,11 @@ enum _:eRespawnTask
 	RESPAWN_GAMEMODE
 }
 
+new const BLOOD_STAIN_SPRITE[] = "sprites/zpn/blood_stain.spr"
+const MAX_BLOOD_STAINS = 48
+new gBloodPalette[256 * 3], gBloodStains[MAX_BLOOD_STAINS], gBloodSerial[MAX_BLOOD_STAINS]
+new gNextBloodStain, gBloodStainFrames, gAlienBloodCvar
+
 #define FLAME_THINK_INTERVAL 0.05
 #define FLAME_TICK_INTERVAL 0.2
 #define FLAME_FRAMERATE 15.0
@@ -169,6 +175,7 @@ public plugin_init()
 	register_dictionary("zpn_main.txt")
 	register_dictionary("zpn_classes.txt")
 	register_dictionary("zpn_gamemodes.txt")
+	init_blood_stains()
 
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Post", true)
@@ -1007,6 +1014,7 @@ public get_selected_weapon(const id, Array:WpnType, const xWpnArrayIndex, const 
 
 public CSGameRules_RestartRound_Pre()
 {
+	clear_blood_stains()
 	new bool:was_cleaning_flames = gFlameRoundCleanup
 	gFlameRoundCleanup = true
 	stop_countdown()
@@ -1148,8 +1156,11 @@ start_round(const gamemode_id, const start_player = 0, const bool:transform_all 
 
 public plugin_precache()
 {
+	precache_blood_stains()
+
 	gDefaultFlameSprites = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
 	gClassFlameSprites = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 0)
+	
 	ArrayPushString(gDefaultFlameSprites, "sprites/zpn/flame.spr")
 	json_setting_set_string_arr(PATH_SETTINGS_CONFIG, SETTINGS_SECTION_CONFIG, "Default Sprite Flame", gDefaultFlameSprites)
 	ArrayClear(gDefaultFlameSprites)
@@ -1324,8 +1335,11 @@ public plugin_pause()
 
 public plugin_end()
 {
+	clear_blood_stains()
 	stop_countdown()
+
 	gFlameReady = false
+
 	for(new id = 1; id <= MaxClients; id++)
 	{
 		remove_user_movement_boost(id, true)
@@ -1952,7 +1966,7 @@ bool:set_user_zombie(this, infector, bool:set_first, const forced_class = -1)
 	rg_drop_items_by_slot(this, GRENADE_SLOT)
 	rg_give_item(this, "weapon_knife")
 
-	if(class_blood_color != -1) set_member(this, m_bloodColor, clamp(class_blood_color, 0, 255))
+	set_member(this, m_bloodColor, (0 <= class_blood_color <= 255) ? class_blood_color : BLOOD_COLOR_RED)
 	if(class_body != -1) set_entvar(this, var_body, class_body)
 	if(class_skin != -1) set_entvar(this, var_skin, class_skin)
 
@@ -2042,7 +2056,7 @@ bool:set_user_human(this, const forced_class = -1)
 		copy(model, charsmax(model), xSettingsVars[CONFIG_DEFAULT_HUMAN_MODEL])
 	else copy(model, charsmax(model), class_model)
 	
-	if(class_blood_color != -1) set_member(this, m_bloodColor, clamp(class_blood_color, 0, 255))
+	set_member(this, m_bloodColor, (0 <= class_blood_color <= 255) ? class_blood_color : BLOOD_COLOR_RED)
 	if(class_body != -1) set_entvar(this, var_body, class_body)
 	if(class_skin != -1) set_entvar(this, var_skin, class_skin)
 
@@ -2074,6 +2088,255 @@ bool:set_user_human(this, const forced_class = -1)
 	ExecuteForward(xForwards[FW_HUMANIZED_POST], xForwardReturn, this, class_id)
 
 	return true
+}
+
+precache_blood_stains()
+{
+	new file = fopen("gfx/palette.lmp", "rb", true)
+
+	new bytes
+
+	if(file)
+	{
+		bytes = fread_blocks(file, gBloodPalette, sizeof(gBloodPalette), BLOCK_CHAR)
+		fclose(file)
+	}
+
+	if(bytes != sizeof(gBloodPalette) || !file_exists(BLOOD_STAIN_SPRITE, true))
+	{
+		log_amx("Class blood stains unavailable: check gfx/palette.lmp and %s", BLOOD_STAIN_SPRITE)
+		return
+	}
+
+	new model = precache_model(BLOOD_STAIN_SPRITE)
+
+	gBloodStainFrames = engfunc(EngFunc_ModelFrames, model)
+}
+
+init_blood_stains()
+{
+	gAlienBloodCvar = get_cvar_pointer("violence_ablood")
+
+	if(gBloodStainFrames <= 0 || !gAlienBloodCvar)
+		return
+
+	RegisterHamPlayer(Ham_TraceBleed, "Player_TraceBleed_Stains")
+	hook_cvar_change(gAlienBloodCvar, "AlienBlood_Changed")
+}
+
+public AlienBlood_Changed(pcvar, const oldValue[], const newValue[])
+{
+	if(str_to_float(newValue) == 0.0)
+		clear_blood_stains()
+}
+
+public Player_TraceBleed_Stains(id, Float:damage, const Float:direction[3], hitTrace, damageBits)
+{
+	if(get_pcvar_float(gAlienBloodCvar) == 0.0 || !zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+		return HAM_IGNORED
+
+	new classId = zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS)
+
+	if(!(0 <= classId < zpn_class_array_size()))
+		return HAM_IGNORED
+
+	new color = zpn_class_get_prop(classId, PROP_CLASS_REGISTER_BLOOD_COLOR)
+
+	if(!(0 <= color <= 255) || color == BLOOD_COLOR_RED || get_member(id, m_bloodColor) != color)
+		return HAM_IGNORED
+
+	if(damage <= 0.0 || !(damageBits & (DMG_CRUSH | DMG_BULLET | DMG_SLASH | DMG_BLAST | DMG_CLUB | DMG_MORTAR)))
+		return HAM_SUPERCEDE
+
+	new count = 1, Float:spread = 0.1
+
+	if(damage >= 25.0)
+	{
+		count = 4
+		spread = 0.3
+	}
+	else if(damage >= 10.0)
+	{
+		count = 2
+		spread = 0.2
+	}
+
+	new trace, Float:start[3], Float:end[3], Float:fraction, texture[16]
+
+	for(new i = 0; i < count; i++)
+	{
+		if(random_num(0, 2))
+			continue
+
+		if(!trace)
+		{
+			trace = create_tr2()
+			get_tr2(hitTrace, TR_vecEndPos, start)
+		}
+
+		for(new axis = 0; axis < 3; axis++)
+			end[axis] = start[axis] + 172.0 * (direction[axis] + random_float(-spread, spread))
+
+		engfunc(EngFunc_TraceLine, start, end, IGNORE_MONSTERS, id, trace)
+		get_tr2(trace, TR_flFraction, fraction)
+
+		if(fraction >= 1.0 || get_tr2(trace, TR_StartSolid) || get_tr2(trace, TR_AllSolid))
+			continue
+
+		new brush = get_tr2(trace, TR_pHit)
+
+		if(brush == NULLENT)
+			brush = 0
+
+		if(brush && get_entvar(brush, var_solid) != SOLID_BSP)
+			continue
+
+		texture[0] = 0
+
+		engfunc(EngFunc_TraceTexture, brush, start, end, texture, charsmax(texture))
+
+		if(!equali(texture, "sky", 3))
+			place_blood_stain(trace, brush, color)
+	}
+
+	if(trace)
+		free_tr2(trace)
+
+	return HAM_SUPERCEDE
+}
+
+place_blood_stain(trace, brush, color)
+{
+	new slot = gNextBloodStain, ent = gBloodStains[slot]
+
+	if(!ent || !pev_valid(ent) || pev_serial(ent) != gBloodSerial[slot])
+	{
+		if(engfunc(EngFunc_NumberOfEntities) >= global_get(glb_maxEntities) - 64)
+			return
+
+		ent = rg_create_entity("info_target")
+
+		if(is_nullent(ent))
+			return
+
+		gBloodStains[slot] = ent
+		gBloodSerial[slot] = pev_serial(ent)
+
+		set_entvar(ent, var_classname, "zpn_blood_stain")
+		engfunc(EngFunc_SetModel, ent, BLOOD_STAIN_SPRITE)
+		set_entvar(ent, var_movetype, MOVETYPE_NONE)
+		set_entvar(ent, var_solid, SOLID_NOT)
+		set_entvar(ent, var_rendermode, kRenderTransTexture)
+		set_entvar(ent, var_renderamt, 255.0)
+		set_entvar(ent, var_scale, 1.0)
+	}
+
+	gNextBloodStain = (slot + 1) % MAX_BLOOD_STAINS
+
+	new Float:rgb[3], Float:point[3], Float:normal[3]
+
+	for(new i = 0; i < 3; i++)
+		rgb[i] = float(gBloodPalette[color * 3 + i] & 0xff)
+
+	if(!rgb[0] && !rgb[1] && !rgb[2])
+		rgb[0] = rgb[1] = rgb[2] = 1.0
+
+	set_entvar(ent, var_rendercolor, rgb)
+	set_entvar(ent, var_frame, float(random_num(0, gBloodStainFrames - 1)))
+	set_entvar(ent, var_effects, EF_NOINTERP)
+	get_tr2(trace, TR_vecEndPos, point)
+	get_tr2(trace, TR_vecPlaneNormal, normal)
+	xs_vec_add_scaled(point, normal, 0.3, point)
+	position_blood_stain(ent, point, normal)
+
+	if(!brush)
+	{
+		set_entvar(ent, var_nextthink, 0.0)
+		return
+	}
+
+	new Float:origin[3], Float:angles[3], Float:axis[3], Float:offset[3], Float:localNormal[3]
+	get_entvar(brush, var_origin, origin)
+	get_entvar(brush, var_angles, angles)
+	xs_vec_sub(point, origin, point)
+
+	for(new i = 0; i < 3; i++)
+	{
+		angle_vector(angles, ANGLEVECTOR_FORWARD + i, axis)
+		offset[i] = xs_vec_dot(point, axis)
+		localNormal[i] = xs_vec_dot(normal, axis)
+	}
+
+	set_entvar(ent, var_iuser1, brush)
+	set_entvar(ent, var_iuser2, pev_serial(brush))
+	set_entvar(ent, var_vuser1, offset)
+	set_entvar(ent, var_vuser2, localNormal)
+	set_entvar(ent, var_vuser3, origin)
+	set_entvar(ent, var_vuser4, angles)
+	SetThink(ent, "BloodStain_BrushThink")
+	set_entvar(ent, var_nextthink, get_gametime() + 0.1)
+}
+
+position_blood_stain(ent, const Float:point[3], const Float:normal[3])
+{
+	new Float:inward[3], Float:angles[3]
+	xs_vec_neg(normal, inward)
+	vector_to_angle(inward, angles)
+	angles[0] = -angles[0]
+	set_entvar(ent, var_angles, angles)
+	engfunc(EngFunc_SetOrigin, ent, point)
+}
+
+public BloodStain_BrushThink(ent)
+{
+	new brush = get_entvar(ent, var_iuser1)
+	if(!pev_valid(brush) || pev_serial(brush) != get_entvar(ent, var_iuser2)
+	|| get_entvar(brush, var_solid) != SOLID_BSP || (get_entvar(brush, var_effects) & EF_NODRAW))
+	{
+		set_entvar(ent, var_effects, EF_NODRAW)
+		return
+	}
+
+	new Float:point[3], Float:angles[3], Float:lastOrigin[3], Float:lastAngles[3]
+
+	get_entvar(brush, var_origin, point)
+	get_entvar(brush, var_angles, angles)
+	get_entvar(ent, var_vuser3, lastOrigin)
+	get_entvar(ent, var_vuser4, lastAngles)
+	set_entvar(ent, var_nextthink, get_gametime() + 0.1)
+
+	if(xs_vec_equal(point, lastOrigin) && xs_vec_equal(angles, lastAngles))
+		return
+
+	set_entvar(ent, var_vuser3, point)
+	set_entvar(ent, var_vuser4, angles)
+
+	new Float:axis[3], Float:normal[3], Float:offset[3], Float:localNormal[3]
+
+	get_entvar(ent, var_vuser1, offset)
+	get_entvar(ent, var_vuser2, localNormal)
+
+	for(new i = 0; i < 3; i++)
+	{
+		angle_vector(angles, ANGLEVECTOR_FORWARD + i, axis)
+		xs_vec_add_scaled(point, axis, offset[i], point)
+		xs_vec_add_scaled(normal, axis, localNormal[i], normal)
+	}
+
+	position_blood_stain(ent, point, normal)
+}
+
+clear_blood_stains()
+{
+	for(new i = 0; i < MAX_BLOOD_STAINS; i++)
+	{
+		new ent = gBloodStains[i]
+		if(ent && pev_valid(ent) && pev_serial(ent) == gBloodSerial[i])
+			engfunc(EngFunc_RemoveEntity, ent)
+		gBloodStains[i] = 0
+	}
+
+	gNextBloodStain = 0
 }
 
 public bool:_zpn_set_user_flame(plugin_id, param_nums)
